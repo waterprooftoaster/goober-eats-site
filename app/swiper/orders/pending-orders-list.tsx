@@ -52,7 +52,7 @@ export function PendingOrdersList({ orders: initialOrders }: Props) {
       const acceptedId = selectedOrder.id
       setOrders((prev) => prev.filter((o) => o.id !== acceptedId))
       setSelectedOrder(null)
-      openPanel(acceptedId)
+      openPanel(acceptedId, 'in_progress')
       const name = selectedOrder.eateries?.name ?? 'the eatery'
       setSuccessMsg(`Order accepted! Head to ${name} to start filling it.`)
       setTimeout(() => { setSuccessMsg(null) }, 5000)

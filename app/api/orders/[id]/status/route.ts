@@ -61,8 +61,10 @@ export async function PATCH(
   }
 
   // Completion guards: payment must exist + delivery photo required
+  // Uses service client: RLS on payments only allows payer/payee to SELECT, but
+  // the swiper is neither (payer_id = orderer, payee_id = null at this point).
   if (newStatus === 'completed') {
-    const { data: payment } = await supabase
+    const { data: payment } = await createServiceClient()
       .from('payments')
       .select('id')
       .eq('order_id', id)

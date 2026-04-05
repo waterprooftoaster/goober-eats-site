@@ -5,16 +5,19 @@ import type { OrderEntry } from './chat-panel-context'
 import { ChatView } from '@/components/chat/chat-view'
 import { ChevronUp, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import type { OrderStatus } from '@/lib/types/database'
 
 interface PanelProps {
   entry: OrderEntry
   /** 0 = newest (bottom of stack); shown on mobile */
   index: number
-  currentUserId: string
+  currentUserId: string | null
   onToggle: (orderId: string) => void
+  onStatusChange: (status: OrderStatus) => void
+  onClose: () => void
 }
 
-function ChatPanelItem({ entry, index, currentUserId, onToggle }: PanelProps) {
+function ChatPanelItem({ entry, index, currentUserId, onToggle, onStatusChange, onClose }: PanelProps) {
   const { orderId, status, isExpanded } = entry
   const shortId = orderId.slice(0, 8)
   // Only the first (newest) panel is visible on mobile; all others are hidden
@@ -58,7 +61,13 @@ function ChatPanelItem({ entry, index, currentUserId, onToggle }: PanelProps) {
         </button>
       </div>
       <div className="flex flex-1 flex-col overflow-hidden">
-        <ChatView orderId={orderId} currentUserId={currentUserId} orderStatus={status} />
+        <ChatView
+          orderId={orderId}
+          currentUserId={currentUserId}
+          orderStatus={status}
+          onStatusChange={onStatusChange}
+          onClose={onClose}
+        />
       </div>
     </div>
   )
@@ -69,9 +78,7 @@ interface Props {
 }
 
 export function ChatPanel({ currentUserId }: Props) {
-  const { orders, toggleMinimize } = useChatPanel()
-
-  if (!currentUserId) return null
+  const { orders, toggleMinimize, updateOrderStatus, closePanel } = useChatPanel()
 
   const panelList = Object.values(orders)
   if (panelList.length === 0) return null
@@ -86,8 +93,10 @@ export function ChatPanel({ currentUserId }: Props) {
           key={entry.orderId}
           entry={entry}
           index={index}
-          currentUserId={currentUserId}
+          currentUserId={entry.isGuest ? null : currentUserId}
           onToggle={toggleMinimize}
+          onStatusChange={(status) => updateOrderStatus(entry.orderId, status)}
+          onClose={() => closePanel(entry.orderId)}
         />
       ))}
     </div>

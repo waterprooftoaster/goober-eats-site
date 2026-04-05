@@ -104,6 +104,7 @@ export interface Order {
   special_instructions: string | null
   guest_name: string | null
   guest_phone: string | null
+  guest_access_token: string | null
   created_at: string
   updated_at: string
 }

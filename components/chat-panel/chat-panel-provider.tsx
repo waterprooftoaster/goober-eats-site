@@ -23,10 +23,10 @@ export function ChatPanelProvider({ userId, children }: Props) {
     ordersRef.current = orders
   }, [orders])
 
-  const openPanel = useCallback((orderId: string, status: OrderStatus = 'open') => {
+  const openPanel = useCallback((orderId: string, status: OrderStatus = 'open', isGuest = false) => {
     setOrders((prev) => {
       if (prev[orderId]) return prev // idempotent — don't reset an already-open panel
-      return { ...prev, [orderId]: { orderId, status, isExpanded: true } }
+      return { ...prev, [orderId]: { orderId, status, isExpanded: true, isGuest } }
     })
   }, [])
 

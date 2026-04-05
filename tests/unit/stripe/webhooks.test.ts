@@ -245,6 +245,9 @@ describe('POST /api/stripe/webhooks', () => {
           guest_name: 'Test Guest',
           tip_cents: 0,
           total_cents: 1000,
+          guest_access_token: expect.stringMatching(
+            /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+          ),
         })
       )
 
@@ -308,14 +311,17 @@ describe('POST /api/stripe/webhooks', () => {
       expect(mockServiceFrom).toHaveBeenCalledTimes(7)
     })
 
-    it('skips when cart is not found', async () => {
+    it('returns 500 when cart is not found', async () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
       mockServiceFrom
         .mockReturnValueOnce(dbResult({ data: null }))           // payments (no dup)
         .mockReturnValueOnce(dbResult({ data: null, error: { message: 'not found' } })) // carts → not found
 
       const res = await POST(buildSignedRequest(guestPiEvent()))
-      expect(res.status).toBe(200)
+      expect(res.status).toBe(500)
       expect(mockLoadCart).not.toHaveBeenCalled()
+      consoleSpy.mockRestore()
     })
 
     it('skips when metadata has invalid UUIDs', async () => {
@@ -334,6 +340,48 @@ describe('POST /api/stripe/webhooks', () => {
       const res = await POST(buildSignedRequest(event))
       expect(res.status).toBe(200)
       expect(mockServiceFrom).not.toHaveBeenCalled()
+    })
+
+    it('returns 500 when idempotency check query errors', async () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      mockServiceFrom.mockReturnValueOnce(
+        dbResult({ data: null, error: { message: 'connection refused', code: 'XX000' } })
+      )
+
+      const res = await POST(buildSignedRequest(guestPiEvent()))
+      expect(res.status).toBe(500)
+      const body = await res.json()
+      expect(body.error).toBe('Failed to check payment')
+      consoleSpy.mockRestore()
+    })
+
+    it('returns 500 when cart query errors', async () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      mockServiceFrom
+        .mockReturnValueOnce(dbResult({ data: null }))           // idempotency ok
+        .mockReturnValueOnce(dbResult({ data: null, error: { message: 'relation not found' } }))
+
+      const res = await POST(buildSignedRequest(guestPiEvent()))
+      expect(res.status).toBe(500)
+      const body = await res.json()
+      expect(body.error).toBe('Cart not found')
+      consoleSpy.mockRestore()
+    })
+
+    it('logs warning when skipping due to missing metadata', async () => {
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const event = makeEvent('payment_intent.succeeded', {
+        id: VALID_PI_ID,
+        amount: 1000,
+        metadata: { is_guest: 'true' },
+      })
+
+      await POST(buildSignedRequest(event))
+      expect(consoleSpy).toHaveBeenCalled()
+      consoleSpy.mockRestore()
     })
   })
 
@@ -359,12 +407,13 @@ describe('POST /api/stripe/webhooks', () => {
       expect(mockServiceFrom).toHaveBeenCalledTimes(6)
       expect(mockLoadCart).toHaveBeenCalledTimes(1)
 
-      // Verify orders.insert payload — orderer_id set, no guest_name
+      // Verify orders.insert payload — orderer_id set, no guest_name, no token
       expect(ordersInsert.insert).toHaveBeenCalledWith(
         expect.objectContaining({
           orderer_id: VALID_ORDERER_ID,
           eatery_id: VALID_EATERY_ID,
           guest_name: null,
+          guest_access_token: null,
           tip_cents: 0,
           total_cents: 1000,
         })
@@ -393,14 +442,17 @@ describe('POST /api/stripe/webhooks', () => {
       expect(mockLoadCart).not.toHaveBeenCalled()
     })
 
-    it('skips when cart is not found', async () => {
+    it('returns 500 when cart is not found', async () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
       mockServiceFrom
         .mockReturnValueOnce(dbResult({ data: null }))
         .mockReturnValueOnce(dbResult({ data: null, error: { message: 'not found' } }))
 
       const res = await POST(buildSignedRequest(authPiEvent()))
-      expect(res.status).toBe(200)
+      expect(res.status).toBe(500)
       expect(mockLoadCart).not.toHaveBeenCalled()
+      consoleSpy.mockRestore()
     })
 
     it('skips when orderer_id is an invalid UUID', async () => {
@@ -419,6 +471,22 @@ describe('POST /api/stripe/webhooks', () => {
       const res = await POST(buildSignedRequest(event))
       expect(res.status).toBe(200)
       expect(mockServiceFrom).not.toHaveBeenCalled()
+    })
+
+    it('returns 500 when orderer_id does not match cart owner', async () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const differentUser = '00000000-0000-4000-8000-000000000099'
+
+      mockServiceFrom
+        .mockReturnValueOnce(dbResult({ data: null }))  // idempotency ok
+        .mockReturnValueOnce(dbResult({ data: { id: VALID_CART_ID, eatery_id: VALID_EATERY_ID, user_id: differentUser } }))
+
+      const res = await POST(buildSignedRequest(authPiEvent()))
+      expect(res.status).toBe(500)
+      const body = await res.json()
+      expect(body.error).toBe('Cart owner mismatch')
+      expect(mockLoadCart).not.toHaveBeenCalled()
+      consoleSpy.mockRestore()
     })
   })
 

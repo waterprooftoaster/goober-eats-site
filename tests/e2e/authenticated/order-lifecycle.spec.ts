@@ -83,6 +83,18 @@ test.describe('Order Lifecycle', () => {
       .single()
     if (!order) throw new Error('Failed to create test order')
     orderId = order.id
+
+    // Seed a payment row so the completion guard (service-client payment check) passes.
+    // In production the webhook creates this; tests bypass the webhook.
+    await supabase.from('payments').insert({
+      order_id: orderId,
+      stripe_payment_intent_id: 'pi_lifecycle_test',
+      amount_cents: menuItem.original_price_cents,
+      platform_fee_cents: Math.floor(menuItem.original_price_cents * 0.1),
+      status: 'succeeded',
+      payer_id: null,
+      payee_id: null,
+    })
   })
 
   test.afterAll(async () => {
@@ -182,11 +194,20 @@ test.describe('Order Lifecycle', () => {
         tip_cents: 0,
         guest_name: 'Un-accept Test',
         guest_phone: '+15005550006',
-        guest_stripe_pm_id: 'pm_test_unaccept',
       })
       .select('id')
       .single()
     if (!unacceptOrder) throw new Error('Failed to create order')
+
+    await supabase.from('payments').insert({
+      order_id: unacceptOrder.id,
+      stripe_payment_intent_id: 'pi_unaccept_test',
+      amount_cents: menuItem.original_price_cents,
+      platform_fee_cents: Math.floor(menuItem.original_price_cents * 0.1),
+      status: 'succeeded',
+      payer_id: null,
+      payee_id: null,
+    })
 
     try {
       // Accept → in_progress

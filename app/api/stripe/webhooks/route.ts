@@ -25,8 +25,11 @@ export async function POST(request: NextRequest) {
     try {
         event = getStripe().webhooks.constructEvent(body, signature, webhookSecret)
     } catch {
+        console.warn('webhook: invalid signature — check STRIPE_WEBHOOK_SECRET matches stripe listen output')
         return apiError('Invalid webhook signature', 400)
     }
+
+    console.log(`webhook received: ${event.type}`, { eventId: event.id })
 
     const supabase = createServiceClient()
 
@@ -34,10 +37,14 @@ export async function POST(request: NextRequest) {
         case 'payment_intent.succeeded': {
             const pi = event.data.object as Stripe.PaymentIntent
             const meta = pi.metadata
+            console.log('payment_intent.succeeded: processing', { piId: pi.id, isGuest: meta.is_guest === 'true' })
 
             // Checkout flow: cart_id in metadata means this PI came from Stripe Checkout
             const cartId = meta.cart_id
-            if (!cartId) break
+            if (!cartId) {
+                console.warn('payment_intent.succeeded: skip — no cart_id', { piId: pi.id })
+                break
+            }
 
             const eateryId = meta.eatery_id
             const isGuest = meta.is_guest === 'true'
@@ -45,38 +52,62 @@ export async function POST(request: NextRequest) {
             const ordererId = isGuest ? null : meta.orderer_id
 
             // Validate required fields
-            if (isGuest && !guestName) break
-            if (!isGuest && !ordererId) break
-            if (!eateryId) break
+            if (isGuest && !guestName) {
+                console.warn('payment_intent.succeeded: skip — guest missing name', { piId: pi.id })
+                break
+            }
+            if (!isGuest && !ordererId) {
+                console.warn('payment_intent.succeeded: skip — auth missing orderer_id', { piId: pi.id })
+                break
+            }
+            if (!eateryId) {
+                console.warn('payment_intent.succeeded: skip — no eatery_id', { piId: pi.id })
+                break
+            }
 
             // Validate UUIDs
-            if (!UUID_RE.test(cartId) || !UUID_RE.test(eateryId)) break
-            if (ordererId && !UUID_RE.test(ordererId)) break
+            if (!UUID_RE.test(cartId) || !UUID_RE.test(eateryId)) {
+                console.warn('payment_intent.succeeded: skip — invalid cart/eatery UUID', { piId: pi.id })
+                break
+            }
+            if (ordererId && !UUID_RE.test(ordererId)) {
+                console.warn('payment_intent.succeeded: skip — invalid orderer UUID', { piId: pi.id, ordererId })
+                break
+            }
 
             // Idempotency: skip if payment already recorded for this PI
-            const { data: existingPayment } = await supabase
+            const { data: existingPayment, error: paymentCheckError } = await supabase
                 .from('payments')
                 .select('id')
                 .eq('stripe_payment_intent_id', pi.id)
                 .maybeSingle()
-            if (existingPayment) break
+
+            if (paymentCheckError) {
+                console.error('payment_intent.succeeded: idempotency check failed', { piId: pi.id, error: paymentCheckError })
+                return apiError('Failed to check payment', 500)
+            }
+
+            if (existingPayment) {
+                console.log('payment_intent.succeeded: skip — duplicate delivery', { piId: pi.id })
+                break
+            }
 
             // Load cart to get items + pricing
-            const { data: cartRow } = await supabase
+            const { data: cartRow, error: cartError } = await supabase
                 .from('carts')
                 .select('id, eatery_id, user_id')
                 .eq('id', cartId)
                 .single()
 
-            if (!cartRow) {
-                console.error(`payment_intent.succeeded: cart ${cartId} not found`)
-                break
+            if (cartError || !cartRow) {
+                console.error('payment_intent.succeeded: cart lookup failed', { piId: pi.id, cartId, error: cartError })
+                return apiError('Cart not found', 500)
             }
 
             // Cross-check: for auth orders, metadata orderer_id must match cart owner
             if (ordererId && cartRow.user_id && ordererId !== cartRow.user_id) {
-                console.error(`payment_intent.succeeded: orderer_id ${ordererId} does not match cart owner ${cartRow.user_id}`)
-                break
+                console.error('payment_intent.succeeded: orderer_id does not match cart owner', { piId: pi.id })
+                return apiError('Cart owner mismatch', 500)
             }
 
             const loaded = await loadCart(supabase, cartRow)
@@ -120,6 +151,7 @@ export async function POST(request: NextRequest) {
                     special_instructions: specialInstructions,
                     guest_name: guestName,
                     guest_phone: null,
+                    guest_access_token: isGuest ? crypto.randomUUID() : null,
                 })
                 .select('id')
                 .single()
