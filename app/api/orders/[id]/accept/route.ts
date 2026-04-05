@@ -22,7 +22,7 @@ export async function PATCH(
     .single()
 
   if (!order) return apiError('Order not found', 404)
-  if (order.status !== 'pending' || order.swiper_id !== null) {
+  if (order.status !== 'open' || order.swiper_id !== null) {
     return apiError('Order is no longer available', 409)
   }
   if (order.orderer_id === user.id) {
@@ -71,9 +71,9 @@ export async function PATCH(
   const service = createServiceClient()
   const { data: updated, error } = await service
     .from('orders')
-    .update({ swiper_id: user.id, status: 'accepted' as const })
+    .update({ swiper_id: user.id, status: 'in_progress' as const })
     .eq('id', id)
-    .eq('status', 'pending')
+    .eq('status', 'open')
     .is('swiper_id', null)
     .select(
       'id, orderer_id, swiper_id, eatery_id, status, items, total_cents, tip_cents, special_instructions, guest_name, guest_phone, created_at, updated_at'

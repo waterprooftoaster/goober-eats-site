@@ -29,7 +29,7 @@ export async function PATCH(request: NextRequest) {
       .from('orders')
       .select('id', { count: 'exact', head: true })
       .eq('swiper_id', user.id)
-      .in('status', ['accepted', 'in_progress'])
+      .in('status', ['in_progress'])
     if (count && count > 0) {
       return apiError('Cannot deactivate swiper status while orders are in progress', 422)
     }

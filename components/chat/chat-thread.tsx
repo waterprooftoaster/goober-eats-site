@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
 interface Props {
   messages: Message[]
   conversation: Conversation
-  currentUserId: string
+  currentUserId: string | null
   messagesEndRef: RefObject<HTMLDivElement | null>
 }
 
@@ -24,7 +24,7 @@ function formatDateLabel(iso: string): string {
 function getSenderLabel(
   message: Message,
   conversation: Conversation,
-  currentUserId: string
+  currentUserId: string | null
 ): string | null {
   if (message.sender_id === null) return null
   if (message.sender_id === currentUserId) return 'You'

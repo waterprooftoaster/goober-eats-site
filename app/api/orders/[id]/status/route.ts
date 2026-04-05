@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { updateOrderStatusSchema } from '@/lib/types/api'
 import { canTransition } from '@/lib/orders/state-machine'
 import { apiError, apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
@@ -8,7 +9,7 @@ import { sendSystemMessage } from '@/lib/chat/system-messages'
 import type { OrderStatus } from '@/lib/types/database'
 
 const STATUS_MESSAGES: Partial<Record<string, string>> = {
-  in_progress: 'Swiper is preparing your order',
+  open: 'Swiper is no longer available — your order is open again',
   completed: 'Order completed — check delivery photo',
   cancelled: 'Order was cancelled',
 }
@@ -44,27 +45,26 @@ export async function PATCH(
     )
   }
 
-  // Authorization: orderer can cancel pending; swiper drives the rest
+  // Authorization: orderer can only cancel (from open); swiper drives the rest
   const isOrderer = order.orderer_id === user.id
   const isSwiper = order.swiper_id === user.id
 
   if (newStatus === 'cancelled') {
-    if (isOrderer && order.status !== 'pending') {
-      return apiError('Orderer can only cancel pending orders', 403)
-    }
-    if (!isOrderer && !isSwiper) {
-      return apiError('Not authorized to cancel this order', 403)
+    if (!isOrderer) {
+      return apiError('Only the orderer can cancel an order', 403)
     }
   } else {
-    // accepted, in_progress, completed — swiper only
+    // open (un-accept) and completed — swiper only
     if (!isSwiper) {
       return apiError('Only the swiper can update this status', 403)
     }
   }
 
   // Completion guards: payment must exist + delivery photo required
+  // Uses service client: RLS on payments only allows payer/payee to SELECT, but
+  // the swiper is neither (payer_id = orderer, payee_id = null at this point).
   if (newStatus === 'completed') {
-    const { data: payment } = await supabase
+    const { data: payment } = await createServiceClient()
       .from('payments')
       .select('id')
       .eq('order_id', id)
@@ -94,10 +94,19 @@ export async function PATCH(
     }
   }
 
+  // Un-accept: clear swiper_id so the order re-enters the open queue.
+  // Uses service client because the orders_update RLS WITH CHECK only permits
+  // rows where the updater remains orderer or swiper — clearing swiper_id to
+  // null would fail the check on the new row even though USING passes.
+  const updatePayload = newStatus === 'open'
+    ? { status: newStatus, swiper_id: null }
+    : { status: newStatus }
+  const updateClient = newStatus === 'open' ? createServiceClient() : supabase
+
   // Atomic: only update if status still matches what we read (prevents race)
-  const { data: updated, error } = await supabase
+  const { data: updated, error } = await updateClient
     .from('orders')
-    .update({ status: newStatus })
+    .update(updatePayload)
     .eq('id', id)
     .eq('status', order.status)
     .select(

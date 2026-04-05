@@ -52,7 +52,7 @@ export function PendingOrdersList({ orders: initialOrders }: Props) {
       const acceptedId = selectedOrder.id
       setOrders((prev) => prev.filter((o) => o.id !== acceptedId))
       setSelectedOrder(null)
-      openPanel(acceptedId)
+      openPanel(acceptedId, 'in_progress')
       const name = selectedOrder.eateries?.name ?? 'the eatery'
       setSuccessMsg(`Order accepted! Head to ${name} to start filling it.`)
       setTimeout(() => { setSuccessMsg(null) }, 5000)
@@ -82,7 +82,7 @@ export function PendingOrdersList({ orders: initialOrders }: Props) {
 
       {orders.length === 0 ? (
         <p className="text-sm text-gray-500 py-8 text-center">
-          No pending orders at your school right now. Check back soon.
+          No open orders at your school right now. Check back soon.
         </p>
       ) : (
         <ul className="divide-y divide-gray-100">

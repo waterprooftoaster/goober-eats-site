@@ -107,10 +107,12 @@ describe('useMessages', () => {
   })
 
   it('sets error on non-OK response', async () => {
-    mockFetch.mockResolvedValue(mockJsonError(404, 'Conversation not found'))
+    // 404 is handled specially (no conversation yet — not an error).
+    // Use 500 to test the actual error path.
+    mockFetch.mockResolvedValue(mockJsonError(500, 'Internal server error'))
     const { result } = renderHook(() => useMessages(ORDER_ID))
     await waitFor(() => {
-      expect(result.current.error).toBe('Conversation not found')
+      expect(result.current.error).toBe('Internal server error')
       expect(result.current.isLoading).toBe(false)
     })
   })

@@ -46,22 +46,24 @@ export default async function CheckoutReturnPage({ searchParams }: Props) {
   let status: string | null = null
   let sessionOrderId: string | undefined
   let isAuthenticated = false
+  let piId: string | undefined
   try {
     const [session, supabase] = await Promise.all([
       getStripe().checkout.sessions.retrieve(session_id),
       createClient(),
     ])
 
+    // Extract payment intent ID for both auth and guest paths
+    piId =
+      typeof session.payment_intent === 'string'
+        ? session.payment_intent
+        : session.payment_intent?.id ?? undefined
+
     const { data: { user } } = await supabase.auth.getUser()
     if (user) {
       isAuthenticated = true
 
       // Look up order via: session → payment_intent → payments → order_id
-      const piId =
-        typeof session.payment_intent === 'string'
-          ? session.payment_intent
-          : session.payment_intent?.id
-
       if (piId) {
         const { data: payment } = await supabase
           .from('payments')
@@ -80,16 +82,26 @@ export default async function CheckoutReturnPage({ searchParams }: Props) {
     return <FailurePage message="Could not verify payment status. Please try again." href="/checkout" />
   }
 
+  const PI_ID_RE = /^pi_[a-zA-Z0-9]+$/
+
   if (status === 'complete') {
     // Auth user with order found → direct tracking link
     // Auth user without order → webhook may still be processing, link to orders list
-    // Guest → home
-    const trackingHref = isAuthenticated
-      ? (sessionOrderId ? `/order/${sessionOrderId}/chat` : '/orders')
-      : '/'
-    const trackingLabel = isAuthenticated
-      ? (sessionOrderId ? 'Track your order' : 'View your orders')
-      : 'Back to home'
+    // Guest with pi_id → verify-order route sets cookie and redirects to guest chat page
+    // Guest without pi_id → home fallback
+    let trackingHref: string
+    let trackingLabel: string
+
+    if (isAuthenticated) {
+      trackingHref = sessionOrderId ? `/order/${sessionOrderId}/chat` : '/orders'
+      trackingLabel = sessionOrderId ? 'Track your order' : 'View your orders'
+    } else if (piId && PI_ID_RE.test(piId)) {
+      trackingHref = `/api/guest/verify-order?pi_id=${piId}`
+      trackingLabel = 'Track your order'
+    } else {
+      trackingHref = '/'
+      trackingLabel = 'Back to home'
+    }
 
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">

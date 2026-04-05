@@ -77,11 +77,9 @@ export interface MenuItemOption {
 }
 
 export type OrderStatus =
-  | 'pending'
-  | 'accepted'
+  | 'open'
   | 'in_progress'
   | 'completed'
-  | 'paid'
   | 'cancelled'
 
 export type PaymentStatus = 'pending' | 'succeeded' | 'failed' | 'refunded'
@@ -106,6 +104,7 @@ export interface Order {
   special_instructions: string | null
   guest_name: string | null
   guest_phone: string | null
+  guest_access_token: string | null
   created_at: string
   updated_at: string
 }

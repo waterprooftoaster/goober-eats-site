@@ -72,7 +72,7 @@ test.describe('Chat Flow', () => {
         eatery_id: eatery.id,
         orderer_id: null,
         swiper_id: null,
-        status: 'pending',
+        status: 'open',
         items: [
           {
             menu_item_id: menuItem.id,
@@ -110,7 +110,7 @@ test.describe('Chat Flow', () => {
     const acceptRes = await request.fetch(`/api/orders/${orderId}/accept`, { method: 'PATCH' })
     expect(acceptRes.status()).toBe(200)
     const acceptBody = await acceptRes.json()
-    expect(acceptBody.status).toBe('accepted')
+    expect(acceptBody.status).toBe('in_progress')
 
     const msgRes = await request.get(`/api/messages/${orderId}`)
     expect(msgRes.status()).toBe(200)
@@ -133,14 +133,6 @@ test.describe('Chat Flow', () => {
     )
     expect(textMessages.length).toBeGreaterThan(0)
     expect(textMessages[0].body).toBe('Hello from swiper')
-  })
-
-  test('advance to in_progress', async ({ request }) => {
-    const res = await request.fetch(`/api/orders/${orderId}/status`, {
-      method: 'PATCH',
-      data: { status: 'in_progress' },
-    })
-    expect(res.status()).toBe(200)
   })
 
   test('cannot complete without delivery photo', async ({ request }) => {

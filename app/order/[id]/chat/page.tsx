@@ -36,7 +36,7 @@ export default async function OrderChatPage({
   const { status } = orderResult.data
 
   // Order not yet accepted — no conversation exists yet
-  if (status === 'pending') {
+  if (status === 'open') {
     return (
       <main className="flex min-h-screen items-center justify-center bg-white px-4">
         <div className="text-center">
@@ -45,15 +45,6 @@ export default async function OrderChatPage({
             You&apos;ll be able to chat once a swiper accepts your order.
           </p>
         </div>
-      </main>
-    )
-  }
-
-  // Order paid — conversation has expired
-  if (status === 'paid') {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-white px-4">
-        <p className="text-sm text-gray-500">This conversation has expired.</p>
       </main>
     )
   }

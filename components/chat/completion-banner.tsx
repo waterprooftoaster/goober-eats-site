@@ -3,17 +3,17 @@
 import { useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import { Button } from '@/components/ui/button'
+import type { OrderStatus } from '@/lib/types/database'
 
 interface Props {
   orderId: string
+  onStatusChange?: (status: OrderStatus) => void
 }
 
-type Step = 'idle' | 'prompt'
-
-export function CompletionBanner({ orderId }: Props) {
-  const [step, setStep] = useState<Step>('idle')
+export function CompletionBanner({ orderId, onStatusChange }: Props) {
   const [uploading, setUploading] = useState(false)
   const [completing, setCompleting] = useState(false)
+  const [unaccepting, setUnaccepting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -53,6 +53,7 @@ export function CompletionBanner({ orderId }: Props) {
         body: JSON.stringify({ status: 'completed' }),
       })
       if (patchRes.ok) {
+        onStatusChange?.('completed')
         setDone(true)
       } else {
         const json = await patchRes.json().catch(() => ({}))
@@ -65,58 +66,73 @@ export function CompletionBanner({ orderId }: Props) {
     }
   }
 
-  const isBusy = uploading || completing
+  async function handleUnaccept() {
+    setUnaccepting(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/orders/${orderId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'open' }),
+      })
+      if (res.ok) {
+        onStatusChange?.('open')
+        setDone(true)
+      } else {
+        const json = await res.json().catch(() => ({}))
+        setError((json as { error?: string }).error ?? 'Failed to unaccept order')
+      }
+    } catch {
+      setError('Network error — could not unaccept order')
+    } finally {
+      setUnaccepting(false)
+    }
+  }
+
+  const isBusy = uploading || completing || unaccepting
 
   return (
-    <div className="border-t border-amber-200 bg-amber-50 px-4 py-3">
-      {step === 'idle' ? (
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-sm text-amber-800">Ready to complete this order?</p>
-          <Button size="sm" onClick={() => setStep('prompt')}>
-            Complete Order
-          </Button>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          <p className="text-sm text-amber-800">Upload a photo of where you left the food:</p>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/jpeg,image/webp"
-            className="hidden"
-            onChange={handleFileChange}
-            disabled={isBusy}
-          />
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              disabled={isBusy}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              {isBusy ? (
-                <>
-                  <span className="mr-2 h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                  {uploading ? 'Uploading…' : 'Completing…'}
-                </>
-              ) : (
-                'Choose Photo'
-              )}
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={isBusy}
-              onClick={() => {
-                setStep('idle')
-                setError(null)
-              }}
-            >
-              Cancel
-            </Button>
-          </div>
-          {error && <p className="text-xs text-red-600">{error}</p>}
-        </div>
-      )}
+    <div className="px-4 py-2">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/webp"
+        className="hidden"
+        onChange={handleFileChange}
+        disabled={isBusy}
+      />
+      <div className="flex justify-end gap-2">
+        <Button
+          size="sm"
+          disabled={isBusy}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          {uploading || completing ? (
+            <>
+              <span className="mr-2 h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              {uploading ? 'Uploading…' : 'Completing…'}
+            </>
+          ) : (
+            'Complete Order'
+          )}
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={isBusy}
+          onClick={handleUnaccept}
+        >
+          {unaccepting ? (
+            <>
+              <span className="mr-2 h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+              Unaccepting…
+            </>
+          ) : (
+            'Unaccept'
+          )}
+        </Button>
+      </div>
+      {error && <p className="mt-1 text-right text-xs text-red-600">{error}</p>}
     </div>
   )
 }

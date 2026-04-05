@@ -33,7 +33,7 @@ export default async function PendingOrdersPage() {
         .select(
           'id, total_cents, tip_cents, items, special_instructions, created_at, eateries!orders_eatery_id_fkey(id, name)'
         )
-        .eq('status', 'pending')
+        .eq('status', 'open')
         .is('swiper_id', null)
         .in('eatery_id', eateryIds)
         .order('created_at', { ascending: true })
@@ -44,7 +44,7 @@ export default async function PendingOrdersPage() {
   return (
     <main className="min-h-screen bg-white">
       <div className="mx-auto max-w-2xl p-4 md:p-8">
-        <h1 className="text-2xl font-bold mb-2">Pending Orders</h1>
+        <h1 className="text-2xl font-bold mb-2">Open Orders</h1>
         <p className="text-sm text-gray-500 mb-8">
           Orders from your school — oldest first. Tap an order to see details and accept it.
         </p>

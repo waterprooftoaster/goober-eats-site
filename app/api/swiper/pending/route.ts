@@ -31,7 +31,7 @@ export async function GET() {
     .select(
       'id, total_cents, tip_cents, items, special_instructions, created_at, eateries!orders_eatery_id_fkey(id, name)'
     )
-    .eq('status', 'pending')
+    .eq('status', 'open')
     .is('swiper_id', null)
     .in('eatery_id', eateryIds)
     .order('created_at', { ascending: true })

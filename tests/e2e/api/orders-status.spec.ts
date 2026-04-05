@@ -10,7 +10,7 @@ test.describe('Order status/pay API (unauthenticated)', () => {
 
   test('PATCH /api/orders/{id}/status returns 401 without auth', async ({ request }) => {
     const res = await request.patch(`/api/orders/${FAKE_ID}/status`, {
-      data: { status: 'in_progress' },
+      data: { status: 'completed' },
     })
     expect(res.status()).toBe(401)
   })

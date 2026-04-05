@@ -36,7 +36,7 @@ E2E tests auto-start the dev server if not already running. The `authenticated/`
 | `menu_items` | Belong to an eatery; have `original_price_cents` (what it costs the swiper) and `market_price_cents` (what the orderer pays) |
 | `menu_item_option_groups` / `menu_item_options` | Modifiers (size, toppings) with `single`/`multiple` selection |
 | `profiles` | Extends Supabase auth users; has `school_id`, `phone` for SMS |
-| `orders` | Core entity — see order lifecycle below |
+| `orders` | Core entity; `status` ∈ `{open, in_progress, completed, cancelled}`; `guest_access_token` (UUID) is set for guest orders and used to authenticate guest chat |
 | `payments` | Created after Stripe PaymentIntent; tracks `platform_fee_cents` (10% of original price) |
 | `stripe_accounts` | Swiper's Stripe Connect account; must have `onboarding_complete = true` to accept orders |
 | `carts` / `cart_items` | Session-based for guests (cookie `cart_session_id`), user-based for auth'd users |
@@ -47,14 +47,22 @@ E2E tests auto-start the dev server if not already running. The `authenticated/`
 Orders flow through a state machine (`lib/orders/state-machine.ts`):
 
 ```
-pending → accepted → in_progress → completed → paid
-                 ↘ cancelled (from any state except paid)
+open → in_progress → completed
+  ↘ cancelled       ↗ open (swiper un-accept)
 ```
 
-- **Orderer** pays via Stripe Checkout (`POST /api/stripe/checkout-session`). The `payment_intent.succeeded` webhook creates the order in `pending` state.
-- **Swiper** browses the pending queue and pulls (`PATCH /api/orders/[id]/accept`) — atomic update prevents race conditions
-- Swiper advances status via `PATCH /api/orders/[id]/status`
-- When swiper completes, `lib/stripe/transfer.ts` transfers funds from platform to swiper's connected account and advances to `paid`
+Valid transitions:
+- `open → in_progress` — swiper accepts (`PATCH /api/orders/[id]/accept`, sets `swiper_id`)
+- `open → cancelled` — orderer cancels
+- `in_progress → completed` — swiper marks done; triggers Stripe transfer to swiper
+- `in_progress → open` — swiper un-accepts (clears `swiper_id`, order re-enters queue)
+
+Key invariants:
+- **Orderer** pays via Stripe Checkout. The `payment_intent.succeeded` webhook creates the order in `open` state.
+- Accept uses the **service client** for the atomic `swiper_id` claim (RLS can't cover the `null → user` transition); all eligibility checks run first via the user client.
+- `completed` requires a succeeded payment record **and** at least one `delivery_photo` message in the conversation.
+- Un-accept (`in_progress → open`) also uses the service client because clearing `swiper_id` to `null` fails RLS's `WITH CHECK` on the updated row.
+- Stripe transfer happens on `completed`, not as a separate paid state.
 
 ### Two Supabase Clients
 
@@ -73,8 +81,10 @@ Never use the service client in client-side code or where RLS should apply.
 Both guest and authenticated users go through the same embedded Stripe Checkout session (`/api/stripe/checkout-session`) with a single unified code path. The order is NOT created in the DB until the `payment_intent.succeeded` webhook fires — if the user backs out mid-checkout, nothing hits the DB.
 
 The only differences:
-- **Guest**: `guest_name` in Stripe metadata, `orderer_id` is NULL
-- **Auth**: `orderer_id` in Stripe metadata, no `guest_name`
+- **Guest**: `guest_name` in Stripe metadata, `orderer_id` is NULL, `guest_access_token` (random UUID) stored on the order
+- **Auth**: `orderer_id` in Stripe metadata, no `guest_name`, no `guest_access_token`
+
+Guests access their order chat via `app/api/guest/` routes (`/verify-order`, `/messages`, `/messages/[orderId]`). Authentication uses a `guest_order_token_{orderId}` cookie set at checkout return and validated by `lib/api/guest-auth.ts:validateGuestOrder`.
 
 When a swiper completes any order, `lib/stripe/transfer.ts` creates a Stripe Transfer from the platform to the swiper's connected account.
 
