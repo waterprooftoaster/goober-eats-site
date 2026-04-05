@@ -3,7 +3,6 @@ import { redirect } from 'next/navigation'
 import { LoginForm } from './login-form'
 
 const ALLOWED_ERRORS: Record<string, string> = {
-  'Could not initiate Google sign-in': 'Could not initiate Google sign-in.',
   'Could not complete authentication': 'Could not complete authentication.',
 }
 

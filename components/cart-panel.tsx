@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import { ArrowLeft, X } from 'lucide-react'
 import type { LoadedCart } from '@/lib/cart/load'
 
@@ -91,12 +90,6 @@ export function CartPanel({ initialCart }: Props) {
           {!cart || cart.items.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-4 px-4 py-16 text-center">
               <p className="text-sm text-gray-500">Your cart is empty.</p>
-              <Link
-                href="/"
-                className="text-sm font-semibold text-black underline underline-offset-2"
-              >
-                Browse restaurants
-              </Link>
             </div>
           ) : (
             <ul className="divide-y divide-gray-100">

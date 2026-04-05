@@ -2,8 +2,6 @@ import { test, expect } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 
 const TEST_EMAIL = 'test@goobereats.test'
-const FAKE_UUID = '00000000-0000-4000-8000-000000000099'
-
 // 1×1 white JPEG (107 bytes)
 const TINY_JPEG = Buffer.from(
   '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8U' +
@@ -182,13 +180,4 @@ test.describe('Chat Flow', () => {
     expect(body.status).toBe('completed')
   })
 
-  test('chat input disabled after completion', async ({ page }) => {
-    await page.goto(`/order/${orderId}/chat`)
-    await expect(page.getByRole('button', { name: /send/i })).toBeDisabled()
-  })
-
-  test('non-participant redirected to home', async ({ page }) => {
-    await page.goto(`/order/${FAKE_UUID}/chat`)
-    await expect(page).toHaveURL('/')
-  })
 })

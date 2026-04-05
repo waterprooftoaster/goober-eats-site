@@ -1,6 +1,5 @@
 import Link from 'next/link'
 import { getStripe } from '@/lib/stripe/client'
-import { createClient } from '@/lib/supabase/server'
 
 interface Props {
   searchParams: Promise<{ session_id?: string }>
@@ -44,53 +43,14 @@ export default async function CheckoutReturnPage({ searchParams }: Props) {
   }
 
   let status: string | null = null
-  let sessionOrderId: string | undefined
-  let isAuthenticated = false
   try {
-    const [session, supabase] = await Promise.all([
-      getStripe().checkout.sessions.retrieve(session_id),
-      createClient(),
-    ])
-
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      isAuthenticated = true
-
-      // Look up order via: session → payment_intent → payments → order_id
-      const piId =
-        typeof session.payment_intent === 'string'
-          ? session.payment_intent
-          : session.payment_intent?.id
-
-      if (piId) {
-        const { data: payment } = await supabase
-          .from('payments')
-          .select('order_id')
-          .eq('stripe_payment_intent_id', piId)
-          .maybeSingle()
-
-        if (payment?.order_id) {
-          sessionOrderId = payment.order_id
-        }
-      }
-    }
-
+    const session = await getStripe().checkout.sessions.retrieve(session_id)
     status = session.status
   } catch {
     return <FailurePage message="Could not verify payment status. Please try again." href="/checkout" />
   }
 
   if (status === 'complete') {
-    // Auth user with order found → direct tracking link
-    // Auth user without order → webhook may still be processing, link to orders list
-    // Guest → home
-    const trackingHref = isAuthenticated
-      ? (sessionOrderId ? `/order/${sessionOrderId}/chat` : '/orders')
-      : '/'
-    const trackingLabel = isAuthenticated
-      ? (sessionOrderId ? 'Track your order' : 'View your orders')
-      : 'Back to home'
-
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
         <div className="max-w-md rounded-lg border border-gray-200 bg-white p-8 text-center shadow-sm">
@@ -107,10 +67,10 @@ export default async function CheckoutReturnPage({ searchParams }: Props) {
           </div>
           <h1 className="mb-2 text-xl font-semibold text-gray-900">Order placed!</h1>
           <Link
-            href={trackingHref}
+            href="/"
             className="mt-6 inline-block w-full rounded-none bg-black py-3 text-sm font-semibold text-white hover:bg-gray-900"
           >
-            {trackingLabel}
+            Back to home
           </Link>
         </div>
       </div>

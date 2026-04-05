@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { AccountPanel } from '@/components/account-panel'
 
-export default async function AccountPage() {
+export default async function AccountModal() {
   const supabase = await createClient()
   const {
     data: { user },

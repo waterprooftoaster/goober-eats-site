@@ -1,7 +1,7 @@
 'use client'
 
 import { useActionState, useEffect, useState } from 'react'
-import { authenticate, signInWithGoogle, completeOnboarding } from '@/app/auth/actions'
+import { authenticate, completeOnboarding } from '@/app/auth/actions'
 import {
   Combobox,
   ComboboxInput,
@@ -29,13 +29,14 @@ export function LoginForm({
   initialOnboarding?: boolean
   userEmail?: string
 }) {
-  const [step, setStep] = useState<'email' | 'password' | 'onboarding'>(
-    initialOnboarding ? 'onboarding' : 'email',
+  const [step, setStep] = useState<'email' | 'password' | 'name' | 'school'>(
+    initialOnboarding ? 'name' : 'email',
   )
   const [email, setEmail] = useState(userEmail ?? '')
   const [emailError, setEmailError] = useState('')
   const [emailExists, setEmailExists] = useState<boolean | null>(null)
   const [checkingEmail, setCheckingEmail] = useState(false)
+  const [fullName, setFullName] = useState('')
   const [selectedSchool, setSelectedSchool] = useState<{ value: string; label: string } | null>(null)
   const [schoolSearchQuery, setSchoolSearchQuery] = useState('')
 
@@ -49,12 +50,14 @@ export function LoginForm({
   useEffect(() => {
     if (authState && 'needsOnboarding' in authState) {
       setEmail(authState.email)
-      setStep('onboarding')
+      setStep('name')
     }
   }, [authState])
 
   const inputStyle =
     'block w-full h-12 rounded-md border border-gray-300 px-3 py-2 text-base focus:border-black focus:outline-none focus:ring-1 focus:ring-black'
+
+  const headingStyle = 'text-4xl font-bold text-gray-900 mb-6'
 
   async function handleContinue() {
     if (!email || !EMAIL_REGEX.test(email)) {
@@ -83,13 +86,15 @@ export function LoginForm({
     (authState && 'error' in authState ? authState.error : null) ?? callbackError
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-white pb-24">
+    <main className="fixed inset-0 z-10 flex items-center justify-center bg-white">
       <div className="w-full max-w-sm space-y-4 p-8">
         {step === 'email' && (
           <>
             {callbackError && (
               <p className="text-sm text-red-600 text-center">{callbackError}</p>
             )}
+
+            <h1 className={headingStyle}>Enter your email</h1>
 
             <div>
               <input
@@ -118,15 +123,6 @@ export function LoginForm({
             >
               {checkingEmail ? '...' : 'Continue'}
             </button>
-
-            <form action={signInWithGoogle}>
-              <button
-                type="submit"
-                className="w-full h-12 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
-              >
-                Continue with Google
-              </button>
-            </form>
           </>
         )}
 
@@ -144,6 +140,8 @@ export function LoginForm({
               &larr; Back
             </button>
 
+            <h1 className={headingStyle}>Enter your password</h1>
+
             <form action={formAction} className="space-y-4">
               <input type="hidden" name="email" value={email} />
 
@@ -157,14 +155,17 @@ export function LoginForm({
               />
 
               {emailExists === false && (
-                <input
-                  name="confirm_password"
-                  type="password"
-                  placeholder="Confirm Password"
-                  required
-                  minLength={6}
-                  className={inputStyle}
-                />
+                <>
+                  <p className={headingStyle}>Confirm your password</p>
+                  <input
+                    name="confirm_password"
+                    type="password"
+                    placeholder="Confirm Password"
+                    required
+                    minLength={6}
+                    className={inputStyle}
+                  />
+                </>
               )}
 
               <button
@@ -182,7 +183,31 @@ export function LoginForm({
           </>
         )}
 
-        {step === 'onboarding' && (
+        {step === 'name' && (
+          <>
+            <h1 className={headingStyle}>What should we call you?</h1>
+
+            <input
+              type="text"
+              placeholder="Enter your full name"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              maxLength={100}
+              className={inputStyle}
+            />
+
+            <button
+              type="button"
+              onClick={() => setStep('school')}
+              disabled={!fullName.trim()}
+              className="w-full h-12 rounded-md bg-black text-white hover:bg-gray-800 disabled:opacity-50"
+            >
+              Continue
+            </button>
+          </>
+        )}
+
+        {step === 'school' && (
           <>
             {onboardingState && 'error' in onboardingState && (
               <p className="text-sm text-red-600 text-center">
@@ -190,59 +215,52 @@ export function LoginForm({
               </p>
             )}
 
-            <form action={onboardingAction} className="space-y-6">
-              <div className="space-y-2">
-                <p className="text-base font-medium text-gray-900">
-                  What should we call you?
-                </p>
-                <input
-                  name="full_name"
-                  type="text"
-                  placeholder="Enter your full name"
-                  required
-                  maxLength={100}
-                  className={inputStyle}
-                />
-              </div>
+            <button
+              type="button"
+              onClick={() => setStep('name')}
+              className="text-sm text-gray-500 hover:text-black"
+            >
+              &larr; Back
+            </button>
 
-              <div className="space-y-2">
-                <p className="text-base font-medium text-gray-900">
-                  What school do you go to?
-                </p>
-                <Combobox
-                  value={selectedSchool}
-                  onValueChange={(value) =>
-                    setSelectedSchool(value as { value: string; label: string } | null)
-                  }
-                  onInputValueChange={(inputValue) =>
-                    setSchoolSearchQuery(inputValue)
-                  }
-                  isItemEqualToValue={(a, b) => a.value === b.value}
-                  autoHighlight
-                >
-                  <ComboboxInput
-                    placeholder="Search schools..."
-                    className="h-12 rounded-md border-gray-300 text-base focus:border-black focus:ring-1 focus:ring-black"
-                  />
-                  <ComboboxContent>
-                    <ComboboxList>
-                      {schools.map((school) => (
-                        <ComboboxItem
-                          key={school.id}
-                          value={{ value: school.id, label: school.name }}
-                          className="py-3 text-base"
-                        >
-                          {school.name}
-                        </ComboboxItem>
-                      ))}
-                      {schoolSearchQuery.trim().length > 0 && (
-                        <ComboboxEmpty>No schools found</ComboboxEmpty>
-                      )}
-                    </ComboboxList>
-                  </ComboboxContent>
-                </Combobox>
-                <input type="hidden" name="school_id" value={selectedSchool?.value ?? ''} />
-              </div>
+            <h1 className={headingStyle}>What school do you go to?</h1>
+
+            <form action={onboardingAction} className="space-y-6">
+              <input type="hidden" name="full_name" value={fullName} />
+
+              <Combobox
+                value={selectedSchool}
+                onValueChange={(value) =>
+                  setSelectedSchool(value as { value: string; label: string } | null)
+                }
+                onInputValueChange={(inputValue) =>
+                  setSchoolSearchQuery(inputValue)
+                }
+                isItemEqualToValue={(a, b) => a.value === b.value}
+                autoHighlight
+              >
+                <ComboboxInput
+                  placeholder="Search schools..."
+                  className="h-12 rounded-md border-gray-300 text-base focus:border-black focus:ring-1 focus:ring-black"
+                />
+                <ComboboxContent>
+                  <ComboboxList>
+                    {schools.map((school) => (
+                      <ComboboxItem
+                        key={school.id}
+                        value={{ value: school.id, label: school.name }}
+                        className="py-3 text-base"
+                      >
+                        {school.name}
+                      </ComboboxItem>
+                    ))}
+                    {schoolSearchQuery.trim().length > 0 && (
+                      <ComboboxEmpty>No schools found</ComboboxEmpty>
+                    )}
+                  </ComboboxList>
+                </ComboboxContent>
+              </Combobox>
+              <input type="hidden" name="school_id" value={selectedSchool?.value ?? ''} />
 
               <button
                 type="submit"
