@@ -5,7 +5,6 @@ import type { OrderEntry } from './chat-panel-context'
 import { ChatView } from '@/components/chat/chat-view'
 import { ChevronUp, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { OrderStatus } from '@/lib/types/database'
 
 interface PanelProps {
   entry: OrderEntry
@@ -13,11 +12,10 @@ interface PanelProps {
   index: number
   currentUserId: string | null
   onToggle: (orderId: string) => void
-  onStatusChange: (status: OrderStatus) => void
   onClose: () => void
 }
 
-function ChatPanelItem({ entry, index, currentUserId, onToggle, onStatusChange, onClose }: PanelProps) {
+function ChatPanelItem({ entry, index, currentUserId, onToggle, onClose }: PanelProps) {
   const { orderId, status, isExpanded } = entry
   const shortId = orderId.slice(0, 8)
   // Only the first (newest) panel is visible on mobile; all others are hidden
@@ -65,7 +63,6 @@ function ChatPanelItem({ entry, index, currentUserId, onToggle, onStatusChange, 
           orderId={orderId}
           currentUserId={currentUserId}
           orderStatus={status}
-          onStatusChange={onStatusChange}
           onClose={onClose}
         />
       </div>
@@ -78,7 +75,7 @@ interface Props {
 }
 
 export function ChatPanel({ currentUserId }: Props) {
-  const { orders, toggleMinimize, updateOrderStatus, closePanel } = useChatPanel()
+  const { orders, toggleMinimize, closePanel } = useChatPanel()
 
   const panelList = Object.values(orders)
   if (panelList.length === 0) return null
@@ -93,9 +90,8 @@ export function ChatPanel({ currentUserId }: Props) {
           key={entry.orderId}
           entry={entry}
           index={index}
-          currentUserId={entry.isGuest ? null : currentUserId}
+          currentUserId={currentUserId}
           onToggle={toggleMinimize}
-          onStatusChange={(status) => updateOrderStatus(entry.orderId, status)}
           onClose={() => closePanel(entry.orderId)}
         />
       ))}

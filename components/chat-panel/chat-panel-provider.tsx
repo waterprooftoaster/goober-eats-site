@@ -23,10 +23,10 @@ export function ChatPanelProvider({ userId, children }: Props) {
     ordersRef.current = orders
   }, [orders])
 
-  const openPanel = useCallback((orderId: string, status: OrderStatus = 'open', isGuest = false) => {
+  const openPanel = useCallback((orderId: string, status: OrderStatus = 'open') => {
     setOrders((prev) => {
       if (prev[orderId]) return prev // idempotent — don't reset an already-open panel
-      return { ...prev, [orderId]: { orderId, status, isExpanded: true, isGuest } }
+      return { ...prev, [orderId]: { orderId, status, isExpanded: true } }
     })
   }, [])
 
@@ -67,12 +67,19 @@ export function ChatPanelProvider({ userId, children }: Props) {
 
     async function loadActiveOrders() {
       const supabase = createClient()
-      const { data } = await supabase
+      const { data: { user } } = await supabase.auth.getUser()
+      const isAnon = user?.is_anonymous ?? false
+
+      const query = supabase
         .from('orders')
         .select('id, status')
-        .eq('orderer_id', userId)
         .in('status', ACTIVE_STATUSES)
-        .order('created_at', { ascending: true }) // oldest first → leftmost panel
+        .order('created_at', { ascending: true })
+
+      const { data } = isAnon
+        ? await query.eq('anon_user_id', userId)
+        : await query.eq('orderer_id', userId)
+
       if (cancelled) return
       for (const order of data ?? []) {
         openPanel(order.id, order.status as OrderStatus)
@@ -86,32 +93,44 @@ export function ChatPanelProvider({ userId, children }: Props) {
   }, [userId, openPanel])
 
   // Single subscription handles all status updates for the orderer's orders:
-  // swiper acceptance, in-progress, completion, cancellation, and terminal cleanup
+  // swiper acceptance, in-progress, completion, cancellation, and terminal cleanup.
+  // Uses anon_user_id filter for anonymous users, orderer_id for authenticated users.
   useEffect(() => {
     if (!userId) return
 
     const supabase = createClient()
-    const channel = supabase
-      .channel(`orders:orderer:${userId}`)
-      .on<{ id: string; status: OrderStatus }>(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'orders',
-          filter: `orderer_id=eq.${userId}`,
-        },
-        (payload) => {
-          // Only update panels that are currently open
-          if (ordersRef.current[payload.new.id]) {
-            updateOrderStatus(payload.new.id, payload.new.status)
+
+    async function subscribe() {
+      const { data: { user } } = await supabase.auth.getUser()
+      const isAnon = user?.is_anonymous ?? false
+      const filterField = isAnon ? 'anon_user_id' : 'orderer_id'
+
+      const channel = supabase
+        .channel(`orders:orderer:${userId}`)
+        .on<{ id: string; status: OrderStatus }>(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'orders',
+            filter: `${filterField}=eq.${userId}`,
+          },
+          (payload) => {
+            // Only update panels that are currently open
+            if (ordersRef.current[payload.new.id]) {
+              updateOrderStatus(payload.new.id, payload.new.status)
+            }
           }
-        }
-      )
-      .subscribe()
+        )
+        .subscribe()
+
+      return channel
+    }
+
+    const channelPromise = subscribe()
 
     return () => {
-      supabase.removeChannel(channel)
+      channelPromise.then((channel) => supabase.removeChannel(channel))
     }
   }, [userId, updateOrderStatus])
 

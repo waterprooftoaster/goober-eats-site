@@ -2,7 +2,6 @@
 
 import { useEffect, useRef } from 'react'
 import { useMessages } from '@/hooks/use-messages'
-import { useGuestMessages } from '@/hooks/use-guest-messages'
 import { ChatThread } from '@/components/chat/chat-thread'
 import { ChatInput } from '@/components/chat/chat-input'
 import { CompletionBanner } from '@/components/chat/completion-banner'
@@ -109,75 +108,7 @@ function ChatViewCore({
 }
 
 // ---------------------------------------------------------------------------
-// Auth branch — uses Supabase Realtime via useMessages
-// ---------------------------------------------------------------------------
-
-interface AuthChatContentProps {
-  orderId: string
-  currentUserId: string
-  orderStatus: OrderStatus
-  onStatusChange?: (status: OrderStatus) => void
-  onClose?: () => void
-}
-
-function AuthChatContent({ orderId, currentUserId, orderStatus, onStatusChange, onClose }: AuthChatContentProps) {
-  const { messages, conversation, isLoading, error, sendMessage } = useMessages(orderId)
-  return (
-    <ChatViewCore
-      orderId={orderId}
-      messages={messages}
-      conversation={conversation}
-      currentUserId={currentUserId}
-      orderStatus={orderStatus}
-      isLoading={isLoading}
-      error={error}
-      sendMessage={sendMessage}
-      onStatusChange={onStatusChange}
-      onClose={onClose}
-    />
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Guest branch — uses polling via useGuestMessages; notifies panel on status change
-// ---------------------------------------------------------------------------
-
-interface GuestChatContentProps {
-  orderId: string
-  initialOrderStatus: OrderStatus
-  onStatusChange?: (status: OrderStatus) => void
-  onClose?: () => void
-}
-
-function GuestChatContent({ orderId, initialOrderStatus, onStatusChange, onClose }: GuestChatContentProps) {
-  const { messages, conversation, orderStatus, isLoading, error, sendMessage } =
-    useGuestMessages(orderId, initialOrderStatus)
-
-  const prevStatus = useRef(initialOrderStatus)
-  useEffect(() => {
-    if (orderStatus !== prevStatus.current) {
-      prevStatus.current = orderStatus
-      onStatusChange?.(orderStatus)
-    }
-  }, [orderStatus, onStatusChange])
-
-  return (
-    <ChatViewCore
-      orderId={orderId}
-      messages={messages}
-      conversation={conversation}
-      currentUserId={null}
-      orderStatus={orderStatus}
-      isLoading={isLoading}
-      error={error}
-      sendMessage={sendMessage}
-      onClose={onClose}
-    />
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Public API — dispatches to the right branch based on currentUserId
+// Public API — always uses Supabase Realtime via useMessages
 // ---------------------------------------------------------------------------
 
 interface Props {
@@ -189,21 +120,17 @@ interface Props {
 }
 
 export function ChatView({ orderId, currentUserId, orderStatus, onStatusChange, onClose }: Props) {
-  if (currentUserId !== null) {
-    return (
-      <AuthChatContent
-        orderId={orderId}
-        currentUserId={currentUserId}
-        orderStatus={orderStatus}
-        onStatusChange={onStatusChange}
-        onClose={onClose}
-      />
-    )
-  }
+  const { messages, conversation, isLoading, error, sendMessage } = useMessages(orderId)
   return (
-    <GuestChatContent
+    <ChatViewCore
       orderId={orderId}
-      initialOrderStatus={orderStatus}
+      messages={messages}
+      conversation={conversation}
+      currentUserId={currentUserId}
+      orderStatus={orderStatus}
+      isLoading={isLoading}
+      error={error}
+      sendMessage={sendMessage}
       onStatusChange={onStatusChange}
       onClose={onClose}
     />
