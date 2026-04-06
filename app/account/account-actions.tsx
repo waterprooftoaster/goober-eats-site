@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { signOut, deleteAccount } from '@/app/auth/actions'
 
 export function AccountActions() {
@@ -19,6 +20,13 @@ export function AccountActions() {
 
   return (
     <div className="space-y-6">
+      <Link
+        href="/orders"
+        className="block w-full rounded-md border border-gray-300 px-4 py-2 text-center text-gray-700 hover:bg-gray-50"
+      >
+        My Orders
+      </Link>
+
       <form action={signOut}>
         <button
           type="submit"

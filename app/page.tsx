@@ -1,6 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
 import { RestaurantCard } from '@/components/restaurant-card'
-import { BringToSchoolBanner } from '@/components/bring-to-school-banner'
 import { seedDevEateries } from '@/lib/dev-seed'
 
 export default async function Home() {
@@ -30,11 +29,6 @@ export default async function Home() {
 
   return (
     <main className="min-h-screen bg-white space-y-8 p-4">
-      <section className="mb-12">
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-          <BringToSchoolBanner />
-        </div>
-      </section>
       {[...grouped.entries()].map(([schoolName, schoolEateries]) => (
         <section key={schoolName}>
           <h2 className="text-lg font-bold text-gray-900 mb-3">{schoolName}</h2>

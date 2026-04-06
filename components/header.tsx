@@ -1,21 +1,16 @@
 import Link from "next/link"
 import { cookies } from "next/headers"
-import { ClipboardList, Home, LogIn, User } from "lucide-react"
+import { Home, LogIn, User } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { createServiceClient } from "@/lib/supabase/service"
 import { getAuthenticatedUser } from "@/lib/api/helpers"
 import { HeaderCartButton } from "@/components/header-cart-button"
 
-const iconBtnClass = "rounded-full p-2 text-white transition-colors hover:bg-white/10"
+const iconBtnClass = "rounded-full p-2 text-black transition-colors hover:bg-black/10"
 
 export async function Header() {
     const supabase = await createClient()
     const user = await getAuthenticatedUser(supabase)
-
-    const isSwiper = user
-        ? ((await supabase.from('profiles').select('is_swiper').eq('id', user.id).single())
-            .data?.is_swiper ?? false)
-        : false
 
     const cookieStore = await cookies()
     const service = createServiceClient()
@@ -46,16 +41,10 @@ export async function Header() {
             </Link>
 
             <div className="flex items-center gap-1">
-                {/* Mobile-only sidebar nav icons */}
-                <div className="flex items-center md:hidden">
+                <div className="flex items-center">
                     <Link href="/" className={iconBtnClass} aria-label="Home">
                         <Home className="h-5 w-5" />
                     </Link>
-                    {user && isSwiper && (
-                        <Link href="/swiper/orders" className={iconBtnClass} aria-label="Pending Orders">
-                            <ClipboardList className="h-5 w-5" />
-                        </Link>
-                    )}
                     {user ? (
                         <Link href="/account" className={iconBtnClass} aria-label="Profile">
                             <User className="h-5 w-5" />
@@ -73,7 +62,7 @@ export async function Header() {
                     <>
                         <Link
                             href="/auth/login"
-                            className="px-3 py-2 text-sm font-medium text-white"
+                            className="px-3 py-2 text-sm font-medium text-black"
                         >
                             Log In
                         </Link>
