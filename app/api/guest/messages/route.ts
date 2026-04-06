@@ -12,11 +12,6 @@ export async function POST(request: NextRequest) {
   }
   const { order_id, body: messageBody, message_type } = parsed.data
 
-  // Guests cannot send delivery photos — that's a swiper-only action
-  if (message_type === 'delivery_photo') {
-    return apiError('Guests cannot send delivery photos', 400)
-  }
-
   const auth = await validateGuestOrder(order_id)
   if (auth.error) return auth.error
 

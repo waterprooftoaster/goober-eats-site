@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useChatPanel } from '@/components/chat-panel'
+import { createClient } from '@/lib/supabase/client'
 import type { OrderStatus } from '@/lib/types/database'
 
 interface Props {
@@ -15,8 +16,23 @@ export function GuestOrderPanelOpener({ orderId, initialStatus }: Props) {
   const router = useRouter()
 
   useEffect(() => {
-    openPanel(orderId, initialStatus, true)
-    router.replace('/')
+    async function initAndOpen() {
+      const supabase = createClient()
+      const { data, error } = await supabase.auth.signInAnonymously()
+      if (!error && data.session) {
+        await fetch(`/api/guest/orders/${orderId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ anon_user_id: data.session.user.id }),
+        })
+      } else if (error) {
+        console.error('GuestOrderPanelOpener: anon sign-in failed', error)
+      }
+      openPanel(orderId, initialStatus)
+      router.replace('/')
+    }
+
+    initAndOpen()
   }, [orderId, initialStatus, openPanel, router])
 
   return (

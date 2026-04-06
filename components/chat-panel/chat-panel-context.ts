@@ -7,12 +7,11 @@ export interface OrderEntry {
   orderId: string
   status: OrderStatus
   isExpanded: boolean
-  isGuest: boolean
 }
 
 export interface ChatPanelState {
   orders: Record<string, OrderEntry>
-  openPanel: (orderId: string, status?: OrderStatus, isGuest?: boolean) => void
+  openPanel: (orderId: string, status?: OrderStatus) => void
   closePanel: (orderId: string) => void
   toggleMinimize: (orderId: string) => void
   updateOrderStatus: (orderId: string, status: OrderStatus) => void
