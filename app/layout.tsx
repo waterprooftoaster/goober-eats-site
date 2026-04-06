@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Plus_Jakarta_Sans, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Header } from "@/components/header";
+import { HeaderWrapper } from "@/components/header-wrapper";
 import { SwiperOrdersButton } from "@/components/swiper-orders-button";
 import { ChatPanelProvider, ChatPanel } from "@/components/chat-panel";
 import { createClient } from "@/lib/supabase/server";
@@ -55,10 +56,13 @@ export default async function RootLayout({
       <body className="h-full">
         <ChatPanelProvider userId={user?.id ?? null}>
           <div className="h-full flex flex-col">
-            <Header />
-            {banner}
-            <div className="flex-1 min-h-0 overflow-y-auto px-6">
-              {children}
+            <HeaderWrapper hasBanner={!isSwiper}>
+              <Header />
+            </HeaderWrapper>
+            <div id="scroll-container" className="flex-1 min-h-0 overflow-y-auto">
+              {banner}
+              <div id="banner-sentinel" />
+              <div className="px-6">{children}</div>
             </div>
           </div>
           <SwiperOrdersButton isSwiper={isSwiper} pendingOrderCount={pendingOrderCount} />

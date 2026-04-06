@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/server'
 import { getAuthenticatedUser } from '@/lib/api/helpers'
+import { BannerGuard } from '@/components/banner-guard'
 
 export default async function BannerSlot() {
   const supabase = await createClient()
@@ -13,18 +14,19 @@ export default async function BannerSlot() {
   if (isSwiper) return null
 
   return (
-    <div className="flex bg-white">
-      <div className="hidden lg:block w-44 shrink-0" />
-      <div className="flex-1 min-w-0 px-6 py-8 pl-10">
-        <h2 className="text-2xl font-bold text-gray-900">
-          Expiring Meal Swipes? Sell them for 50% off
-        </h2>
-        <div className="mt-4">
-          <Button asChild>
-            <Link href={user ? '/account' : '/auth/login'}>Become a Swiper</Link>
-          </Button>
+    <BannerGuard>
+      <div style={{ backgroundColor: '#F8EABE' }}>
+        <div className="px-10 py-8">
+          <h2 className="text-2xl font-bold text-gray-900">
+            Expiring Meal Swipes? Sell them for 50% off
+          </h2>
+          <div className="mt-4">
+            <Button asChild>
+              <Link href={user ? '/account' : '/auth/login'}>Become a Swiper</Link>
+            </Button>
+          </div>
         </div>
       </div>
-    </div>
+    </BannerGuard>
   )
 }

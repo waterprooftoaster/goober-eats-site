@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { ShoppingCart } from 'lucide-react'
 
-const iconBtnClass = 'rounded-full p-2 text-black transition-colors hover:bg-white'
+const iconBtnClass = 'rounded-full p-2 text-black transition-colors hover:bg-black/10'
 
 interface HeaderCartButtonProps {
   itemCount: number

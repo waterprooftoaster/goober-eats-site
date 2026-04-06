@@ -1,6 +1,6 @@
 import Link from "next/link"
 import { cookies } from "next/headers"
-import { Home, LogIn, User } from "lucide-react"
+import { Home, User } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { createServiceClient } from "@/lib/supabase/service"
 import { getAuthenticatedUser } from "@/lib/api/helpers"
@@ -34,24 +34,20 @@ export async function Header() {
     }
 
     return (
-        <header className="flex items-center justify-between bg-white px-6 py-3">
-            <Link href="/" className="flex items-center gap-2 ml-4">
-                <img src="/goobereats.svg" alt="Goober Eats" className="h-6 w-auto" />
-                <span className="text-black text-`3xl font-bold leading-none">Goober Eats</span>
+        <header className="flex items-center justify-between px-5 py-4">
+            <Link href="/" className="flex items-center gap-1 ml-5">
+                <img src="/goobereats.svg" alt="Goober Eats" className="h-5 w-auto"/>
+                <span className="text-black text-xl leading-none"><span className="font-normal">Goober</span><span className="font-bold"> Eats</span></span>
             </Link>
 
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-2">
                 <div className="flex items-center">
                     <Link href="/" className={iconBtnClass} aria-label="Home">
                         <Home className="h-5 w-5" />
                     </Link>
-                    {user ? (
+                    {user && (
                         <Link href="/account" className={iconBtnClass} aria-label="Profile">
                             <User className="h-5 w-5" />
-                        </Link>
-                    ) : (
-                        <Link href="/auth/login" className={iconBtnClass} aria-label="Log In">
-                            <LogIn className="h-5 w-5" />
                         </Link>
                     )}
                 </div>
@@ -62,13 +58,13 @@ export async function Header() {
                     <>
                         <Link
                             href="/auth/login"
-                            className="px-3 py-2 text-sm font-medium text-black"
+                            className="px-4 py-2 text-sm font-medium text-black"
                         >
                             Log In
                         </Link>
                         <Link
                             href="/auth/login"
-                            className="rounded-full bg-white px-4 py-2 text-sm font-medium text-black transition-colors hover:bg-gray-200"
+                            className="rounded-full bg-white px-5 py-2 text-sm font-medium text-black transition-colors hover:bg-gray-200"
                         >
                             Sign Up
                         </Link>
