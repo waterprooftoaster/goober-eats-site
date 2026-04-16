@@ -51,13 +51,21 @@ export type SelectionType = 'single' | 'multiple'
 
 export interface MenuItemOptionGroup {
   id: string
-  menu_item_id: string
+  /** Nullable after the shared-option-groups migration; use menu_item_option_group_assignments instead */
+  menu_item_id: string | null
   name: string
   selection_type: SelectionType
   is_required: boolean
   sort_order: number
   created_at: string
   updated_at: string
+}
+
+/** Junction table row linking a menu item to a shared option group */
+export interface MenuItemOptionGroupAssignment {
+  menu_item_id: string
+  option_group_id: string
+  sort_order: number
 }
 
 export interface MenuItemOption {
@@ -67,6 +75,8 @@ export interface MenuItemOption {
   additional_price_cents: number
   is_default: boolean
   sort_order: number
+  /** When set, selecting this option also auto-adds the linked item to the cart */
+  linked_menu_item_id: string | null
   created_at: string
   updated_at: string
 }
