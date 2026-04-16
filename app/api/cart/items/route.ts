@@ -1,3 +1,13 @@
+/**
+ * @file route.ts
+ * @description POST endpoint to add an item to the cart. Validates that selected
+ *   options belong to the given menu item via the junction table. When an option
+ *   has a linked_menu_item_id, also auto-inserts that linked item as a separate
+ *   cart row (qty 1, no options) — the option's price delta is not applied.
+ *   Called by: frontend add-to-cart button
+ * @dependencies lib/supabase/server.ts, lib/supabase/service.ts, lib/api/helpers.ts
+ */
+
 import { NextRequest } from 'next/server'
 import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
@@ -29,17 +39,34 @@ export async function POST(request: NextRequest) {
   if (!menuItem) return apiError('Menu item not found', 404)
   const eatery_id: string = menuItem.restaurant_id
 
-  // Validate that all submitted option IDs belong to this menu item
+  // Validate options via junction table and collect linked_menu_item_ids
+  let linkedItemIds: string[] = []
   if (selected_options.length > 0) {
+    // Get all option group ids assigned to this menu item
+    const { data: assignments } = await service
+      .from('menu_item_option_group_assignments')
+      .select('option_group_id')
+      .eq('menu_item_id', menu_item_id)
+
+    const assignedGroupIds = (assignments ?? []).map((a) => a.option_group_id)
+    if (assignedGroupIds.length === 0) {
+      return apiError('One or more selected options are invalid for this item', 400)
+    }
+
+    // Validate selected options belong to assigned groups, collect linked ids
     const { data: validOptions } = await service
       .from('menu_item_options')
-      .select('id, menu_item_option_groups!inner(menu_item_id)')
+      .select('id, linked_menu_item_id')
       .in('id', selected_options)
-      .eq('menu_item_option_groups.menu_item_id', menu_item_id)
+      .in('option_group_id', assignedGroupIds)
 
     if (!validOptions || validOptions.length !== selected_options.length) {
       return apiError('One or more selected options are invalid for this item', 400)
     }
+
+    linkedItemIds = validOptions
+      .map((o) => o.linked_menu_item_id)
+      .filter((id): id is string => id !== null)
   }
 
   // Determine identity: authenticated user or session-based anonymous
@@ -89,7 +116,7 @@ export async function POST(request: NextRequest) {
     cartId = newCart.id
   }
 
-  // Insert cart item
+  // Insert main cart item
   const { data: cartItem, error: itemError } = await service
     .from('cart_items')
     .insert({
@@ -102,6 +129,19 @@ export async function POST(request: NextRequest) {
     .single()
 
   if (itemError || !cartItem) return apiError('Failed to add item to cart', 500)
+
+  // Auto-insert linked items (one row per unique linked_menu_item_id)
+  if (linkedItemIds.length > 0) {
+    const uniqueLinkedIds = [...new Set(linkedItemIds)]
+    const linkedRows = uniqueLinkedIds.map((linkedId) => ({
+      cart_id: cartId,
+      menu_item_id: linkedId,
+      quantity: 1,
+      selected_options: [] as string[],
+    }))
+    const { error: linkedError } = await service.from('cart_items').insert(linkedRows)
+    if (linkedError) return apiError('Failed to add linked item to cart', 500)
+  }
 
   const response = apiSuccess({ item: cartItem }, 201)
   if (isNewSession && sessionId) {
