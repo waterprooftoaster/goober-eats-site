@@ -1,0 +1,11 @@
+README.md
+pyproject.toml
+src/__init__.py
+src/addon.py
+src/parse.py
+src/goober_eats_scraper.egg-info/PKG-INFO
+src/goober_eats_scraper.egg-info/SOURCES.txt
+src/goober_eats_scraper.egg-info/dependency_links.txt
+src/goober_eats_scraper.egg-info/entry_points.txt
+src/goober_eats_scraper.egg-info/requires.txt
+src/goober_eats_scraper.egg-info/top_level.txt

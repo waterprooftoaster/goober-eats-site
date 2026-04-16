@@ -1,0 +1,2 @@
+[console_scripts]
+parse = src.parse:main
