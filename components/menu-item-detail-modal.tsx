@@ -72,6 +72,7 @@ export function MenuItemDetailModal({ item, onClose }: Props) {
         body: JSON.stringify({ menu_item_id: item.id, selected_options: flatOptions }),
       })
       if (res.ok) {
+        window.dispatchEvent(new CustomEvent('cart-updated'))
         onClose()
       } else {
         const data = await res.json()

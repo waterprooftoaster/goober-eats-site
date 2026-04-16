@@ -86,7 +86,7 @@ describe('GET /api/guest/verify-order', () => {
     const res = await GET(makeRequest(VALID_PI_ID))
 
     expect(res.status).toBe(307)
-    expect(res.headers.get('location')).toContain(`/order/guest/${VALID_ORDER_ID}`)
+    expect(res.headers.get('location')).toContain(`/order/${VALID_ORDER_ID}`)
 
     const setCookie = res.headers.get('set-cookie')
     expect(setCookie).toContain(`guest_order_token_${VALID_ORDER_ID}`)

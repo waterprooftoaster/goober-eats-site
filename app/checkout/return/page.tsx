@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { getStripe } from '@/lib/stripe/client'
 
 interface Props {
@@ -43,14 +44,21 @@ export default async function CheckoutReturnPage({ searchParams }: Props) {
   }
 
   let status: string | null = null
+  let isGuest = false
+  let piId: string | null = null
   try {
     const session = await getStripe().checkout.sessions.retrieve(session_id)
     status = session.status
+    isGuest = session.metadata?.is_guest === 'true'
+    piId = typeof session.payment_intent === 'string' ? session.payment_intent : null
   } catch {
     return <FailurePage message="Could not verify payment status. Please try again." href="/checkout" />
   }
 
   if (status === 'complete') {
+    if (isGuest && piId) {
+      redirect(`/api/guest/verify-order?pi_id=${piId}`)
+    }
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
         <div className="max-w-md rounded-lg border border-gray-200 bg-white p-8 text-center shadow-sm">

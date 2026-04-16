@@ -123,14 +123,16 @@ describe('GET /api/guest/messages/[orderId]', () => {
     mockServiceFrom.mockReturnValueOnce(dbResult({ status: 'accepted' }))
     // conversations (Promise.all slot 2)
     mockServiceFrom.mockReturnValueOnce(dbResult(conv))
-    // messages — awaited directly (no .single()), so `then` must remain intact
+    // messages and profiles (Promise.all)
     const msgChain = dbResult([msg])
     mockServiceFrom.mockReturnValueOnce(msgChain)
+    // profiles swiper lookup (Promise.all slot 2)
+    mockServiceFrom.mockReturnValueOnce(dbResult({ full_name: 'Test Swiper' }))
 
     const res = await GET(makeRequest(VALID_ORDER_ID), { params: Promise.resolve({ orderId: VALID_ORDER_ID }) })
     expect(res.status).toBe(200)
     const body = await res.json()
-    expect(body.conversation).toMatchObject({ id: CONV_ID })
+    expect(body.conversation).toMatchObject({ id: CONV_ID, swiper_full_name: 'Test Swiper' })
     expect(body.messages).toHaveLength(1)
     expect(body.messages[0]).toMatchObject({ id: 'msg-1' })
     expect(body.order_status).toBe('accepted')

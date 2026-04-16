@@ -2,8 +2,6 @@ import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { apiError, apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
-import { sendSystemMessage } from '@/lib/chat/system-messages'
-import type { Order } from '@/lib/types/database'
 
 export async function PATCH(
   _request: NextRequest,
@@ -98,15 +96,6 @@ export async function PATCH(
       .update({ swiper_id: user.id })
       .eq('order_id', updated.id)
   }
-
-  const swiperName = profile.full_name ?? 'A swiper'
-  const eateryName = eatery?.name ?? 'the eatery'
-  const orderShortId = updated.id.slice(0, 8)
-
-  await sendSystemMessage(
-    updated.id,
-    `${swiperName} accepted order #${orderShortId} at ${eateryName}.`
-  )
 
   return apiSuccess(updated)
 }

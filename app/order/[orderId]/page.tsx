@@ -1,14 +1,15 @@
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { z } from 'zod'
+import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { guestOrderCookieName } from '@/lib/api/guest-auth'
-import { GuestOrderPanelOpener } from './guest-order-panel-opener'
+import { GuestPanelOpener } from './guest-panel-opener'
 import type { OrderStatus } from '@/lib/types/database'
 
 const uuidSchema = z.string().uuid()
 
-export default async function GuestOrderPage({
+export default async function OrderPage({
   params,
 }: {
   params: Promise<{ orderId: string }>
@@ -19,17 +20,24 @@ export default async function GuestOrderPage({
     redirect('/')
   }
 
+  // Any existing session (auth or anonymous) means panels are managed by ChatPanelProvider
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (user) {
+    redirect('/')
+  }
+
+  // No session — guest bootstrap path
   const cookieStore = await cookies()
   const token = cookieStore.get(guestOrderCookieName(orderId))?.value
-
   if (!token) {
     redirect('/')
   }
 
-  const supabase = createServiceClient()
-  const { data: order } = await supabase
+  const serviceClient = createServiceClient()
+  const { data: order } = await serviceClient
     .from('orders')
-    .select('id, status, guest_access_token, orderer_id')
+    .select('id, status, guest_access_token, orderer_id, eateries(name)')
     .eq('id', orderId)
     .maybeSingle()
 
@@ -38,7 +46,9 @@ export default async function GuestOrderPage({
     redirect('/')
   }
 
+  const eateryName = (order.eateries as unknown as { name: string } | null)?.name ?? ''
+
   return (
-    <GuestOrderPanelOpener orderId={order.id} initialStatus={order.status as OrderStatus} />
+    <GuestPanelOpener orderId={order.id} initialStatus={order.status as OrderStatus} eateryName={eateryName} />
   )
 }

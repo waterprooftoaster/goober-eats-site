@@ -25,11 +25,19 @@ export async function GET(
     return apiSuccess({ conversation: null, messages: [], order_status: orderStatus })
   }
 
-  const { data: messages } = await supabase
-    .from('messages')
-    .select('*')
-    .eq('conversation_id', conversation.id)
-    .order('sent_at', { ascending: true })
+  const [{ data: messages }, { data: swiperProfile }] = await Promise.all([
+    supabase
+      .from('messages')
+      .select('*')
+      .eq('conversation_id', conversation.id)
+      .order('sent_at', { ascending: true }),
+    supabase
+      .from('profiles')
+      .select('full_name')
+      .eq('id', conversation.swiper_id)
+      .maybeSingle(),
+  ])
 
-  return apiSuccess({ conversation, messages: messages ?? [], order_status: orderStatus })
+  const enriched = { ...conversation, swiper_full_name: swiperProfile?.full_name ?? null }
+  return apiSuccess({ conversation: enriched, messages: messages ?? [], order_status: orderStatus })
 }

@@ -9,9 +9,10 @@ import type { OrderStatus } from '@/lib/types/database'
 interface Props {
   orderId: string
   initialStatus: OrderStatus
+  eateryName: string
 }
 
-export function GuestOrderPanelOpener({ orderId, initialStatus }: Props) {
+export function GuestPanelOpener({ orderId, initialStatus, eateryName }: Props) {
   const { openPanel } = useChatPanel()
   const router = useRouter()
 
@@ -25,15 +26,13 @@ export function GuestOrderPanelOpener({ orderId, initialStatus }: Props) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ anon_user_id: data.session.user.id }),
         })
-      } else if (error) {
-        console.error('GuestOrderPanelOpener: anon sign-in failed', error)
       }
-      openPanel(orderId, initialStatus)
+      openPanel(orderId, initialStatus, eateryName)
       router.replace('/')
     }
 
     initAndOpen()
-  }, [orderId, initialStatus, openPanel, router])
+  }, [orderId, initialStatus, eateryName, openPanel, router])
 
   return (
     <div className="flex min-h-screen items-center justify-center">

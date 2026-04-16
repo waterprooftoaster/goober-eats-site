@@ -3,8 +3,9 @@
 import { useChatPanel } from './chat-panel-context'
 import type { OrderEntry } from './chat-panel-context'
 import { ChatView } from '@/components/chat/chat-view'
-import { ChevronUp, ChevronDown } from 'lucide-react'
+import { ChevronUp, ChevronDown, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import type { OrderStatus } from '@/lib/types/database'
 
 interface PanelProps {
   entry: OrderEntry
@@ -13,9 +14,10 @@ interface PanelProps {
   currentUserId: string | null
   onToggle: (orderId: string) => void
   onClose: () => void
+  onStatusChange: (orderId: string, status: OrderStatus) => void
 }
 
-function ChatPanelItem({ entry, index, currentUserId, onToggle, onClose }: PanelProps) {
+function ChatPanelItem({ entry, index, currentUserId, onToggle, onClose, onStatusChange }: PanelProps) {
   const { orderId, status, isExpanded } = entry
   const shortId = orderId.slice(0, 8)
   // Only the first (newest) panel is visible on mobile; all others are hidden
@@ -50,20 +52,31 @@ function ChatPanelItem({ entry, index, currentUserId, onToggle, onClose }: Panel
     >
       <div className="flex items-center justify-between border-b border-gray-200 px-4 py-2.5">
         <span className="text-sm font-semibold">Order #{shortId}</span>
-        <button
-          onClick={() => onToggle(orderId)}
-          className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-          aria-label="Minimize chat"
-        >
-          <ChevronDown className="h-4 w-4" />
-        </button>
+        {status === 'completed' ? (
+          <button
+            onClick={onClose}
+            className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+            aria-label="Close chat"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        ) : (
+          <button
+            onClick={() => onToggle(orderId)}
+            className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+            aria-label="Minimize chat"
+          >
+            <ChevronDown className="h-4 w-4" />
+          </button>
+        )}
       </div>
       <div className="flex flex-1 flex-col overflow-hidden">
         <ChatView
           orderId={orderId}
           currentUserId={currentUserId}
           orderStatus={status}
-          onClose={onClose}
+          eateryName={entry.eateryName}
+          onStatusChange={(s) => onStatusChange(orderId, s)}
         />
       </div>
     </div>
@@ -75,7 +88,7 @@ interface Props {
 }
 
 export function ChatPanel({ currentUserId }: Props) {
-  const { orders, toggleMinimize, closePanel } = useChatPanel()
+  const { orders, toggleMinimize, closePanel, updateOrderStatus } = useChatPanel()
 
   const panelList = Object.values(orders)
   if (panelList.length === 0) return null
@@ -93,6 +106,7 @@ export function ChatPanel({ currentUserId }: Props) {
           currentUserId={currentUserId}
           onToggle={toggleMinimize}
           onClose={() => closePanel(entry.orderId)}
+          onStatusChange={updateOrderStatus}
         />
       ))}
     </div>

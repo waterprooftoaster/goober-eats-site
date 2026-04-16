@@ -82,8 +82,8 @@ async function openGuestPanel(page: PlaywrightPage, context: PlaywrightContext) 
     })
   })
 
-  await page.goto(`/order/guest/${orderId}`)
-  // GuestOrderPanelOpener redirects to / after opening the panel
+  await page.goto(`/order/${orderId}`)
+  // GuestPanelOpener redirects to / after opening the panel
   const shortId = orderId.slice(0, 8)
   // Use exact match to target only the panel header span, not system message body
   await expect(page.getByText(`Order #${shortId}`, { exact: true })).toBeVisible({ timeout: 15000 })
@@ -128,13 +128,6 @@ async function simulateAccept(supabase: ReturnType<typeof makeSupabase>) {
     .select('id')
     .single()
   if (convError || !conv) throw new Error(`simulateAccept conversation failed: ${convError?.message}`)
-
-  await supabase.from('messages').insert({
-    conversation_id: conv.id,
-    sender_id: null,
-    body: `Test Swiper accepted order #${orderId.slice(0, 8)}.`,
-    message_type: 'system',
-  })
 
   return conv.id
 }
@@ -284,7 +277,7 @@ test.describe('Guest Anon Auth + Realtime Chat', () => {
   // -------------------------------------------------------------------------
   // Test 1: Panel opens, anon sign-in happens, anon_user_id is written to DB
   // -------------------------------------------------------------------------
-  test('navigating to /order/guest/[id] with token opens chat panel and sets anon_user_id', async ({ page, context }) => {
+  test('navigating to /order/[id] with token opens chat panel and sets anon_user_id', async ({ page, context }) => {
     await openGuestPanel(page, context)
 
     // The panel should be visible at /
@@ -324,6 +317,9 @@ test.describe('Guest Anon Auth + Realtime Chat', () => {
     const input = page.getByPlaceholder('Conversation closed')
     await expect(input).toBeVisible({ timeout: 8000 })
     await expect(input).toBeDisabled()
+
+    // The placed-order pseudo-message should be visible in open state
+    await expect(page.getByText(/successfully placed order/i)).toBeVisible({ timeout: 5000 })
   })
 
   // -------------------------------------------------------------------------
@@ -337,13 +333,16 @@ test.describe('Guest Anon Auth + Realtime Chat', () => {
 
     await openGuestPanel(page, context)
 
-    // The initial fetch in useMessages gets the conversation and system message.
-    // Give the async fetch time to complete and update React state.
-    // Use a generous timeout since the fetch happens after mount.
-    await expect(page.getByText(/accepted order/i)).toBeVisible({ timeout: 15000 })
+    // The in-progress pseudo-message should be visible (client-side, not from DB)
+    await expect(page.getByText(/is preparing your order/i)).toBeVisible({ timeout: 15000 })
 
     // The chat input should now be enabled (conversation exists, status is in_progress)
     await expect(page.getByPlaceholder('Type a message…')).toBeEnabled({ timeout: 5000 })
+
+    // Removed UI chrome should not be present
+    await expect(page.getByText('Type here to contact your swiper.')).not.toBeVisible()
+    await expect(page.getByText('Contact the orderer in this chat.')).not.toBeVisible()
+    await expect(page.getByTestId('date-separator')).not.toBeAttached()
 
     // Confirm we're still at /
     await expect(page).toHaveURL('/')
@@ -362,7 +361,7 @@ test.describe('Guest Anon Auth + Realtime Chat', () => {
     await openGuestPanel(page, context)
 
     // Wait for panel to show the existing system message (initial fetch complete).
-    await expect(page.getByText(/accepted order/i)).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText(/is preparing your order/i)).toBeVisible({ timeout: 10000 })
 
     // Track all HTTP requests after panel is loaded — Realtime uses WebSocket not HTTP
     const pollingRequests: string[] = []
@@ -399,7 +398,7 @@ test.describe('Guest Anon Auth + Realtime Chat', () => {
     await openGuestPanel(page, context)
 
     // Wait for the conversation to be visible
-    await expect(page.getByText(/accepted order/i)).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText(/is preparing your order/i)).toBeVisible({ timeout: 10000 })
 
     // Type and send a message
     const guestMessage = `Hello from guest ${Date.now()}`
@@ -459,18 +458,15 @@ test.describe('Guest Anon Auth + Realtime Chat', () => {
     await openGuestPanel(page, context)
 
     // Conversation system message should be visible
-    await expect(page.getByText(/accepted order/i)).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText(/is preparing your order/i)).toBeVisible({ timeout: 10000 })
 
     // Simulate un-accept (status → open, swiper_id → null)
     await simulateUnaccept(supabase)
 
     // Panel should reflect the status change without a page reload.
-    // When status reverts to 'open', the useMessages hook's existing subscription
-    // keeps the conversation in view, but the input becomes disabled again
-    // because the order status changes back to open via the ChatPanelProvider Realtime.
-    // The chat input placeholder text remains "Type a message…" since there IS still
-    // a conversation (it wasn't deleted), but the order status is now 'open'.
-    // We verify the URL didn't change (no reload).
+    // When status reverts to 'open', the placed-order pseudo-message reappears.
+    await expect(page.getByText(/successfully placed order/i)).toBeVisible({ timeout: 8000 })
+
     await expect(page).toHaveURL('/')
     // Verify via DB that status is 'open'
     const { data: order } = await supabase
@@ -493,7 +489,7 @@ test.describe('Guest Anon Auth + Realtime Chat', () => {
     await openGuestPanel(page, context)
 
     // Wait for conversation to appear
-    await expect(page.getByText(/accepted order/i)).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText(/is preparing your order/i)).toBeVisible({ timeout: 10000 })
 
     // Insert a delivery photo message (required for completion guard)
     await supabase.from('messages').insert({

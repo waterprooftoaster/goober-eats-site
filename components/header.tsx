@@ -6,7 +6,7 @@ import { createServiceClient } from "@/lib/supabase/service"
 import { getAuthenticatedUser } from "@/lib/api/helpers"
 import { HeaderCartButton } from "@/components/header-cart-button"
 
-const iconBtnClass = "rounded-full p-2 text-black transition-colors hover:bg-black/10"
+const iconBtnClass = "rounded-full p-2 text-white transition-colors hover:bg-white/10"
 
 export async function Header() {
     const supabase = await createClient()
@@ -34,10 +34,12 @@ export async function Header() {
     }
 
     return (
-        <header className="flex items-center justify-between px-5 py-4">
-            <Link href="/" className="flex items-center gap-1 ml-5">
-                <img src="/goobereats.svg" alt="Goober Eats" className="h-5 w-auto"/>
-                <span className="text-black text-xl leading-none"><span className="font-normal">Goober</span><span className="font-bold"> Eats</span></span>
+        <header className="flex items-center justify-between px-5 py-3">
+            <Link href="/" className="flex items-center ml-5">
+                <span className="text-white text-xl leading-none">
+                    <span className="font-semibold tracking-tighter">goober</span>
+                    <span className="font-extrabold"> Eats</span>
+                </span>
             </Link>
 
             <div className="flex items-center gap-2">
@@ -58,13 +60,13 @@ export async function Header() {
                     <>
                         <Link
                             href="/auth/login"
-                            className="px-4 py-2 text-sm font-medium text-black"
+                            className="px-4 py-2 text-sm font-bold text-white"
                         >
                             Log In
                         </Link>
                         <Link
                             href="/auth/login"
-                            className="rounded-full bg-white px-5 py-2 text-sm font-medium text-black transition-colors hover:bg-gray-200"
+                            className="rounded-full bg-white px-5 py-2 text-sm font-bold text-black transition-colors hover:bg-gray-200"
                         >
                             Sign Up
                         </Link>

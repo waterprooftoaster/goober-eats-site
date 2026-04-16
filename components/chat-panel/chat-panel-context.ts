@@ -6,12 +6,13 @@ import type { OrderStatus } from '@/lib/types/database'
 export interface OrderEntry {
   orderId: string
   status: OrderStatus
+  eateryName: string
   isExpanded: boolean
 }
 
 export interface ChatPanelState {
   orders: Record<string, OrderEntry>
-  openPanel: (orderId: string, status?: OrderStatus) => void
+  openPanel: (orderId: string, status?: OrderStatus, eateryName?: string) => void
   closePanel: (orderId: string) => void
   toggleMinimize: (orderId: string) => void
   updateOrderStatus: (orderId: string, status: OrderStatus) => void

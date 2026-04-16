@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  const url = new URL(`/order/guest/${order.id}`, request.url)
+  const url = new URL(`/order/${order.id}`, request.url)
   const response = NextResponse.redirect(url)
   response.cookies.set(guestOrderCookieName(order.id), order.guest_access_token, {
     httpOnly: true,
