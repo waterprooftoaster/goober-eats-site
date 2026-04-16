@@ -17,6 +17,7 @@ const CLOSED_STATUSES: OrderStatus[] = ['completed', 'cancelled']
 
 interface CoreProps {
   orderId: string
+  eateryName: string
   messages: Message[]
   conversation: Conversation | null
   currentUserId: string | null
@@ -25,11 +26,11 @@ interface CoreProps {
   error: string | null
   sendMessage: (body: string) => Promise<void>
   onStatusChange?: (status: OrderStatus) => void
-  onClose?: () => void
 }
 
 function ChatViewCore({
   orderId,
+  eateryName,
   messages,
   conversation,
   currentUserId,
@@ -38,7 +39,6 @@ function ChatViewCore({
   error,
   sendMessage,
   onStatusChange,
-  onClose,
 }: CoreProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const isClosed = CLOSED_STATUSES.includes(orderStatus)
@@ -66,37 +66,25 @@ function ChatViewCore({
   if (orderStatus === 'completed') {
     const deliveryPhoto =
       [...messages].reverse().find((m) => m.message_type === 'delivery_photo') ?? null
-    return <OrderCompletedView deliveryPhoto={deliveryPhoto} onClose={onClose ?? (() => {})} />
+    const isSwiper = currentUserId !== null && currentUserId === conversation?.swiper_id
+    return (
+      <OrderCompletedView
+        deliveryPhoto={deliveryPhoto}
+        label={isSwiper ? 'Order Completed' : undefined}
+      />
+    )
   }
+
+  const statusMessages = getStatusMessages(orderStatus, orderId, eateryName, conversation, currentUserId)
 
   return (
     <div className="flex h-full flex-col">
-      {conversation ? (
-        <>
-          <p className="px-4 py-2 text-xs text-gray-500 italic border-b border-gray-100">
-            {currentUserId === null || currentUserId === conversation.orderer_id
-              ? 'Type here to contact your swiper.'
-              : 'Contact the orderer in this chat.'}
-          </p>
-          <ChatThread
-            messages={messages}
-            conversation={conversation}
-            currentUserId={currentUserId}
-            messagesEndRef={messagesEndRef}
-          />
-        </>
-      ) : currentUserId === null ? (
-        <div className="flex flex-1 items-center justify-center px-4">
-          <div className="text-center">
-            <p className="text-lg font-medium text-gray-900">Looking for a swiper…</p>
-            <p className="mt-2 text-sm text-gray-500">
-              You&apos;ll be able to chat once a swiper accepts your order.
-            </p>
-          </div>
-        </div>
-      ) : (
-        <div className="flex-1" />
-      )}
+      <ChatThread
+        pseudoMessages={statusMessages}
+        messages={messages}
+        currentUserId={currentUserId}
+        messagesEndRef={messagesEndRef}
+      />
       {currentUserId !== null &&
         currentUserId === conversation?.swiper_id &&
         orderStatus === 'in_progress' && (
@@ -113,17 +101,18 @@ function ChatViewCore({
 
 interface Props {
   orderId: string
+  eateryName: string
   currentUserId: string | null
   orderStatus: OrderStatus
   onStatusChange?: (status: OrderStatus) => void
-  onClose?: () => void
 }
 
-export function ChatView({ orderId, currentUserId, orderStatus, onStatusChange, onClose }: Props) {
+export function ChatView({ orderId, eateryName, currentUserId, orderStatus, onStatusChange }: Props) {
   const { messages, conversation, isLoading, error, sendMessage } = useMessages(orderId)
   return (
     <ChatViewCore
       orderId={orderId}
+      eateryName={eateryName}
       messages={messages}
       conversation={conversation}
       currentUserId={currentUserId}
@@ -132,7 +121,43 @@ export function ChatView({ orderId, currentUserId, orderStatus, onStatusChange, 
       error={error}
       sendMessage={sendMessage}
       onStatusChange={onStatusChange}
-      onClose={onClose}
     />
   )
+}
+
+// --- Helpers ---
+
+/**
+ * Returns the ordered list of pinned status pseudo-message texts for the given role + state.
+ * Orderers in in_progress see both the placed-order and preparing messages stacked.
+ * @param orderStatus - Current order status
+ * @param orderId - Full order UUID (sliced to 8 chars for display)
+ * @param eateryName - Name of the eatery for the order
+ * @param conversation - Current conversation row, or null if order is open
+ * @param currentUserId - Authenticated user ID, or null for guests
+ * @called-by ChatViewCore
+ */
+function getStatusMessages(
+  orderStatus: OrderStatus,
+  orderId: string,
+  eateryName: string,
+  conversation: Conversation | null,
+  currentUserId: string | null
+): string[] {
+  const shortId = orderId.slice(0, 8)
+  // conversation is null in 'open' state, so swiper_id check resolves to false
+  const isSwiper = currentUserId !== null && currentUserId === conversation?.swiper_id
+  const placedMsg = `You've successfully placed order #${shortId} at ${eateryName}! Hold tight while a swiper accepts your order.`
+
+  if (orderStatus === 'open' && !isSwiper) {
+    return [placedMsg]
+  }
+  if (orderStatus === 'in_progress' && !isSwiper) {
+    const name = conversation?.swiper_full_name ?? 'Your swiper'
+    return [placedMsg, `Swiper ${name} is preparing your order!`]
+  }
+  if (orderStatus === 'in_progress' && isSwiper) {
+    return [`You've successfully accepted order #${shortId}! Take a picture of where you left the order to complete the order.`]
+  }
+  return []
 }

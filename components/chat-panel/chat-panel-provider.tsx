@@ -23,10 +23,16 @@ export function ChatPanelProvider({ userId, children }: Props) {
     ordersRef.current = orders
   }, [orders])
 
-  const openPanel = useCallback((orderId: string, status: OrderStatus = 'open') => {
+  const openPanel = useCallback((orderId: string, status: OrderStatus = 'open', eateryName = '') => {
     setOrders((prev) => {
-      if (prev[orderId]) return prev // idempotent — don't reset an already-open panel
-      return { ...prev, [orderId]: { orderId, status, isExpanded: true } }
+      if (prev[orderId]) {
+        // Backfill eateryName if the panel was opened before the name was known
+        if (eateryName && !prev[orderId].eateryName) {
+          return { ...prev, [orderId]: { ...prev[orderId], eateryName } }
+        }
+        return prev
+      }
+      return { ...prev, [orderId]: { orderId, status, eateryName, isExpanded: true } }
     })
   }, [])
 
@@ -72,7 +78,7 @@ export function ChatPanelProvider({ userId, children }: Props) {
 
       const query = supabase
         .from('orders')
-        .select('id, status')
+        .select('id, status, eateries(name)')
         .in('status', ACTIVE_STATUSES)
         .order('created_at', { ascending: true })
 
@@ -82,7 +88,8 @@ export function ChatPanelProvider({ userId, children }: Props) {
 
       if (cancelled) return
       for (const order of data ?? []) {
-        openPanel(order.id, order.status as OrderStatus)
+        const eateryName = (order.eateries as unknown as { name: string } | null)?.name ?? ''
+        openPanel(order.id, order.status as OrderStatus, eateryName)
       }
     }
 
