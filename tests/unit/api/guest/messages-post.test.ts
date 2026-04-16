@@ -122,7 +122,6 @@ describe('POST /api/guest/messages', () => {
       sent_at: new Date().toISOString(),
       expires_at: new Date().toISOString(),
       image_url: null,
-      read_at: null,
     }
     const convChain = dbResult(conv)
     const msgChain = dbResult(mockMsg)
@@ -150,7 +149,7 @@ describe('POST /api/guest/messages', () => {
     const mockMsg = {
       id: 'msg-new', conversation_id: CONV_ID, sender_id: null, body: 'hi',
       message_type: 'text', sent_at: new Date().toISOString(),
-      expires_at: new Date().toISOString(), image_url: null, read_at: null,
+      expires_at: new Date().toISOString(), image_url: null,
     }
     mockServiceFrom
       .mockReturnValueOnce(dbResult(conv))

@@ -39,7 +39,6 @@ const MOCK_MESSAGE = {
   image_url: 'https://example.com/delivery-photos/order/uuid.jpg',
   sent_at: new Date().toISOString(),
   expires_at: new Date().toISOString(),
-  read_at: null,
 }
 
 function makeFile(type: string, sizeBytes: number): File {

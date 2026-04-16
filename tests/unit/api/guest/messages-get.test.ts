@@ -113,7 +113,7 @@ describe('GET /api/guest/messages/[orderId]', () => {
   it('returns 200 with conversation and messages when both exist', async () => {
     mockCookiesGet.mockReturnValue({ value: VALID_TOKEN })
     const conv = { id: CONV_ID, order_id: VALID_ORDER_ID, orderer_id: null, swiper_id: 'swiper-1', created_at: new Date().toISOString() }
-    const msg = { id: 'msg-1', conversation_id: CONV_ID, sender_id: 'swiper-1', body: 'Hello', message_type: 'text', sent_at: new Date().toISOString(), expires_at: new Date().toISOString(), image_url: null, read_at: null }
+    const msg = { id: 'msg-1', conversation_id: CONV_ID, sender_id: 'swiper-1', body: 'Hello', message_type: 'text', sent_at: new Date().toISOString(), expires_at: new Date().toISOString(), image_url: null }
 
     // validateGuestOrder
     mockServiceFrom.mockReturnValueOnce(
