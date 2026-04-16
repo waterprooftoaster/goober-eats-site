@@ -37,6 +37,7 @@ export function CartPanel({ initialCart }: Props) {
     try {
       const res = await fetch(`/api/cart/items/${itemId}`, { method: 'DELETE' })
       if (res.ok) {
+        window.dispatchEvent(new CustomEvent('cart-updated'))
         setCart((prev) => {
           if (!prev) return null
           const updated = { ...prev, items: prev.items.filter((i) => i.id !== itemId) }

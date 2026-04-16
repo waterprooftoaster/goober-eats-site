@@ -1,14 +1,10 @@
 /**
  * @file header-wrapper.tsx
- * @description Client shell that controls the header's background color based on scroll position.
- *   Transitions from #F8EABE (matching banner) to white once the banner scrolls out of view.
+ * @description Client shell that renders the header with a fixed black background.
  *   Called by: app/layout.tsx
  * @dependencies (none beyond React)
  */
 'use client'
-
-import { useEffect, useState } from 'react'
-import { usePathname } from 'next/navigation'
 
 interface HeaderWrapperProps {
   hasBanner: boolean
@@ -16,38 +12,15 @@ interface HeaderWrapperProps {
 }
 
 /**
- * Wraps the server-rendered Header with scroll-driven background color logic.
- * @param hasBanner - Whether the banner slot is rendering content (non-swiper users)
+ * Wraps the server-rendered Header with a black background.
+ * @param hasBanner - Unused; kept for layout.tsx prop compatibility
  * @param children - The server-rendered Header component
- * @returns A div with dynamic background that transitions when the banner scrolls away
+ * @returns A div with a black background wrapping the header
  * @called-by app/layout.tsx
  */
-export function HeaderWrapper({ hasBanner, children }: HeaderWrapperProps) {
-  const pathname = usePathname()
-  const isHomepage = pathname === '/'
-  const [isAtTop, setIsAtTop] = useState(true)
-
-  useEffect(() => {
-    if (!hasBanner || !isHomepage) return
-    const container = document.getElementById('scroll-container')
-    if (!container) return
-
-    const checkScroll = () => {
-      // Use the sentinel div's offsetTop as the threshold — when scrollTop reaches it, banner is gone
-      const sentinel = document.getElementById('banner-sentinel')
-      const threshold = sentinel ? sentinel.offsetTop : 0
-      setIsAtTop(container.scrollTop < threshold)
-    }
-
-    checkScroll() // run on mount to handle page refresh mid-scroll
-    container.addEventListener('scroll', checkScroll, { passive: true })
-    return () => container.removeEventListener('scroll', checkScroll)
-  }, [hasBanner, isHomepage])
-
-  const bg = hasBanner && isHomepage && isAtTop ? '#F8EABE' : '#ffffff'
-
+export function HeaderWrapper({ children }: HeaderWrapperProps) {
   return (
-    <div style={{ backgroundColor: bg, transition: 'background-color 0.2s ease' }}>
+    <div className="sticky top-0 z-50" style={{ backgroundColor: '#000000' }}>
       {children}
     </div>
   )

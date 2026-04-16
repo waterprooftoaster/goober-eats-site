@@ -1,16 +1,23 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { signOut, deleteAccount } from '@/app/auth/actions'
 
 export function AccountActions() {
+  const router = useRouter()
   const [confirming, setConfirming] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
 
+  async function handleSignOut() {
+    router.back()
+    await signOut()
+  }
+
   async function handleDelete() {
     setDeleting(true)
+    router.back()
     const result = await deleteAccount()
     if (result?.error) {
       setError(result.error)
@@ -20,21 +27,21 @@ export function AccountActions() {
 
   return (
     <div className="space-y-6">
-      <Link
-        href="/orders"
+      <button
+        type="button"
+        onClick={() => { window.location.href = '/orders' }}
         className="block w-full rounded-md border border-gray-300 px-4 py-2 text-center text-gray-700 hover:bg-gray-50"
       >
         My Orders
-      </Link>
+      </button>
 
-      <form action={signOut}>
-        <button
-          type="submit"
-          className="w-full rounded-md border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50"
-        >
-          Sign Out
-        </button>
-      </form>
+      <button
+        type="button"
+        onClick={handleSignOut}
+        className="w-full rounded-md border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50"
+      >
+        Sign Out
+      </button>
 
       <hr className="border-gray-200" />
 

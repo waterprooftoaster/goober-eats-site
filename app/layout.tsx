@@ -11,6 +11,7 @@ import { getAuthenticatedUser } from "@/lib/api/helpers";
 const plusJakartaSans = Plus_Jakarta_Sans({
   variable: "--font-sans",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
 });
 
 const geistMono = Geist_Mono({
@@ -51,20 +52,15 @@ export default async function RootLayout({
   return (
     <html
       lang="en"
-      className={`${plusJakartaSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${plusJakartaSans.variable} ${geistMono.variable} antialiased`}
     >
-      <body className="h-full">
+      <body>
         <ChatPanelProvider userId={user?.id ?? null}>
-          <div className="h-full flex flex-col">
-            <HeaderWrapper hasBanner={!isSwiper}>
-              <Header />
-            </HeaderWrapper>
-            <div id="scroll-container" className="flex-1 min-h-0 overflow-y-auto">
-              {banner}
-              <div id="banner-sentinel" />
-              <div className="px-6">{children}</div>
-            </div>
-          </div>
+          <HeaderWrapper hasBanner={!isSwiper}>
+            <Header />
+          </HeaderWrapper>
+          {banner}
+          <div className="px-6">{children}</div>
           <SwiperOrdersButton isSwiper={isSwiper} pendingOrderCount={pendingOrderCount} />
           {modal}
           <ChatPanel currentUserId={user?.id ?? null} />
