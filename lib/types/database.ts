@@ -4,8 +4,6 @@ export interface Profile {
   email: string
   school_id: string | null
   is_swiper: boolean
-  avatar_url: string | null
-  phone: string | null
   created_at: string
   updated_at: string
 }
@@ -16,10 +14,7 @@ export interface Eatery {
   name: string
   image_url: string | null
   address: string
-  delivery_time_label: string | null
   is_active: boolean
-  latitude: number | null
-  longitude: number | null
   created_at: string
   updated_at: string
 }
