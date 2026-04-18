@@ -5,7 +5,7 @@ DROP FUNCTION IF EXISTS public.find_nearby_eateries(double precision, double pre
 REVOKE UPDATE (read_at) ON public.messages FROM authenticated;
 
 -- Drop spatial index (must precede dropping the location column)
-DROP INDEX IF EXISTS restaurants_location_gist_idx;
+DROP INDEX IF EXISTS eateries_location_gist_idx;
 
 -- Eateries: drop PostGIS location columns and unused label
 ALTER TABLE public.eateries

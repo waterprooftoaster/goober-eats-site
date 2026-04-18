@@ -57,7 +57,7 @@ BEGIN
   RETURNING id INTO v_group_id;
 
   -- Margherita Pizza
-  INSERT INTO public.menu_items (restaurant_id, group_id, name, original_price_cents, image_url, is_available)
+  INSERT INTO public.menu_items (eatery_id, group_id, name, original_price_cents, image_url, is_available)
   VALUES (v_eatery_id, v_group_id, 'Margherita Pizza', 1200, 'https://picsum.photos/seed/margherita/400/400', true)
   RETURNING id INTO v_item_id;
 
@@ -80,7 +80,7 @@ BEGIN
     (v_opt_grp_id, 'Chili Flakes', 0,   false, 2);
 
   -- Pepperoni Pizza
-  INSERT INTO public.menu_items (restaurant_id, group_id, name, original_price_cents, image_url, is_available)
+  INSERT INTO public.menu_items (eatery_id, group_id, name, original_price_cents, image_url, is_available)
   VALUES (v_eatery_id, v_group_id, 'Pepperoni Pizza', 1400, 'https://picsum.photos/seed/pepperoni/400/400', true)
   RETURNING id INTO v_item_id;
 
@@ -99,11 +99,11 @@ BEGIN
   RETURNING id INTO v_group_id;
 
   -- Caesar Salad
-  INSERT INTO public.menu_items (restaurant_id, group_id, name, original_price_cents, image_url, is_available)
+  INSERT INTO public.menu_items (eatery_id, group_id, name, original_price_cents, image_url, is_available)
   VALUES (v_eatery_id, v_group_id, 'Caesar Salad', 800, 'https://picsum.photos/seed/caesar-salad/400/400', true);
 
   -- Garlic Bread
-  INSERT INTO public.menu_items (restaurant_id, group_id, name, original_price_cents, image_url, is_available)
+  INSERT INTO public.menu_items (eatery_id, group_id, name, original_price_cents, image_url, is_available)
   VALUES (v_eatery_id, v_group_id, 'Garlic Bread', 400, 'https://picsum.photos/seed/garlic-bread/400/400', true);
 
   -- Desserts
@@ -112,7 +112,7 @@ BEGIN
   RETURNING id INTO v_group_id;
 
   -- Tiramisu
-  INSERT INTO public.menu_items (restaurant_id, group_id, name, original_price_cents, image_url, is_available)
+  INSERT INTO public.menu_items (eatery_id, group_id, name, original_price_cents, image_url, is_available)
   VALUES (v_eatery_id, v_group_id, 'Tiramisu', 700, 'https://picsum.photos/seed/tiramisu/400/400', true);
 
 END;
