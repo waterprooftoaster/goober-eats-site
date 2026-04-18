@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { NextRequest } from 'next/server'
 
 // ---------------------------------------------------------------------------
 // Mocks — hoisted
@@ -49,10 +48,6 @@ function dbResult(data: unknown, error: unknown = null) {
   return mock
 }
 
-function makeRequest(): NextRequest {
-  return new NextRequest('http://localhost/api/cart/count', { method: 'GET' })
-}
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -68,7 +63,7 @@ describe('GET /api/cart/count', () => {
     mockGetAuthenticatedUser.mockResolvedValue(null)
     mockCookiesGet.mockReturnValue(undefined)
 
-    const res = await GET(makeRequest())
+    const res = await GET()
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.count).toBe(0)
@@ -79,7 +74,7 @@ describe('GET /api/cart/count', () => {
     mockCookiesGet.mockReturnValue({ value: SESSION_ID })
     mockServiceFrom.mockReturnValueOnce(dbResult(null)) // carts query returns no cart
 
-    const res = await GET(makeRequest())
+    const res = await GET()
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.count).toBe(0)
@@ -89,7 +84,7 @@ describe('GET /api/cart/count', () => {
     mockGetAuthenticatedUser.mockResolvedValue(MOCK_USER)
     mockServiceFrom.mockReturnValueOnce(dbResult(null)) // carts query returns no cart
 
-    const res = await GET(makeRequest())
+    const res = await GET()
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.count).toBe(0)
@@ -100,7 +95,7 @@ describe('GET /api/cart/count', () => {
     mockServiceFrom.mockReturnValueOnce(dbResult({ id: CART_ID }))  // cart found
     mockServiceFrom.mockReturnValueOnce(dbResult([]))                 // cart_items empty
 
-    const res = await GET(makeRequest())
+    const res = await GET()
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.count).toBe(0)
@@ -111,7 +106,7 @@ describe('GET /api/cart/count', () => {
     mockServiceFrom.mockReturnValueOnce(dbResult({ id: CART_ID }))
     mockServiceFrom.mockReturnValueOnce(dbResult(null)) // data is null
 
-    const res = await GET(makeRequest())
+    const res = await GET()
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.count).toBe(0)
@@ -123,7 +118,7 @@ describe('GET /api/cart/count', () => {
     mockServiceFrom.mockReturnValueOnce(dbResult({ id: CART_ID }))
     mockServiceFrom.mockReturnValueOnce(dbResult([{ quantity: 2 }, { quantity: 3 }]))
 
-    const res = await GET(makeRequest())
+    const res = await GET()
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.count).toBe(5)
@@ -134,7 +129,7 @@ describe('GET /api/cart/count', () => {
     mockServiceFrom.mockReturnValueOnce(dbResult({ id: CART_ID }))
     mockServiceFrom.mockReturnValueOnce(dbResult([{ quantity: 1 }, { quantity: 1 }, { quantity: 1 }]))
 
-    const res = await GET(makeRequest())
+    const res = await GET()
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.count).toBe(3)
@@ -145,7 +140,7 @@ describe('GET /api/cart/count', () => {
     mockCookiesGet.mockReturnValue({ value: SESSION_ID })
     mockServiceFrom.mockReturnValueOnce(dbResult(null))
 
-    await GET(makeRequest())
+    await GET()
 
     // The carts query should have used eq('session_id', SESSION_ID) — not eq('user_id', ...)
     // We verify by checking mockServiceFrom was called (guest path) and cookie was read

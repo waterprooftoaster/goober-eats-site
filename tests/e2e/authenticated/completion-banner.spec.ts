@@ -164,10 +164,6 @@ test.describe('CompletionBanner', () => {
     await expect(page.getByRole('button', { name: 'Complete Order' })).not.toBeVisible()
 
     // Verify order is back to open via Supabase directly
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SECRET_KEY!
-    )
     const { data: order } = await supabase
       .from('orders')
       .select('status, swiper_id')

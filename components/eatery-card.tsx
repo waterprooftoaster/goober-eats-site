@@ -2,24 +2,24 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { cn } from '@/lib/utils'
 
-interface RestaurantCardProps {
+interface EateryCardProps {
     id: string
     name: string
     imageUrl: string | null
 }
 
-export function RestaurantCard({ id, name, imageUrl }: RestaurantCardProps) {
+export function EateryCard({ id, name, imageUrl }: EateryCardProps) {
     return (
         <Link
-            data-testid="restaurant-card"
-            href={`/restaurant/${id}`}
+            data-testid="eatery-card"
+            href={`/eatery/${id}`}
             className={cn(
                 'group flex w-full flex-col',
                 'transition-all duration-200 ease-in-out',
                 'hover:scale-[1.02]',
             )}
         >
-            {/* Restaurant image*/}
+            {/* Eatery image*/}
             <div
                 className={cn(
                     'relative w-full rounded-xl bg-gray-200',
@@ -37,7 +37,7 @@ export function RestaurantCard({ id, name, imageUrl }: RestaurantCardProps) {
                     />
                 )}
             </div>
-            {/* Restaurant name */}
+            {/* Eatery name */}
             <p className="mt-2 truncate px-0.5 text-lg font-semibold text-black">{name}</p>
         </Link>
     )

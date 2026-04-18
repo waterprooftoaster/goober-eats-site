@@ -80,7 +80,8 @@ describe('ChatThread', () => {
       }),
     ])
     const img = screen.getByRole('img', { name: /delivery photo/i })
-    expect(img).toHaveAttribute('src', 'https://example.com/photo.jpg')
+    // next/image rewrites src to /_next/image?url=<encoded>; decode to verify the right URL is used
+    expect(decodeURIComponent(img.getAttribute('src') ?? '')).toContain('https://example.com/photo.jpg')
     const link = img.closest('a')
     expect(link).toHaveAttribute('href', 'https://example.com/photo.jpg')
     expect(link).toHaveAttribute('target', '_blank')

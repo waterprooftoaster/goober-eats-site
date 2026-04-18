@@ -21,35 +21,34 @@ export function CheckoutForm({ isGuest }: Props) {
   const [guestName, setGuestName] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
+  // Authenticated users: fetch the session on mount.
+  // fetchCheckoutSession has no setState so the effect body stays setState-free.
+  useEffect(() => {
+    if (isGuest) return
+    fetchCheckoutSession({})
+      .then((secret) => {
+        setClientSecret(secret)
+        setStage('checkout')
+      })
+      .catch(() => {
+        setErrorMessage('Network error. Please try again.')
+        setStage('error')
+      })
+  }, [isGuest])
+
+  // Called from event handlers (retry, guest submit) — synchronous setState is fine here.
   const createSession = useCallback(async (body: Record<string, unknown>) => {
     setStage('loading')
     setErrorMessage(null)
     try {
-      const res = await fetch('/api/stripe/checkout-session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      const json = await res.json()
-      if (!res.ok) {
-        setErrorMessage(json.error ?? 'Something went wrong. Please try again.')
-        setStage('error')
-        return
-      }
-      setClientSecret(json.clientSecret)
+      const secret = await fetchCheckoutSession(body)
+      setClientSecret(secret)
       setStage('checkout')
-    } catch {
-      setErrorMessage('Network error. Please try again.')
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
       setStage('error')
     }
   }, [])
-
-  // Authenticated users: create session on mount
-  useEffect(() => {
-    if (!isGuest) {
-      createSession({})
-    }
-  }, [isGuest, createSession])
 
   function handleGuestSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -134,4 +133,17 @@ export function CheckoutForm({ isGuest }: Props) {
       </EmbeddedCheckoutProvider>
     </div>
   )
+}
+
+// --- Helpers ---
+
+async function fetchCheckoutSession(body: Record<string, unknown>): Promise<string> {
+  const res = await fetch('/api/stripe/checkout-session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const json = await res.json()
+  if (!res.ok) throw new Error(json.error ?? 'Something went wrong. Please try again.')
+  return json.clientSecret as string
 }

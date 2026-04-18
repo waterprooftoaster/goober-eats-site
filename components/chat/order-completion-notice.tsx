@@ -1,3 +1,4 @@
+import Image from 'next/image'
 import type { Message } from '@/lib/types/messaging'
 
 interface Props {
@@ -13,12 +14,13 @@ export function OrderCompletedView({ deliveryPhoto, label = 'Your order is ready
           href={deliveryPhoto.image_url}
           target="_blank"
           rel="noopener noreferrer"
-          className="block w-full"
+          className="relative block w-full h-48"
         >
-          <img
+          <Image
+            fill
             src={deliveryPhoto.image_url}
             alt="Delivery photo"
-            className="w-full max-h-48 rounded-lg object-cover border border-gray-100 cursor-pointer hover:opacity-90 transition-opacity"
+            className="rounded-lg object-cover border border-gray-100 cursor-pointer hover:opacity-90 transition-opacity"
           />
         </a>
       )}

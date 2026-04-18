@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useEffect, useState } from 'react'
+import { useActionState, useState } from 'react'
 import { authenticate, completeOnboarding } from '@/app/auth/actions'
 import {
   Combobox,
@@ -46,13 +46,13 @@ export function LoginForm({
     null,
   )
 
-  // Transition to onboarding when authenticate signals it
-  useEffect(() => {
-    if (authState && 'needsOnboarding' in authState) {
-      setEmail(authState.email)
-      setStep('name')
-    }
-  }, [authState])
+  // When authenticate signals onboarding is needed, derive the step and email from authState.
+  // Once the user advances to 'school', step takes over (needsOnboarding && step !== 'school').
+  const needsOnboarding = !!authState && 'needsOnboarding' in authState
+  const effectiveStep = (needsOnboarding && step !== 'school') ? 'name' : step
+  const effectiveEmail = needsOnboarding
+    ? (authState as { email: string }).email
+    : email
 
   const inputStyle =
     'block w-full h-12 rounded-md border border-gray-300 px-3 py-2 text-base focus:border-black focus:outline-none focus:ring-1 focus:ring-black'
@@ -88,7 +88,7 @@ export function LoginForm({
   return (
     <main className="fixed inset-0 z-10 flex items-center justify-center bg-white">
       <div className="w-full max-w-sm space-y-4 p-8">
-        {step === 'email' && (
+        {effectiveStep === 'email' && (
           <>
             {callbackError && (
               <p className="text-sm text-red-600 text-center">{callbackError}</p>
@@ -100,7 +100,7 @@ export function LoginForm({
               <input
                 type="email"
                 placeholder="Enter your email"
-                value={email}
+                value={effectiveEmail}
                 onChange={(e) => setEmail(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
@@ -126,7 +126,7 @@ export function LoginForm({
           </>
         )}
 
-        {step === 'password' && (
+        {effectiveStep === 'password' && (
           <>
             {error && (
               <p className="text-sm text-red-600 text-center">{error}</p>
@@ -143,7 +143,7 @@ export function LoginForm({
             <h1 className={headingStyle}>Enter your password</h1>
 
             <form action={formAction} className="space-y-4">
-              <input type="hidden" name="email" value={email} />
+              <input type="hidden" name="email" value={effectiveEmail} />
 
               <input
                 name="password"
@@ -183,7 +183,7 @@ export function LoginForm({
           </>
         )}
 
-        {step === 'name' && (
+        {effectiveStep === 'name' && (
           <>
             <h1 className={headingStyle}>What should we call you?</h1>
 
@@ -207,7 +207,7 @@ export function LoginForm({
           </>
         )}
 
-        {step === 'school' && (
+        {effectiveStep === 'school' && (
           <>
             {onboardingState && 'error' in onboardingState && (
               <p className="text-sm text-red-600 text-center">

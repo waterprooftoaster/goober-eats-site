@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { RestaurantHero } from '@/components/restaurant-hero'
+import { EateryHero } from '@/components/eatery-hero'
 import { MenuGrid } from '@/components/menu-grid'
 import type { MenuGroupWithItems } from '@/lib/types/database'
 
@@ -20,7 +20,7 @@ function parseMenuGroups(data: unknown): MenuGroupWithItems[] {
   return (data as { groups: MenuGroupWithItems[] }).groups
 }
 
-export default async function RestaurantPage({ params }: Props) {
+export default async function EateryPage({ params }: Props) {
   const { id } = await params
   const supabase = await createClient()
 
@@ -49,11 +49,11 @@ export default async function RestaurantPage({ params }: Props) {
   return (
     <main className="min-h-screen bg-white pt-2">
       <div className="max-w-[60rem] mx-auto px-4">
-        <RestaurantHero imageUrl={eatery.image_url} alt={eatery.name} />
+        <EateryHero imageUrl={eatery.image_url} alt={eatery.name} />
 
         <div className="py-5">
           <h1 className="text-2xl font-bold text-gray-900">{eatery.name}</h1>
-          <p data-testid="restaurant-address" className="mt-1 text-sm text-gray-500">
+          <p data-testid="eatery-address" className="mt-1 text-sm text-gray-500">
             {eatery.address}
           </p>
         </div>

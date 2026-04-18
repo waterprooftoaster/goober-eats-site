@@ -1,11 +1,11 @@
 import Image from 'next/image'
 
-interface RestaurantHeroProps {
+interface EateryHeroProps {
   imageUrl: string | null
   alt: string
 }
 
-export function RestaurantHero({ imageUrl, alt }: RestaurantHeroProps) {
+export function EateryHero({ imageUrl, alt }: EateryHeroProps) {
   return (
     <div className="relative aspect-[16/6] w-full overflow-hidden rounded-xl bg-gray-200">
       {imageUrl && (

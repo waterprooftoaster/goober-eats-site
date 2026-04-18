@@ -5,7 +5,6 @@
  *   Called by: components/header-cart-button.tsx (on cart-updated window event)
  * @dependencies lib/supabase/server.ts, lib/supabase/service.ts, lib/api/helpers.ts
  */
-import { NextRequest } from 'next/server'
 import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -16,7 +15,7 @@ import { apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
  * @returns JSON { data: { count: number } } — always 200, count is 0 when no cart exists
  * @called-by components/header-cart-button.tsx
  */
-export async function GET(_request: NextRequest) {
+export async function GET() {
   const supabase = await createClient()
   const user = await getAuthenticatedUser(supabase)
   const cookieStore = await cookies()

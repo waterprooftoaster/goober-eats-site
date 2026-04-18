@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { RestaurantCard } from '@/components/restaurant-card'
+import { EateryCard } from '@/components/eatery-card'
 import { seedDevEateries } from '@/lib/dev-seed'
 
 export default async function Home() {
@@ -34,7 +34,7 @@ export default async function Home() {
                     <h2 className="text-xl tracking-tighter font-bold text-black mb-3">{schoolName}</h2>
                     <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
                         {schoolEateries.map((eatery) => (
-                            <RestaurantCard
+                            <EateryCard
                                 key={eatery.id}
                                 id={eatery.id}
                                 name={eatery.name}

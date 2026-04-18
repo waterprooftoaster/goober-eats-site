@@ -42,6 +42,7 @@ export function MenuGrid({ groups }: Props) {
       </div>
 
       <MenuItemDetailModal
+        key={selectedItem?.id ?? 'empty'}
         item={selectedItem}
         onClose={() => setSelectedItem(null)}
       />

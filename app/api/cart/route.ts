@@ -1,11 +1,10 @@
-import { NextRequest } from 'next/server'
 import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
 import { loadCart } from '@/lib/cart/load'
 
-export async function GET(_request: NextRequest) {
+export async function GET() {
   const supabase = await createClient()
   const user = await getAuthenticatedUser(supabase)
   const cookieStore = await cookies()

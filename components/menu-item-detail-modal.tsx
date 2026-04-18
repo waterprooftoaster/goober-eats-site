@@ -29,24 +29,15 @@ function buildDefaultSelections(groups: OptionGroupWithOptions[]): SelectedOptio
 
 export function MenuItemDetailModal({ item, onClose }: Props) {
   const [groups, setGroups] = useState<OptionGroupWithOptions[] | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [selectedOptions, setSelectedOptions] = useState<SelectedOptions>({})
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
 
+  // The parent keys this component on item.id (see menu-grid.tsx), so it remounts
+  // fresh whenever the selected item changes — no synchronous reset needed here.
   useEffect(() => {
-    if (!item) {
-      setGroups(null)
-      setSelectedOptions({})
-      setAdding(false)
-      setAddError(null)
-      return
-    }
-    setLoading(true)
-    setGroups(null)
-    setAdding(false)
-    setAddError(null)
-
+    if (!item) return
     fetch(`/api/menu-items/${item.id}/options`)
       .then((res) => res.json())
       .then((data: { groups: OptionGroupWithOptions[] }) => {
@@ -54,7 +45,7 @@ export function MenuItemDetailModal({ item, onClose }: Props) {
         setSelectedOptions(buildDefaultSelections(data.groups))
       })
       .finally(() => setLoading(false))
-  }, [item?.id])
+  }, [item])
 
   function handleOptionChange(groupId: string, value: string | string[]) {
     setSelectedOptions((prev) => ({ ...prev, [groupId]: value }))

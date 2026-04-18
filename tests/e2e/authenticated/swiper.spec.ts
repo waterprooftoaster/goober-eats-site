@@ -123,7 +123,7 @@ test.describe('Account page — swiper section', () => {
     await expect(page.getByText('Become a Swiper')).toBeVisible()
   })
 
-  test('school select and save updates profile', async ({ page, request }) => {
+  test('school select and save updates profile', async ({ page }) => {
     await page.goto('/swiper-registration')
     // Select the first school option (not the placeholder)
     const select = page.locator('select')

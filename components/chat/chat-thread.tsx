@@ -1,6 +1,7 @@
 'use client'
 
 import type { RefObject } from 'react'
+import Image from 'next/image'
 import type { Message } from '@/lib/types/messaging'
 import { cn } from '@/lib/utils'
 
@@ -40,10 +41,12 @@ export function ChatThread({ pseudoMessages, messages, currentUserId, messagesEn
                 rel="noopener noreferrer"
                 className="block"
               >
-                <img
+                <Image
                   src={message.image_url}
                   alt="Delivery photo"
-                  className="max-w-[200px] cursor-pointer rounded-lg border border-gray-100 object-cover transition-opacity hover:opacity-90"
+                  width={200}
+                  height={200}
+                  className="cursor-pointer rounded-lg border border-gray-100 object-cover transition-opacity hover:opacity-90"
                 />
               </a>
             ) : (
