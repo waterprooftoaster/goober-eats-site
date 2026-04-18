@@ -1,10 +1,10 @@
 import { test, expect } from '@playwright/test'
-import { navigateToFirstRestaurant } from '../helpers'
+import { navigateToFirstEatery } from '../helpers'
 
 test.describe('Authenticated cart', () => {
   test('add item as logged-in user and persist across reload', async ({ page }) => {
-    // Navigate to a restaurant
-    await navigateToFirstRestaurant(page)
+    // Navigate to an eatery
+    await navigateToFirstEatery(page)
 
     // Click first menu item
     const responsePromise = page.waitForResponse((res) =>

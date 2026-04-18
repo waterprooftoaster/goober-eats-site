@@ -1,14 +1,14 @@
 import { test, expect } from '@playwright/test'
-import { navigateToFirstRestaurant } from './helpers'
+import { navigateToFirstEatery } from './helpers'
 
-test.describe('Restaurant page', () => {
+test.describe('Eatery page', () => {
   test.beforeEach(async ({ page }) => {
-    await navigateToFirstRestaurant(page)
+    await navigateToFirstEatery(page)
   })
 
-  test('shows restaurant name and address', async ({ page }) => {
+  test('shows eatery name and address', async ({ page }) => {
     await expect(page.locator('h1')).toBeVisible()
-    await expect(page.locator('[data-testid="restaurant-address"]')).toBeVisible()
+    await expect(page.locator('[data-testid="eatery-address"]')).toBeVisible()
   })
 
   test('renders menu items in grid', async ({ page }) => {

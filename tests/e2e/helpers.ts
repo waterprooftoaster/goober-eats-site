@@ -4,20 +4,20 @@ import { type Page, expect } from '@playwright/test'
 const MIN_MENU_ITEMS = 5
 
 /**
- * Navigate to the homepage and click the first restaurant card that has
- * at least MIN_MENU_ITEMS menu items. Skips restaurants with sparse or empty
+ * Navigate to the homepage and click the first eatery card that has
+ * at least MIN_MENU_ITEMS menu items. Skips eateries with sparse or empty
  * menus to keep tests deterministic.
- * Returns the restaurant page URL (e.g. /restaurant/{uuid}).
+ * Returns the eatery page URL (e.g. /eatery/{uuid}).
  */
-export async function navigateToFirstRestaurant(page: Page): Promise<string> {
+export async function navigateToFirstEatery(page: Page): Promise<string> {
   await page.goto('/')
-  const cards = page.locator('[data-testid="restaurant-card"]')
+  const cards = page.locator('[data-testid="eatery-card"]')
   await expect(cards.first()).toBeVisible()
 
   const count = await cards.count()
   for (let i = 0; i < count; i++) {
     await cards.nth(i).click()
-    await page.waitForURL(/\/restaurant\//)
+    await page.waitForURL(/\/eatery\//)
 
     const menuItems = page.locator('[data-testid="menu-item-card"]')
     const itemCount = await menuItems.count()
@@ -30,11 +30,11 @@ export async function navigateToFirstRestaurant(page: Page): Promise<string> {
     await expect(cards.first()).toBeVisible()
   }
 
-  throw new Error(`No restaurant with ${MIN_MENU_ITEMS}+ menu items found on homepage`)
+  throw new Error(`No eatery with ${MIN_MENU_ITEMS}+ menu items found on homepage`)
 }
 
 /**
- * On a restaurant page, click the first menu item and intercept the
+ * On an eatery page, click the first menu item and intercept the
  * options API call to extract the menu item ID.
  */
 export async function getMenuItemId(page: Page): Promise<string> {
@@ -50,10 +50,10 @@ export async function getMenuItemId(page: Page): Promise<string> {
 }
 
 /**
- * Extract the eatery ID from the current restaurant page URL.
+ * Extract the eatery ID from the current eatery page URL.
  */
 export function getEateryIdFromUrl(url: string): string {
-  const match = url.match(/\/restaurant\/([^/?]+)/)
-  if (!match) throw new Error('Not on a restaurant page')
+  const match = url.match(/\/eatery\/([^/?]+)/)
+  if (!match) throw new Error('Not on an eatery page')
   return match[1]
 }

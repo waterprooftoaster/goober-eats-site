@@ -1,10 +1,10 @@
 import { test, expect } from '@playwright/test'
-import { navigateToFirstRestaurant } from './helpers'
+import { navigateToFirstEatery } from './helpers'
 
 test.describe('Anonymous cart flow', () => {
   test('add item to cart, view cart, remove item', async ({ page }) => {
-    // Navigate to a restaurant
-    await navigateToFirstRestaurant(page)
+    // Navigate to an eatery
+    await navigateToFirstEatery(page)
 
     // Click first menu item to open modal
     const responsePromise = page.waitForResponse((res) =>

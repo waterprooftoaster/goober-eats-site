@@ -1,9 +1,9 @@
 import { test, expect } from '@playwright/test'
-import { navigateToFirstRestaurant } from './helpers'
+import { navigateToFirstEatery } from './helpers'
 
 test.describe('Cart badge live update', () => {
   test('badge appears with count 1 after adding first item — no page reload', async ({ page }) => {
-    await navigateToFirstRestaurant(page)
+    await navigateToFirstEatery(page)
 
     // Badge should not be visible before adding anything
     const badge = page.locator('[aria-label="Cart"] span')
@@ -29,7 +29,7 @@ test.describe('Cart badge live update', () => {
   })
 
   test('badge disappears after removing sole item from cart panel — no page reload', async ({ page }) => {
-    await navigateToFirstRestaurant(page)
+    await navigateToFirstEatery(page)
 
     // Add one item
     const responsePromise = page.waitForResponse((res) =>

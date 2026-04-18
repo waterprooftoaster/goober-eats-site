@@ -162,7 +162,7 @@ test.describe('Guest Anon Auth + Realtime Chat', () => {
 
     const { data: item } = await supabase
       .from('menu_items')
-      .select('id, name, original_price_cents, restaurant_id')
+      .select('id, name, original_price_cents, eatery_id')
       .eq('is_available', true)
       .limit(1)
       .single()
@@ -174,7 +174,7 @@ test.describe('Guest Anon Auth + Realtime Chat', () => {
     const { data: eatery } = await supabase
       .from('eateries')
       .select('id')
-      .eq('id', item.restaurant_id)
+      .eq('id', item.eatery_id)
       .eq('school_id', school.id)
       .eq('is_active', true)
       .single()

@@ -113,7 +113,7 @@ describe('normal option (no linked item)', () => {
     mockServiceFrom.mockImplementation((table: string) => {
       switch (table) {
         case 'menu_items':
-          return dbChain({ data: { id: MENU_ITEM_ID, restaurant_id: EATERY_ID }, error: null })
+          return dbChain({ data: { id: MENU_ITEM_ID, eatery_id: EATERY_ID }, error: null })
         case 'menu_item_option_group_assignments':
           return dbChain({ data: [{ option_group_id: OPTION_GROUP_ID }], error: null })
         case 'menu_item_options':
@@ -132,7 +132,7 @@ describe('normal option (no linked item)', () => {
     const cartsChain = dbChain({ data: { id: CART_ID, eatery_id: EATERY_ID }, error: null })
     let cartsCallCount = 0
     mockServiceFrom.mockImplementation((table: string) => {
-      if (table === 'menu_items') return dbChain({ data: { id: MENU_ITEM_ID, restaurant_id: EATERY_ID }, error: null })
+      if (table === 'menu_items') return dbChain({ data: { id: MENU_ITEM_ID, eatery_id: EATERY_ID }, error: null })
       if (table === 'menu_item_option_group_assignments') return dbChain({ data: [{ option_group_id: OPTION_GROUP_ID }], error: null })
       if (table === 'menu_item_options') return dbChain({ data: [{ id: OPTION_ID, linked_menu_item_id: null }], error: null })
       if (table === 'carts') {
@@ -201,7 +201,7 @@ describe('linked option (auto-inserts linked item)', () => {
     const newCartChain = dbChain({ data: { id: CART_ID, eatery_id: EATERY_ID }, error: null })
 
     mockServiceFrom.mockImplementation((table: string) => {
-      if (table === 'menu_items') return dbChain({ data: { id: MENU_ITEM_ID, restaurant_id: EATERY_ID }, error: null })
+      if (table === 'menu_items') return dbChain({ data: { id: MENU_ITEM_ID, eatery_id: EATERY_ID }, error: null })
       if (table === 'menu_item_option_group_assignments') return dbChain({ data: [{ option_group_id: OPTION_GROUP_ID }], error: null })
       if (table === 'menu_item_options') {
         // Option with a linked item

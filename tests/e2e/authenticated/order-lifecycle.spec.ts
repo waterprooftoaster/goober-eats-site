@@ -27,7 +27,7 @@ test.describe('Order Lifecycle', () => {
     // Find an eatery that has at least one available menu item
     const { data: menuItem } = await supabase
       .from('menu_items')
-      .select('id, name, original_price_cents, restaurant_id')
+      .select('id, name, original_price_cents, eatery_id')
       .eq('is_available', true)
       .limit(1)
       .single()
@@ -36,7 +36,7 @@ test.describe('Order Lifecycle', () => {
     const { data: eatery } = await supabase
       .from('eateries')
       .select('id')
-      .eq('id', menuItem.restaurant_id)
+      .eq('id', menuItem.eatery_id)
       .eq('school_id', school.id)
       .eq('is_active', true)
       .single()
@@ -176,7 +176,7 @@ test.describe('Order Lifecycle', () => {
 
     const { data: menuItem } = await supabase
       .from('menu_items')
-      .select('id, name, original_price_cents, restaurant_id')
+      .select('id, name, original_price_cents, eatery_id')
       .eq('is_available', true)
       .limit(1)
       .single()
@@ -185,7 +185,7 @@ test.describe('Order Lifecycle', () => {
     const { data: unacceptOrder } = await supabase
       .from('orders')
       .insert({
-        eatery_id: menuItem.restaurant_id,
+        eatery_id: menuItem.eatery_id,
         orderer_id: null,
         swiper_id: null,
         status: 'open',
