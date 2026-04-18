@@ -29,7 +29,7 @@ export interface MenuItemGroup {
 
 export interface MenuItem {
   id: string
-  restaurant_id: string
+  eatery_id: string
   name: string
   group_id: string
   original_price_cents: number

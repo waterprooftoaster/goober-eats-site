@@ -31,13 +31,13 @@ export async function POST(request: NextRequest) {
   // Resolve eatery_id from menu item
   const { data: menuItem } = await service
     .from('menu_items')
-    .select('id, restaurant_id')
+    .select('id, eatery_id')
     .eq('id', menu_item_id)
     .eq('is_available', true)
     .single()
 
   if (!menuItem) return apiError('Menu item not found', 404)
-  const eatery_id: string = menuItem.restaurant_id
+  const eatery_id = menuItem.eatery_id
 
   // Validate options via junction table and collect linked_menu_item_ids
   let linkedItemIds: string[] = []
@@ -92,9 +92,9 @@ export async function POST(request: NextRequest) {
     existingCart = data
   }
 
-  // Reject if cart belongs to a different restaurant
+  // Reject if cart belongs to a different eatery
   if (existingCart && existingCart.eatery_id !== eatery_id) {
-    return apiError('Cart has items from another restaurant', 409)
+    return apiError('Cart has items from another eatery', 409)
   }
 
   // Create cart if none exists
