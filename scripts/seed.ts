@@ -11569,7 +11569,7 @@ async function seed() {
     await cleanupEateryOptionGroups(eateryId)
 
     // Delete old menu items and groups
-    const { error: deleteItemsError } = await supabase.from('menu_items').delete().eq('restaurant_id', eateryId)
+    const { error: deleteItemsError } = await supabase.from('menu_items').delete().eq('eatery_id', eateryId)
     if (deleteItemsError) { console.error('Error clearing menu items:', deleteItemsError); process.exit(1) }
 
     const { error: deleteGroupsError } = await supabase.from('menu_item_groups').delete().eq('eatery_id', eateryId)
@@ -11595,7 +11595,7 @@ async function seed() {
       const { data: menuItem, error } = await supabase
         .from('menu_items')
         .insert({
-          restaurant_id: eateryId,
+          eatery_id: eateryId,
           group_id: groupId,
           name: item.name,
           original_price_cents: item.original_price_cents,
@@ -11658,7 +11658,7 @@ seed()
  * @called-by seed
  */
 async function cleanupEateryOptionGroups(eateryId: string): Promise<void> {
-  const { data: items } = await supabase.from('menu_items').select('id').eq('restaurant_id', eateryId)
+  const { data: items } = await supabase.from('menu_items').select('id').eq('eatery_id', eateryId)
   if (!items || items.length === 0) return
 
   const itemIds = items.map((r: { id: string }) => r.id)

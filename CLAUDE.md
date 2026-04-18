@@ -32,7 +32,7 @@ E2E tests auto-start the dev server if not already running. The `authenticated/`
 | Entity | Notes |
 |--------|-------|
 | `schools` | Top-level tenant (currently NYU) |
-| `eateries` | Dining halls/restaurants scoped to a school |
+| `eateries` | Dining halls and eateries scoped to a school |
 | `menu_items` | Belong to an eatery; have `original_price_cents` (what it costs the swiper) and `market_price_cents` (what the orderer pays) |
 | `menu_item_option_groups` / `menu_item_options` | Modifiers (size, toppings) with `single`/`multiple` selection |
 | `profiles` | Extends Supabase auth users; has `school_id`, `phone` for SMS |
