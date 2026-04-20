@@ -1,3 +1,10 @@
+/**
+ * @file api.ts
+ * @description Zod schemas and inferred types for all API request bodies.
+ *   Called by: all app/api/ route handlers that parse request bodies
+ * @dependencies zod
+ */
+
 import { z } from 'zod'
 
 // Only statuses a client can supply via the status endpoint:

@@ -1,3 +1,9 @@
+/**
+ * @file messaging.ts
+ * @description TypeScript interfaces for conversations and messages.
+ *   Called by: components/chat/, hooks/use-messages.ts, app/api/messages/
+ */
+
 export interface Conversation {
   id: string
   order_id: string

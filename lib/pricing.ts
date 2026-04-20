@@ -1,4 +1,8 @@
 /**
+ * @file pricing.ts
+ * @description Pricing calculations for orderer payments and platform fee splits.
+ *   Called by: app/api/stripe/checkout-session/route.ts, lib/stripe/transfer.ts, lib/cart/load.ts
+ *
  * Pricing policy:
  *   User pays  50% of original_price_cents
  *   Platform   10% of original_price_cents (= 20% of user payment)

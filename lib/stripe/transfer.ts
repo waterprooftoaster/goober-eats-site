@@ -1,3 +1,10 @@
+/**
+ * @file transfer.ts
+ * @description Transfers funds from the platform to the swiper's Stripe connected account on order completion.
+ *   Called by: app/api/orders/[id]/status/route.ts
+ * @dependencies lib/stripe/client.ts, lib/supabase/service.ts, lib/pricing.ts
+ */
+
 import 'server-only'
 
 import { getStripe } from './client'

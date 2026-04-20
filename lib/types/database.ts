@@ -1,3 +1,9 @@
+/**
+ * @file database.ts
+ * @description TypeScript interfaces for all Goober Eats database entities.
+ *   Called by: throughout the codebase wherever entity types are needed
+ */
+
 export interface Profile {
   id: string
   full_name: string

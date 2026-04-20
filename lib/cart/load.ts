@@ -1,3 +1,10 @@
+/**
+ * @file load.ts
+ * @description Loads a cart with enriched item and eatery data for display.
+ *   Called by: app/api/cart/route.ts, app/api/stripe/checkout-session/route.ts
+ * @dependencies @supabase/supabase-js
+ */
+
 import { SupabaseClient } from '@supabase/supabase-js'
 
 export interface CartOption {
@@ -23,6 +30,13 @@ export interface LoadedCart {
   items: LoadedCartItem[]
 }
 
+/**
+ * Fetches full cart data including eatery info, item details, and resolved option names.
+ * @param service - Service-role Supabase client (bypasses RLS for cross-table reads)
+ * @param cart - Minimal cart row with id and eatery_id
+ * @returns Fully hydrated LoadedCart ready for display or checkout
+ * @called-by app/api/cart/route.ts, app/api/stripe/checkout-session/route.ts
+ */
 export async function loadCart(
   service: SupabaseClient,
   cart: { id: string; eatery_id: string }
