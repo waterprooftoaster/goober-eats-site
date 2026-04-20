@@ -1,5 +1,12 @@
 'use client'
 
+/**
+ * @file account-panel.tsx
+ * @description Modal overlay panel showing the user's email, account actions, and swiper section.
+ *   Called by: app/account/page.tsx, app/@modal/(.)account/page.tsx
+ * @dependencies app/account/account-actions.tsx, app/account/swiper-section.tsx
+ */
+
 import { useRouter } from 'next/navigation'
 import { X } from 'lucide-react'
 import { AccountActions } from '@/app/account/account-actions'
@@ -14,6 +21,14 @@ interface AccountPanelProps {
   schools: School[]
 }
 
+/**
+ * Renders the full account modal with email display, action buttons, and swiper management.
+ * @param email - Authenticated user's email address
+ * @param profile - User profile with is_swiper and school_id fields
+ * @param stripeAccount - Stripe Connect onboarding status, or null if not connected
+ * @param schools - Available schools for the swiper school selector
+ * @called-by app/account/page.tsx, app/@modal/(.)account/page.tsx
+ */
 export function AccountPanel({ email, profile, stripeAccount, schools }: AccountPanelProps) {
   const router = useRouter()
 

@@ -1,5 +1,12 @@
 'use client'
 
+/**
+ * @file menu-item-option-group.tsx
+ * @description Renders a single option group as radio buttons (single) or checkboxes (multiple).
+ *   Called by: components/menu-item-detail-modal.tsx
+ * @dependencies @base-ui/react, lib/types/database.ts
+ */
+
 import { RadioGroup, Radio, Checkbox } from '@base-ui/react'
 import { cn } from '@/lib/utils'
 import type { MenuItemOptionGroup as OptionGroupType, MenuItemOption } from '@/lib/types/database'
@@ -14,6 +21,13 @@ interface Props {
   onChange: (groupId: string, value: string | string[]) => void
 }
 
+/**
+ * Renders a labeled option group with radios for 'single' selection or checkboxes for 'multiple'.
+ * @param group - Option group data including type, required flag, and available options
+ * @param selectedValue - Currently selected option ID (single) or array of IDs (multiple)
+ * @param onChange - Callback invoked with the group ID and new selection when the user picks an option
+ * @called-by components/menu-item-detail-modal.tsx
+ */
 export function MenuItemOptionGroup({ group, selectedValue, onChange }: Props) {
   return (
     <div className="py-4">

@@ -1,3 +1,9 @@
+/**
+ * @file menu-item-card.tsx
+ * @description Menu item card showing a square image, name, and optional strikethrough/discounted price.
+ *   Called by: components/menu-grid.tsx
+ */
+
 import Image from 'next/image'
 
 interface MenuItemCardProps {
@@ -11,6 +17,14 @@ function formatPrice(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`
 }
 
+/**
+ * Renders a menu item with a square image, name, and price (strikethrough + market if discounted).
+ * @param name - Display name of the menu item
+ * @param originalPriceCents - Full price the swiper pays; shown with strikethrough when discounted
+ * @param marketPriceCents - Discounted orderer price; null means no discount applies
+ * @param imageUrl - Square image URL, or null for a gray placeholder
+ * @called-by components/menu-grid.tsx
+ */
 export function MenuItemCard({
   name,
   originalPriceCents,

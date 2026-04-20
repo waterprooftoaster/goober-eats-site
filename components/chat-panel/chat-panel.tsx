@@ -1,5 +1,13 @@
 'use client'
 
+/**
+ * @file chat-panel.tsx
+ * @description Fixed-position chat panel stack rendering one ChatPanelItem per open order.
+ *   Mobile shows only the newest panel; desktop shows all stacked above the bottom-right.
+ *   Called by: app/layout.tsx
+ * @dependencies components/chat/chat-view.tsx, components/chat-panel/chat-panel-context.ts
+ */
+
 import { useChatPanel } from './chat-panel-context'
 import type { OrderEntry } from './chat-panel-context'
 import { ChatView } from '@/components/chat/chat-view'
@@ -17,6 +25,16 @@ interface PanelProps {
   onStatusChange: (orderId: string, status: OrderStatus) => void
 }
 
+/**
+ * Renders a single chat panel card (expanded) or a minimized tab (collapsed).
+ * @param entry - Order entry with orderId, status, eateryName, and isExpanded state
+ * @param index - Stack position (0 = newest); used to show/hide on mobile
+ * @param currentUserId - Passed through to ChatView for message alignment
+ * @param onToggle - Toggles the expand/collapse state of this panel
+ * @param onClose - Removes this panel from the stack
+ * @param onStatusChange - Propagates status updates from ChatView to the global state
+ * @called-by ChatPanel
+ */
 function ChatPanelItem({ entry, index, currentUserId, onToggle, onClose, onStatusChange }: PanelProps) {
   const { orderId, status, isExpanded } = entry
   const shortId = orderId.slice(0, 8)
@@ -87,6 +105,12 @@ interface Props {
   currentUserId: string | null
 }
 
+/**
+ * Renders all open chat panels as a fixed stack, newest first, in the bottom-right corner.
+ * @param currentUserId - The authenticated user's ID for message alignment inside ChatView
+ * @returns null if there are no open panels
+ * @called-by app/layout.tsx
+ */
 export function ChatPanel({ currentUserId }: Props) {
   const { orders, toggleMinimize, closePanel, updateOrderStatus } = useChatPanel()
 

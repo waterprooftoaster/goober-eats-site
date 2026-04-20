@@ -1,5 +1,13 @@
 'use client'
 
+/**
+ * @file chat-panel-provider.tsx
+ * @description Context provider that manages open chat panels and subscribes to Realtime order updates.
+ *   On mount, auto-opens panels for all of the user's active orders.
+ *   Called by: app/layout.tsx
+ * @dependencies lib/supabase/client.ts, components/chat-panel/chat-panel-context.ts
+ */
+
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { ChatPanelContext } from './chat-panel-context'
@@ -14,6 +22,12 @@ interface Props {
   children: React.ReactNode
 }
 
+/**
+ * Provides chat panel state to the tree; auto-opens panels for existing active orders on mount.
+ * @param userId - The authenticated user's ID, or null for guests (disables auto-open and subscriptions)
+ * @param children - The application tree to wrap
+ * @called-by app/layout.tsx
+ */
 export function ChatPanelProvider({ userId, children }: Props) {
   const [orders, setOrders] = useState<Record<string, OrderEntry>>({})
   const ordersRef = useRef<Record<string, OrderEntry>>({})

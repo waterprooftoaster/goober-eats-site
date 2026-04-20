@@ -1,5 +1,12 @@
 'use client'
 
+/**
+ * @file chat-thread.tsx
+ * @description Scrollable thread rendering pinned pseudo-messages and real chat messages.
+ *   Called by: components/chat/chat-view.tsx
+ * @dependencies lib/types/messaging.ts
+ */
+
 import type { RefObject } from 'react'
 import Image from 'next/image'
 import type { Message } from '@/lib/types/messaging'
@@ -12,6 +19,14 @@ interface Props {
   messagesEndRef: RefObject<HTMLDivElement | null>
 }
 
+/**
+ * Renders pinned status pseudo-messages followed by real messages, aligned by sender.
+ * @param pseudoMessages - Status text strings prepended above real messages (not stored in DB)
+ * @param messages - Real chat and delivery photo messages from Supabase
+ * @param currentUserId - The authenticated user's ID for aligning own messages to the right
+ * @param messagesEndRef - Ref to the scroll anchor div at the bottom of the thread
+ * @called-by components/chat/chat-view.tsx
+ */
 export function ChatThread({ pseudoMessages, messages, currentUserId, messagesEndRef }: Props) {
   return (
     <div className="flex-1 space-y-1 overflow-y-auto px-4 py-3">

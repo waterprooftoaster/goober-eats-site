@@ -1,5 +1,12 @@
 'use client'
 
+/**
+ * @file cart-panel.tsx
+ * @description Sliding cart panel showing cart items with remove controls and a checkout button.
+ *   Called by: app/cart/page.tsx, app/@modal/(.)cart/page.tsx
+ * @dependencies lib/cart/load.ts
+ */
+
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, X } from 'lucide-react'
@@ -13,6 +20,11 @@ function formatCents(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`
 }
 
+/**
+ * Renders a right-sliding panel with cart items, remove buttons, subtotal, and checkout link.
+ * @param initialCart - Initial cart data from the server, or null for an empty cart
+ * @called-by app/cart/page.tsx, app/@modal/(.)cart/page.tsx
+ */
 export function CartPanel({ initialCart }: Props) {
   const router = useRouter()
   const [cart, setCart] = useState<LoadedCart | null>(initialCart)

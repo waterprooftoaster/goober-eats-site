@@ -1,3 +1,9 @@
+/**
+ * @file button.tsx
+ * @description shadcn/ui Button component with variant and size support via cva.
+ *   Called by: most interactive components across the app
+ */
+
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 import { Slot } from "radix-ui"

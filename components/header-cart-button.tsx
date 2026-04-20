@@ -1,5 +1,12 @@
 'use client'
 
+/**
+ * @file header-cart-button.tsx
+ * @description Client cart icon in the header with a live item count badge.
+ *   Listens for the 'cart-updated' window event to refresh the count without a page reload.
+ *   Called by: components/header.tsx
+ */
+
 import { useState, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
@@ -11,6 +18,11 @@ interface HeaderCartButtonProps {
   itemCount: number
 }
 
+/**
+ * Renders a cart icon link with a live item count badge; hidden on the /checkout route.
+ * @param itemCount - Initial cart item count from the server; updated via 'cart-updated' events
+ * @called-by components/header.tsx
+ */
 export function HeaderCartButton({ itemCount }: HeaderCartButtonProps) {
   const [count, setCount] = useState(itemCount)
   const pathname = usePathname()

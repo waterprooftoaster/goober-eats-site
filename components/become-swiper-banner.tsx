@@ -1,3 +1,10 @@
+/**
+ * @file become-swiper-banner.tsx
+ * @description Promotional banner card encouraging users to become a swiper.
+ *   Called by: (currently unused; reserved for future home page use)
+ * @dependencies components/ui/button.tsx
+ */
+
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -6,6 +13,11 @@ interface BecomeSwiperBannerProps {
   ctaHref: string
 }
 
+/**
+ * Renders a dark gradient card with a "Become a Swiper" call-to-action.
+ * @param ctaHref - URL for the CTA button (e.g. /swiper-registration or /auth/login)
+ * @called-by (reserved for home page)
+ */
 export function BecomeSwiperBanner({ ctaHref }: BecomeSwiperBannerProps) {
   return (
     <div className="col-span-1 sm:col-span-2">

@@ -1,5 +1,12 @@
 'use client'
 
+/**
+ * @file completion-banner.tsx
+ * @description Swiper-only banner with "Complete Order" (photo upload) and "Unaccept" controls.
+ *   Shown only to the swiper while an order is in_progress; disappears on completion.
+ *   Called by: components/chat/chat-view.tsx
+ */
+
 import { useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import { Button } from '@/components/ui/button'
@@ -10,6 +17,12 @@ interface Props {
   onStatusChange?: (status: OrderStatus) => void
 }
 
+/**
+ * Renders "Complete Order" and "Unaccept" action buttons for the swiper's in-progress order.
+ * @param orderId - UUID of the order being fulfilled
+ * @param onStatusChange - Optional callback fired after a successful status transition
+ * @called-by components/chat/chat-view.tsx
+ */
 export function CompletionBanner({ orderId, onStatusChange }: Props) {
   const [uploading, setUploading] = useState(false)
   const [completing, setCompleting] = useState(false)

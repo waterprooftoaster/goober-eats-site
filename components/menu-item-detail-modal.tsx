@@ -1,5 +1,13 @@
 'use client'
 
+/**
+ * @file menu-item-detail-modal.tsx
+ * @description Modal dialog for a menu item with its option groups and an Add to Cart button.
+ *   Fetches option groups on mount; keyed by item ID to remount on selection change.
+ *   Called by: components/menu-grid.tsx
+ * @dependencies components/menu-item-option-group.tsx, @base-ui/react Dialog
+ */
+
 import { useEffect, useState } from 'react'
 import Image from 'next/image'
 import { Dialog } from '@base-ui/react'
@@ -16,6 +24,12 @@ interface Props {
 
 type SelectedOptions = Record<string, string | string[]>
 
+/**
+ * Builds the initial selection state from option group defaults.
+ * @param groups - Option groups with their options and is_default flags
+ * @returns Map of groupId → selected option ID (single) or IDs array (multiple)
+ * @called-by MenuItemDetailModal (on options load)
+ */
 function buildDefaultSelections(groups: OptionGroupWithOptions[]): SelectedOptions {
   return groups.reduce<SelectedOptions>((acc, group) => {
     if (group.selection_type === 'single') {
@@ -27,6 +41,12 @@ function buildDefaultSelections(groups: OptionGroupWithOptions[]): SelectedOptio
   }, {})
 }
 
+/**
+ * Renders an open Base UI dialog with the item image, option groups, and Add to Cart button.
+ * @param item - The menu item to display; null renders nothing
+ * @param onClose - Called when the dialog is closed or the item is added successfully
+ * @called-by components/menu-grid.tsx
+ */
 export function MenuItemDetailModal({ item, onClose }: Props) {
   const [groups, setGroups] = useState<OptionGroupWithOptions[] | null>(null)
   const [loading, setLoading] = useState(true)

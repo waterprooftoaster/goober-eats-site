@@ -1,3 +1,9 @@
+/**
+ * @file eatery-card.tsx
+ * @description Card component displaying an eatery's image and name, linking to its detail page.
+ *   Called by: app/page.tsx
+ */
+
 import Link from 'next/link'
 import Image from 'next/image'
 import { cn } from '@/lib/utils'
@@ -8,6 +14,13 @@ interface EateryCardProps {
     imageUrl: string | null
 }
 
+/**
+ * Renders a clickable card with the eatery image and name that navigates to /eatery/[id].
+ * @param id - Eatery UUID used in the href
+ * @param name - Eatery display name shown below the image
+ * @param imageUrl - Optional image URL; shows a gray placeholder if null
+ * @called-by app/page.tsx
+ */
 export function EateryCard({ id, name, imageUrl }: EateryCardProps) {
     return (
         <Link

@@ -1,5 +1,13 @@
 'use client'
 
+/**
+ * @file chat-view.tsx
+ * @description Order chat UI with Realtime message subscription, status pseudo-messages, and completion UI.
+ *   ChatViewCore is a hook-free rendering core shared by ChatView (public API).
+ *   Called by: components/chat-panel/chat-panel.tsx, app/current-orders/current-orders-list.tsx
+ * @dependencies hooks/use-messages.ts, components/chat/chat-thread.tsx, components/chat/chat-input.tsx
+ */
+
 import { useEffect, useRef } from 'react'
 import { useMessages } from '@/hooks/use-messages'
 import { ChatThread } from '@/components/chat/chat-thread'
@@ -10,10 +18,6 @@ import type { Conversation, Message } from '@/lib/types/messaging'
 import type { OrderStatus } from '@/lib/types/database'
 
 const CLOSED_STATUSES: OrderStatus[] = ['completed', 'cancelled']
-
-// ---------------------------------------------------------------------------
-// Shared rendering core — no hooks
-// ---------------------------------------------------------------------------
 
 interface CoreProps {
   orderId: string
@@ -28,6 +32,20 @@ interface CoreProps {
   onStatusChange?: (status: OrderStatus) => void
 }
 
+/**
+ * Hook-free rendering core for the chat UI; handles all visual states (loading, error, completed, active).
+ * @param orderId - UUID of the order this chat belongs to
+ * @param eateryName - Eatery name used in the status pseudo-message
+ * @param messages - Live message array from the Realtime subscription
+ * @param conversation - Conversation row (null while the order is still open)
+ * @param currentUserId - Authenticated user ID, or null for guests
+ * @param orderStatus - Current order status used to determine which UI to show
+ * @param isLoading - Whether the initial message fetch is in flight
+ * @param error - Error message to display if the fetch failed
+ * @param sendMessage - Async function to send a text message
+ * @param onStatusChange - Optional callback invoked when the swiper changes the order status
+ * @called-by ChatView
+ */
 function ChatViewCore({
   orderId,
   eateryName,
@@ -95,10 +113,6 @@ function ChatViewCore({
   )
 }
 
-// ---------------------------------------------------------------------------
-// Public API — always uses Supabase Realtime via useMessages
-// ---------------------------------------------------------------------------
-
 interface Props {
   orderId: string
   eateryName: string
@@ -107,6 +121,15 @@ interface Props {
   onStatusChange?: (status: OrderStatus) => void
 }
 
+/**
+ * Subscribes to Realtime messages for the order and delegates rendering to ChatViewCore.
+ * @param orderId - UUID of the order
+ * @param eateryName - Eatery name for the status pseudo-message
+ * @param currentUserId - Authenticated user ID, or null for guests
+ * @param orderStatus - Current order status
+ * @param onStatusChange - Optional callback when the swiper transitions the order status
+ * @called-by components/chat-panel/chat-panel.tsx, app/current-orders/current-orders-list.tsx
+ */
 export function ChatView({ orderId, eateryName, currentUserId, orderStatus, onStatusChange }: Props) {
   const { messages, conversation, isLoading, error, sendMessage } = useMessages(orderId)
   return (

@@ -1,5 +1,12 @@
 'use client'
 
+/**
+ * @file menu-grid.tsx
+ * @description Client component rendering menu item cards grouped by menu group, with a detail modal on click.
+ *   Called by: app/eatery/[id]/page.tsx
+ * @dependencies components/menu-item-card.tsx, components/menu-item-detail-modal.tsx
+ */
+
 import { useState } from 'react'
 import { MenuItemCard } from '@/components/menu-item-card'
 import { MenuItemDetailModal } from '@/components/menu-item-detail-modal'
@@ -11,6 +18,11 @@ interface Props {
   groups: MenuGroupWithItems[]
 }
 
+/**
+ * Renders menu groups as labeled sections of item cards; opens a detail modal on item click.
+ * @param groups - Menu groups with nested items from the get_menu_for_eatery RPC
+ * @called-by app/eatery/[id]/page.tsx
+ */
 export function MenuGrid({ groups }: Props) {
   const [selectedItem, setSelectedItem] = useState<MenuGridItem | null>(null)
 

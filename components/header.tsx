@@ -1,3 +1,10 @@
+/**
+ * @file header.tsx
+ * @description Server-rendered navigation header with logo, auth links, and live cart item badge.
+ *   Called by: app/layout.tsx (via HeaderWrapper)
+ * @dependencies lib/supabase/server.ts, lib/supabase/service.ts, components/header-cart-button.tsx
+ */
+
 import Link from "next/link"
 import { cookies } from "next/headers"
 import { Home, User } from "lucide-react"
@@ -8,6 +15,11 @@ import { HeaderCartButton } from "@/components/header-cart-button"
 
 const iconBtnClass = "rounded-full p-2 text-white transition-colors hover:bg-white/10"
 
+/**
+ * Fetches the current cart item count and renders the top navigation bar.
+ * @returns Header with logo, home/account links, HeaderCartButton, and sign-in/up links for guests
+ * @called-by app/layout.tsx
+ */
 export async function Header() {
     const supabase = await createClient()
     const user = await getAuthenticatedUser(supabase)

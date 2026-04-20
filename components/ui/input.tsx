@@ -1,3 +1,9 @@
+/**
+ * @file input.tsx
+ * @description shadcn/ui Input primitive with consistent border, focus ring, and error state styles.
+ *   Called by: components/ui/input-group.tsx and various form components
+ */
+
 import * as React from "react"
 
 import { cn } from "@/lib/utils"

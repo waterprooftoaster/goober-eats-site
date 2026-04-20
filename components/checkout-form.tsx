@@ -1,5 +1,12 @@
 'use client'
 
+/**
+ * @file checkout-form.tsx
+ * @description Stripe Embedded Checkout form with a guest name collection step for unauthenticated users.
+ *   Called by: app/checkout/page.tsx
+ * @dependencies @stripe/react-stripe-js, @stripe/stripe-js
+ */
+
 import { useState, useEffect, useCallback } from 'react'
 import { loadStripe } from '@stripe/stripe-js'
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js'
@@ -12,6 +19,11 @@ interface Props {
   isGuest: boolean
 }
 
+/**
+ * Manages the checkout flow stages (guest-info → loading → checkout | error) and renders the Stripe form.
+ * @param isGuest - When true, shows a name collection step before fetching the Stripe session
+ * @called-by app/checkout/page.tsx
+ */
 export function CheckoutForm({ isGuest }: Props) {
   const [stage, setStage] = useState<Stage>(isGuest ? 'guest-info' : 'loading')
   const [clientSecret, setClientSecret] = useState<string | null>(null)
@@ -137,6 +149,13 @@ export function CheckoutForm({ isGuest }: Props) {
 
 // --- Helpers ---
 
+/**
+ * POSTs to the checkout-session API and returns the Stripe client secret.
+ * @param body - Optional request body (e.g. { guest_name } for guest checkout)
+ * @returns The Stripe EmbeddedCheckout client secret
+ * @throws Error with a user-facing message if the API responds with an error
+ * @called-by CheckoutForm
+ */
 async function fetchCheckoutSession(body: Record<string, unknown>): Promise<string> {
   const res = await fetch('/api/stripe/checkout-session', {
     method: 'POST',

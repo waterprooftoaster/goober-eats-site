@@ -1,5 +1,12 @@
 'use client'
 
+/**
+ * @file chat-input.tsx
+ * @description Chat message input with text send and delivery photo upload controls.
+ *   Called by: components/chat/chat-view.tsx
+ * @dependencies components/ui/button.tsx
+ */
+
 import { useRef, useState } from 'react'
 import type { ChangeEvent, KeyboardEvent } from 'react'
 import { Camera, Send } from 'lucide-react'
@@ -12,6 +19,13 @@ interface Props {
   disabled: boolean
 }
 
+/**
+ * Renders the message input bar with a textarea, camera upload button, and send button.
+ * @param orderId - UUID of the order; used to POST image uploads to the correct endpoint
+ * @param onSend - Async callback invoked with the message body when the user sends
+ * @param disabled - Disables all controls (e.g. when the conversation is closed)
+ * @called-by components/chat/chat-view.tsx
+ */
 export function ChatInput({ orderId, onSend, disabled }: Props) {
   const [body, setBody] = useState('')
   const [sending, setSending] = useState(false)
