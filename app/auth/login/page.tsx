@@ -1,3 +1,10 @@
+/**
+ * @file page.tsx
+ * @description Login page that pre-fetches schools and determines if onboarding should be shown.
+ *   Called by: Next.js routing (direct navigation to /auth/login)
+ * @dependencies lib/supabase/server.ts, app/auth/login/login-form.tsx
+ */
+
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { LoginForm } from './login-form'
@@ -6,6 +13,11 @@ const ALLOWED_ERRORS: Record<string, string> = {
   'Could not complete authentication': 'Could not complete authentication.',
 }
 
+/**
+ * Fetches schools and resolves onboarding state, then renders the login/sign-up form.
+ * @returns LoginForm component; redirects to / if the user already has a profile
+ * @called-by Next.js routing (/auth/login)
+ */
 export default async function LoginPage(props: {
   searchParams: Promise<{ error?: string; onboarding?: string }>
 }) {

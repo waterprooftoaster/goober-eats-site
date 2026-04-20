@@ -1,5 +1,13 @@
 'use client'
 
+/**
+ * @file login-form.tsx
+ * @description Multi-step login/sign-up form with email→password→name→school progression.
+ *   Handles both existing user sign-in and new user onboarding in a single unified flow.
+ *   Called by: app/auth/login/page.tsx
+ * @dependencies app/auth/actions.ts, components/ui/combobox.tsx
+ */
+
 import { useActionState, useState } from 'react'
 import { authenticate, completeOnboarding } from '@/app/auth/actions'
 import {
@@ -18,6 +26,15 @@ interface School {
   name: string
 }
 
+/**
+ * Renders the multi-step authentication form (email → password → name → school).
+ * @param callbackError - Error message from OAuth callback query param
+ * @param schools - Available schools for the onboarding school-selection step
+ * @param initialOnboarding - Start directly at the name step (returning user without profile)
+ * @param userEmail - Pre-fill the email field (used during onboarding resume)
+ * @returns Multi-step auth/onboarding form
+ * @called-by app/auth/login/page.tsx
+ */
 export function LoginForm({
   callbackError,
   schools,

@@ -1,5 +1,11 @@
 'use client'
 
+/**
+ * @file swiper-registration-form.tsx
+ * @description Client form for completing swiper registration: school selection then Stripe Connect onboarding.
+ *   Called by: app/swiper-registration/page.tsx
+ */
+
 import { useState } from 'react'
 
 type School = { id: string; name: string }
@@ -10,6 +16,14 @@ type Props = {
   schools: School[]
 }
 
+/**
+ * Renders a two-step swiper registration form: school selection then Stripe Connect setup.
+ * @param schoolId - Pre-selected school ID from the user's profile (if any)
+ * @param schoolName - Display name for the pre-selected school
+ * @param schools - Full list of available schools for the selector
+ * @returns School selector and Stripe onboarding button
+ * @called-by app/swiper-registration/page.tsx
+ */
 export function SwiperRegistrationForm({ schoolId, schoolName, schools }: Props) {
   const [selectedSchoolId, setSelectedSchoolId] = useState(schoolId ?? '')
   const [schoolConfirmed, setSchoolConfirmed] = useState(schoolId !== null)

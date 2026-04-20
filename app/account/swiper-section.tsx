@@ -1,5 +1,13 @@
 'use client'
 
+/**
+ * @file swiper-section.tsx
+ * @description Client components for the swiper-specific section of the account page.
+ *   Shows swiper status, school selector, and Stripe Connect link/relink controls.
+ *   Called by: components/account-panel.tsx
+ * @dependencies lib/supabase/server.ts (data passed via props)
+ */
+
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -12,6 +20,11 @@ type Props = {
   schools: School[]
 }
 
+/**
+ * Renders swiper recruitment CTA for non-swipers, or SwiperStatus panel for active swipers.
+ * @returns SwiperStatus panel or "Become a Swiper" CTA
+ * @called-by components/account-panel.tsx
+ */
 export function SwiperSection({ profile, stripeAccount, schools }: Props) {
   if (profile.is_swiper) {
     return (
@@ -48,6 +61,11 @@ type SwiperStatusProps = {
   schools: School[]
 }
 
+/**
+ * Renders the active swiper's school selector and Stripe Connect account status.
+ * @returns School and payment account management UI
+ * @called-by SwiperSection
+ */
 function SwiperStatus({ profile, stripeConnected, schools }: SwiperStatusProps) {
   const [changingSchool, setChangingSchool] = useState(false)
   const [schoolId, setSchoolId] = useState(profile.school_id ?? '')

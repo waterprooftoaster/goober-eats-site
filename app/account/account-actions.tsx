@@ -1,9 +1,21 @@
 'use client'
 
+/**
+ * @file account-actions.tsx
+ * @description Client component providing Sign Out and Delete Account actions on the account page.
+ *   Called by: components/account-panel.tsx
+ * @dependencies app/auth/actions.ts
+ */
+
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { signOut, deleteAccount } from '@/app/auth/actions'
 
+/**
+ * Renders sign-out and delete-account buttons with a two-step confirmation for deletion.
+ * @returns Account action controls
+ * @called-by components/account-panel.tsx
+ */
 export function AccountActions() {
   const router = useRouter()
   const [confirming, setConfirming] = useState(false)

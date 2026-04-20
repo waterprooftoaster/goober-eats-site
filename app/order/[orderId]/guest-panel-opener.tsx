@@ -1,5 +1,13 @@
 'use client'
 
+/**
+ * @file guest-panel-opener.tsx
+ * @description Client component that bootstraps an anonymous Supabase session for a guest orderer,
+ *   links the anon user to the order, opens the chat panel, then redirects to home.
+ *   Called by: app/order/[orderId]/page.tsx
+ * @dependencies components/chat-panel.tsx, lib/supabase/client.ts
+ */
+
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useChatPanel } from '@/components/chat-panel'
@@ -12,6 +20,14 @@ interface Props {
   eateryName: string
 }
 
+/**
+ * Signs in anonymously, associates the anon session with the order, opens the chat panel, then redirects.
+ * @param orderId - UUID of the guest's order
+ * @param initialStatus - Current order status passed into the chat panel
+ * @param eateryName - Eatery name displayed in the chat panel header
+ * @returns Spinner while bootstrapping; redirects to / when done
+ * @called-by app/order/[orderId]/page.tsx
+ */
 export function GuestPanelOpener({ orderId, initialStatus, eateryName }: Props) {
   const { openPanel } = useChatPanel()
   const router = useRouter()

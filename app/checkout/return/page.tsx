@@ -1,3 +1,11 @@
+/**
+ * @file page.tsx
+ * @description Checkout return page: verifies the Stripe session status and shows
+ *   success/failure UI, or redirects guests to the verify-order endpoint.
+ *   Called by: Stripe Checkout (returnUrl after payment)
+ * @dependencies lib/stripe/client.ts
+ */
+
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getStripe } from '@/lib/stripe/client'
@@ -8,34 +16,11 @@ interface Props {
 
 const SESSION_ID_RE = /^cs_(test|live)_[a-zA-Z0-9]+$/
 
-function FailurePage({ message, href }: { message: string; href: string }) {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
-      <div className="max-w-md rounded-lg border border-gray-200 bg-white p-8 text-center shadow-sm">
-        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
-          <svg
-            className="h-6 w-6 text-red-600"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </div>
-        <h1 className="mb-2 text-xl font-semibold text-gray-900">Payment didn&apos;t go through</h1>
-        <p className="text-sm text-gray-500">{message}</p>
-        <Link
-          href={href}
-          className="mt-6 inline-block w-full rounded-none bg-black py-3 text-sm font-semibold text-white hover:bg-gray-900"
-        >
-          Try again
-        </Link>
-      </div>
-    </div>
-  )
-}
-
+/**
+ * Verifies the Stripe checkout session and renders a success or failure page.
+ * @returns Success page, FailurePage, or redirect to guest verify-order endpoint
+ * @called-by Stripe Checkout (returnUrl)
+ */
 export default async function CheckoutReturnPage({ searchParams }: Props) {
   const { session_id } = await searchParams
 
@@ -90,5 +75,41 @@ export default async function CheckoutReturnPage({ searchParams }: Props) {
       message="Your card wasn't charged. Please try again."
       href="/checkout"
     />
+  )
+}
+
+// --- Helpers ---
+
+/**
+ * Renders a failure page with an error message and a retry link.
+ * @param message - Error description shown to the user
+ * @param href - URL for the "Try again" link
+ * @called-by CheckoutReturnPage
+ */
+function FailurePage({ message, href }: { message: string; href: string }) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
+      <div className="max-w-md rounded-lg border border-gray-200 bg-white p-8 text-center shadow-sm">
+        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
+          <svg
+            className="h-6 w-6 text-red-600"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </div>
+        <h1 className="mb-2 text-xl font-semibold text-gray-900">Payment didn&apos;t go through</h1>
+        <p className="text-sm text-gray-500">{message}</p>
+        <Link
+          href={href}
+          className="mt-6 inline-block w-full rounded-none bg-black py-3 text-sm font-semibold text-white hover:bg-gray-900"
+        >
+          Try again
+        </Link>
+      </div>
+    </div>
   )
 }

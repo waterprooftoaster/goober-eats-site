@@ -1,9 +1,21 @@
+/**
+ * @file page.tsx
+ * @description Banner slot page that shows a "Become a Swiper" CTA to non-swiper users.
+ *   Hidden entirely for authenticated swipers. Called by: Next.js parallel route (@banner)
+ * @dependencies lib/supabase/server.ts, components/banner-guard.tsx
+ */
+
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/server'
 import { getAuthenticatedUser } from '@/lib/api/helpers'
 import { BannerGuard } from '@/components/banner-guard'
 
+/**
+ * Renders a swiper recruitment banner for non-swiper users; returns null for swipers.
+ * @returns Banner UI or null
+ * @called-by Next.js parallel route (@banner)
+ */
 export default async function BannerSlot() {
   const supabase = await createClient()
   const user = await getAuthenticatedUser(supabase)

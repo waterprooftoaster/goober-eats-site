@@ -1,3 +1,10 @@
+/**
+ * @file layout.tsx
+ * @description Root layout wrapping every page with header, banner slot, modal slot, chat panel, and font variables.
+ *   Called by: Next.js App Router (wraps all routes)
+ * @dependencies components/header.tsx, components/chat-panel.tsx, lib/supabase/server.ts
+ */
+
 import type { Metadata } from "next";
 import { Plus_Jakarta_Sans, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -24,6 +31,14 @@ export const metadata: Metadata = {
   description: "Peer-to-peer student meal swipe sharing app",
 };
 
+/**
+ * Renders the root HTML shell with fonts, providers, header, banner, modal, and chat panel.
+ * @param children - Page content
+ * @param modal - Parallel route @modal slot
+ * @param banner - Parallel route @banner slot
+ * @returns Full HTML document with all layout wrappers
+ * @called-by Next.js App Router
+ */
 export default async function RootLayout({
   children,
   modal,

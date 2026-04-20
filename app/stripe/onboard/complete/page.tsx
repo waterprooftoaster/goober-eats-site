@@ -1,9 +1,22 @@
+/**
+ * @file page.tsx
+ * @description Stripe Connect onboarding completion page; syncs Stripe account status directly,
+ *   auto-activates the swiper, and redirects to home. Shows a fallback if setup is incomplete.
+ *   Called by: Stripe Connect returnUrl after onboarding
+ * @dependencies lib/supabase/server.ts, lib/supabase/service.ts, lib/stripe/client.ts
+ */
+
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getStripe } from '@/lib/stripe/client'
 
+/**
+ * Syncs the Stripe Connect account status, activates the swiper profile if complete, and redirects.
+ * @returns Fallback "Almost there" page if onboarding or school setup is incomplete
+ * @called-by Stripe Connect returnUrl
+ */
 export default async function StripeOnboardCompletePage() {
   const supabase = await createClient()
   const {

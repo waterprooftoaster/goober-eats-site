@@ -1,3 +1,10 @@
+/**
+ * @file page.tsx
+ * @description My Orders page listing all orders placed by the authenticated user, newest first.
+ *   Called by: Next.js routing (direct navigation to /orders)
+ * @dependencies lib/supabase/server.ts, lib/api/helpers.ts
+ */
+
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getAuthenticatedUser } from '@/lib/api/helpers'
@@ -19,18 +26,11 @@ type MyOrder = {
   eateries: EateryJoin
 }
 
-function formatDollars(cents: number) {
-  return `$${(cents / 100).toFixed(2)}`
-}
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })
-}
-
+/**
+ * Renders a list of all orders placed by the authenticated user, newest first.
+ * @returns Orders list UI; redirects to /auth/login if unauthenticated
+ * @called-by Next.js routing (/orders)
+ */
 export default async function MyOrdersPage() {
   const supabase = await createClient()
   const user = await getAuthenticatedUser(supabase)
@@ -74,4 +74,20 @@ export default async function MyOrdersPage() {
       </div>
     </main>
   )
+}
+
+// --- Helpers ---
+
+/** Formats a cent amount as a US dollar string (e.g. 500 → "$5.00"). */
+function formatDollars(cents: number) {
+  return `$${(cents / 100).toFixed(2)}`
+}
+
+/** Formats an ISO timestamp as a short locale date string (e.g. "Jan 15, 2025"). */
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
 }

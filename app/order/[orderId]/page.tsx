@@ -1,3 +1,11 @@
+/**
+ * @file page.tsx
+ * @description Guest order entry page that validates the order token cookie and renders GuestPanelOpener.
+ *   Only serves unauthenticated guests; authenticated users are redirected to home immediately.
+ *   Called by: Stripe checkout return redirect (guest flow)
+ * @dependencies lib/supabase/server.ts, lib/supabase/service.ts, lib/api/guest-auth.ts
+ */
+
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { z } from 'zod'
@@ -9,6 +17,11 @@ import type { OrderStatus } from '@/lib/types/database'
 
 const uuidSchema = z.string().uuid()
 
+/**
+ * Validates the guest order token cookie and renders GuestPanelOpener to bootstrap the chat session.
+ * @returns GuestPanelOpener component; redirects to / if the token is missing or invalid
+ * @called-by Stripe checkout return redirect (guest flow)
+ */
 export default async function OrderPage({
   params,
 }: {

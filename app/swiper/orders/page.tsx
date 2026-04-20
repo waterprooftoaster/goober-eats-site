@@ -1,8 +1,20 @@
+/**
+ * @file page.tsx
+ * @description Open orders page for swipers; lists unclaimed orders from the swiper's school, oldest first.
+ *   Called by: Next.js routing (direct navigation to /swiper/orders)
+ * @dependencies lib/supabase/server.ts, lib/api/helpers.ts, app/swiper/orders/pending-orders-list.tsx
+ */
+
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getAuthenticatedUser } from '@/lib/api/helpers'
 import { PendingOrdersList, type PendingOrder } from './pending-orders-list'
 
+/**
+ * Fetches open unclaimed orders for the swiper's school and renders PendingOrdersList.
+ * @returns PendingOrdersList; redirects to /auth/login if unauthenticated or /account if not a swiper
+ * @called-by Next.js routing (/swiper/orders)
+ */
 export default async function PendingOrdersPage() {
   const supabase = await createClient()
   const user = await getAuthenticatedUser(supabase)

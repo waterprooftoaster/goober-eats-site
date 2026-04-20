@@ -1,7 +1,20 @@
+/**
+ * @file page.tsx
+ * @description Home page displaying active eateries grouped by school.
+ *   Auto-seeds the database in development when no eateries are found.
+ *   Called by: Next.js routing (direct navigation to /)
+ * @dependencies lib/supabase/server.ts, lib/dev-seed.ts, components/eatery-card.tsx
+ */
+
 import { createClient } from '@/lib/supabase/server'
 import { EateryCard } from '@/components/eatery-card'
 import { seedDevEateries } from '@/lib/dev-seed'
 
+/**
+ * Fetches active eateries, groups them by school, and renders each as an EateryCard.
+ * @returns Eatery grid grouped by school name
+ * @called-by Next.js routing (/)
+ */
 export default async function Home() {
     const supabase = await createClient()
 

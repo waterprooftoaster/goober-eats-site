@@ -1,5 +1,12 @@
 'use client'
 
+/**
+ * @file pending-orders-list.tsx
+ * @description Client component displaying the swiper's open order queue with a detail modal and accept action.
+ *   Called by: app/swiper/orders/page.tsx
+ * @dependencies components/chat-panel.tsx
+ */
+
 import { useState } from 'react'
 import { useChatPanel } from '@/components/chat-panel'
 import type { OrderItem } from '@/lib/types/database'
@@ -24,6 +31,11 @@ function formatDollars(cents: number) {
   return `$${(cents / 100).toFixed(2)}`
 }
 
+/**
+ * Converts an ISO timestamp to a human-readable relative time string (e.g. "5m ago", "2h ago").
+ * @param iso - ISO 8601 timestamp string
+ * @returns Relative time label
+ */
 function timeAgo(iso: string) {
   const diffMs = Date.now() - new Date(iso).getTime()
   const mins = Math.floor(diffMs / 60000)
@@ -34,6 +46,12 @@ function timeAgo(iso: string) {
   return `${Math.floor(hrs / 24)}d ago`
 }
 
+/**
+ * Renders the list of open orders with per-item detail modal and accept button for swipers.
+ * @param orders - Initial list of open unclaimed orders from the server
+ * @returns Order list with expandable detail modal; updates in place on accept or race-condition failure
+ * @called-by app/swiper/orders/page.tsx
+ */
 export function PendingOrdersList({ orders: initialOrders }: Props) {
   const [orders, setOrders] = useState<PendingOrder[]>(initialOrders)
   const [selectedOrder, setSelectedOrder] = useState<PendingOrder | null>(null)

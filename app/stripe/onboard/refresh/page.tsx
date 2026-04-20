@@ -1,5 +1,16 @@
+/**
+ * @file page.tsx
+ * @description Stripe Connect onboarding refresh page shown when the onboarding session expires.
+ *   Called by: Stripe Connect refreshUrl when the onboarding link times out
+ */
+
 import Link from 'next/link'
 
+/**
+ * Renders a session-expired message with a link back to swiper registration.
+ * @returns Session expired UI
+ * @called-by Stripe Connect refreshUrl
+ */
 export default function StripeOnboardRefreshPage() {
   return (
     <main className="min-h-screen bg-white">

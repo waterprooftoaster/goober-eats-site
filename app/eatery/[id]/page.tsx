@@ -1,3 +1,11 @@
+/**
+ * @file page.tsx
+ * @description Eatery detail page showing the hero image, name, address, and menu grid.
+ *   Calls the get_menu_for_eatery RPC to fetch menu groups with items.
+ *   Called by: Next.js routing (direct navigation to /eatery/[id])
+ * @dependencies lib/supabase/server.ts, lib/types/database.ts
+ */
+
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { EateryHero } from '@/components/eatery-hero'
@@ -8,18 +16,12 @@ interface Props {
   params: Promise<{ id: string }>
 }
 
-function parseMenuGroups(data: unknown): MenuGroupWithItems[] {
-  if (
-    typeof data !== 'object' ||
-    data === null ||
-    !('groups' in data) ||
-    !Array.isArray((data as { groups: unknown }).groups)
-  ) {
-    return []
-  }
-  return (data as { groups: MenuGroupWithItems[] }).groups
-}
-
+/**
+ * Renders the eatery detail page with hero, info header, and full menu.
+ * @param props - Route params containing the eatery UUID
+ * @returns Eatery detail UI; calls notFound() if eatery is missing or inactive
+ * @called-by Next.js routing (/eatery/[id])
+ */
 export default async function EateryPage({ params }: Props) {
   const { id } = await params
   const supabase = await createClient()
@@ -62,4 +64,24 @@ export default async function EateryPage({ params }: Props) {
       </div>
     </main>
   )
+}
+
+// --- Helpers ---
+
+/**
+ * Safely parses the RPC response into a typed MenuGroupWithItems array.
+ * @param data - Raw RPC response (unknown shape from Supabase RPC)
+ * @returns Typed array, or empty array if the shape is unexpected
+ * @called-by EateryPage
+ */
+function parseMenuGroups(data: unknown): MenuGroupWithItems[] {
+  if (
+    typeof data !== 'object' ||
+    data === null ||
+    !('groups' in data) ||
+    !Array.isArray((data as { groups: unknown }).groups)
+  ) {
+    return []
+  }
+  return (data as { groups: MenuGroupWithItems[] }).groups
 }

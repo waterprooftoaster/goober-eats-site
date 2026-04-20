@@ -1,8 +1,21 @@
+/**
+ * @file page.tsx
+ * @description Swiper registration page; fetches user profile and schools, then renders the registration form.
+ *   Redirects swipers already registered to /account.
+ *   Called by: Next.js routing (direct navigation to /swiper-registration)
+ * @dependencies lib/supabase/server.ts, app/swiper-registration/swiper-registration-form.tsx
+ */
+
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getAuthenticatedUser } from '@/lib/api/helpers'
 import { SwiperRegistrationForm } from './swiper-registration-form'
 
+/**
+ * Fetches profile and available schools, then renders SwiperRegistrationForm.
+ * @returns SwiperRegistrationForm; redirects to /auth/login, /auth/login?onboarding=true, or /account as appropriate
+ * @called-by Next.js routing (/swiper-registration)
+ */
 export default async function SwiperRegistrationPage() {
   const supabase = await createClient()
   const user = await getAuthenticatedUser(supabase)

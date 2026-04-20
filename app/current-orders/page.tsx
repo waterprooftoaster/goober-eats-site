@@ -1,8 +1,20 @@
+/**
+ * @file page.tsx
+ * @description Current orders page listing the authenticated user's open and in-progress orders with chat.
+ *   Called by: Next.js routing (direct navigation to /current-orders)
+ * @dependencies lib/supabase/server.ts, app/current-orders/current-orders-list.tsx
+ */
+
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { CurrentOrdersList } from './current-orders-list'
 import type { OrderStatus } from '@/lib/types/database'
 
+/**
+ * Fetches the authenticated user's active orders and renders them with chat panels.
+ * @returns CurrentOrdersList; redirects to /auth/login if unauthenticated
+ * @called-by Next.js routing (/current-orders)
+ */
 export default async function CurrentOrdersPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
