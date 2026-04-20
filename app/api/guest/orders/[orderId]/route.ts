@@ -1,3 +1,10 @@
+/**
+ * @file route.ts
+ * @description PATCH endpoint for guests to associate an anonymous user ID with their order.
+ *   Called by: guest checkout return flow
+ * @dependencies lib/supabase/service.ts, lib/api/guest-auth.ts, lib/api/helpers.ts
+ */
+
 import { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -8,6 +15,12 @@ const patchBodySchema = z.object({
   anon_user_id: z.string().uuid(),
 })
 
+/**
+ * Associates an anonymous user ID with a guest order (idempotent on the same ID; 409 on mismatch).
+ * @param params - Route params containing the order UUID
+ * @returns 200 on success; 400/401/403/409 on validation or conflict
+ * @called-by guest checkout return flow
+ */
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ orderId: string }> }

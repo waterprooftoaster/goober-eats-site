@@ -1,8 +1,23 @@
+/**
+ * @file route.ts
+ * @description PATCH endpoint for swipers to atomically claim an open order.
+ *   Runs eligibility checks via the user client then uses the service client for the
+ *   atomic swiper_id claim (RLS cannot cover the null → user transition).
+ *   Called by: swiper orders UI (accept button)
+ * @dependencies lib/supabase/server.ts, lib/supabase/service.ts, lib/api/helpers.ts
+ */
+
 import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { apiError, apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
 
+/**
+ * Atomically claims an open order for the calling swiper after eligibility validation.
+ * @param params - Route params containing the order UUID
+ * @returns Updated order row on success; 401/403/404/409 on auth, eligibility, or race failures
+ * @called-by swiper orders UI (accept button)
+ */
 export async function PATCH(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

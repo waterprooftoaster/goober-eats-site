@@ -1,3 +1,10 @@
+/**
+ * @file route.ts
+ * @description DELETE endpoint that removes a single cart item, verified to belong to the caller's cart.
+ *   Called by: frontend cart UI (remove item button)
+ * @dependencies lib/supabase/server.ts, lib/supabase/service.ts, lib/api/helpers.ts
+ */
+
 import { NextRequest } from 'next/server'
 import { cookies } from 'next/headers'
 import { z } from 'zod'
@@ -7,6 +14,12 @@ import { apiError, apiSuccess, getAuthenticatedUser, CART_SESSION_COOKIE } from 
 
 const uuidSchema = z.string().uuid()
 
+/**
+ * Removes a cart item by ID, verifying it belongs to the caller's cart before deleting.
+ * @param params - Route params containing the cart item UUID
+ * @returns 200 on success; 400/403/404 on validation or ownership failures
+ * @called-by frontend cart UI remove button
+ */
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

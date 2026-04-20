@@ -1,9 +1,21 @@
+/**
+ * @file route.ts
+ * @description GET endpoint returning the full enriched cart for the current user or guest session.
+ *   Called by: app/cart/page.tsx, components/cart-panel.tsx
+ * @dependencies lib/supabase/server.ts, lib/supabase/service.ts, lib/cart/load.ts, lib/api/helpers.ts
+ */
+
 import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
 import { loadCart } from '@/lib/cart/load'
 
+/**
+ * Returns the full enriched cart (eatery info, items, options) for the current user or guest.
+ * @returns JSON { data: { cart: LoadedCart | null } }
+ * @called-by app/cart/page.tsx, components/cart-panel.tsx
+ */
 export async function GET() {
   const supabase = await createClient()
   const user = await getAuthenticatedUser(supabase)

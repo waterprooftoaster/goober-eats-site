@@ -1,3 +1,11 @@
+/**
+ * @file route.ts
+ * @description POST endpoint that creates a Stripe embedded Checkout session from the caller's cart.
+ *   Supports both authenticated and guest users through a unified code path.
+ *   Called by: components/checkout-form.tsx
+ * @dependencies lib/stripe/client.ts, lib/cart/load.ts, lib/pricing.ts, lib/api/helpers.ts
+ */
+
 import { NextRequest } from 'next/server'
 import { cookies } from 'next/headers'
 import { z } from 'zod'
@@ -17,6 +25,11 @@ const checkoutBodySchema = z.object({
 // M-1: Guest session cookie must be a v4 UUID
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
+/**
+ * Creates a Stripe embedded Checkout session from the caller's current cart.
+ * @returns JSON { clientSecret } for the Stripe.js embedded form; 400/500 on invalid cart or Stripe error
+ * @called-by components/checkout-form.tsx
+ */
 export async function POST(request: NextRequest) {
   const body = await request.json()
   const parsed = checkoutBodySchema.safeParse(body)

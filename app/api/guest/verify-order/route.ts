@@ -1,3 +1,12 @@
+/**
+ * @file route.ts
+ * @description GET endpoint that verifies a guest order by Stripe PaymentIntent ID, sets the
+ *   guest auth cookie, and redirects to the order page. Polls up to 5 times to handle
+ *   webhook delivery lag.
+ *   Called by: app/checkout/return/page.tsx (guest checkout return)
+ * @dependencies lib/supabase/service.ts, lib/api/guest-auth.ts
+ */
+
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { guestOrderCookieName } from '@/lib/api/guest-auth'
@@ -6,6 +15,11 @@ const PI_ID_RE = /^pi_[a-zA-Z0-9_]+$/
 const MAX_ATTEMPTS = 5
 const RETRY_DELAY_MS = 1000
 
+/**
+ * Verifies a guest order by Stripe PaymentIntent ID, sets the auth cookie, and redirects to the order page.
+ * @returns Redirect to /order/:id on success; 400/403/404/500 on failure
+ * @called-by app/checkout/return/page.tsx (guest checkout return)
+ */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const piId = searchParams.get('pi_id')

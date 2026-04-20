@@ -1,6 +1,19 @@
+/**
+ * @file route.ts
+ * @description GET endpoint returning open, unaccepted orders for the active swiper's school eateries.
+ *   School is resolved server-side from the swiper's profile to prevent spoofing.
+ *   Called by: app/swiper/orders/pending-orders-list.tsx
+ * @dependencies lib/supabase/server.ts, lib/api/helpers.ts
+ */
+
 import { createClient } from '@/lib/supabase/server'
 import { apiError, apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
 
+/**
+ * Returns open, unaccepted orders for the active swiper's school eateries, oldest first.
+ * @returns JSON array of order rows with eatery info; 401/403 if not authenticated or not a swiper
+ * @called-by app/swiper/orders/pending-orders-list.tsx
+ */
 export async function GET() {
   const supabase = await createClient()
   const user = await getAuthenticatedUser(supabase)

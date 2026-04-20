@@ -1,9 +1,22 @@
+/**
+ * @file route.ts
+ * @description PATCH endpoint to update the authenticated user's profile (school and/or swiper status).
+ *   Uses service client for is_swiper writes because the column is REVOKE UPDATE FROM authenticated.
+ *   Called by: app/account/page.tsx
+ * @dependencies lib/supabase/server.ts, lib/supabase/service.ts, lib/types/api.ts, lib/api/helpers.ts
+ */
+
 import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { updateProfileSchema } from '@/lib/types/api'
 import { apiError, apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
 
+/**
+ * Updates the authenticated user's school_id and/or is_swiper status.
+ * @returns Updated profile row on success; 401/404/422 on auth, not-found, or business rule violations
+ * @called-by app/account/page.tsx
+ */
 export async function PATCH(request: NextRequest) {
   const supabase = await createClient()
   const user = await getAuthenticatedUser(supabase)

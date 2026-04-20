@@ -1,3 +1,11 @@
+/**
+ * @file route.ts
+ * @description Stripe webhook handler: creates orders on payment_intent.succeeded and
+ *   marks swipers active on account.updated. Idempotent via PI ID unique index.
+ *   Called by: Stripe webhook delivery (not directly by app code)
+ * @dependencies lib/stripe/client.ts, lib/supabase/service.ts, lib/cart/load.ts, lib/pricing.ts
+ */
+
 import { NextRequest } from 'next/server'
 import { getStripe } from '@/lib/stripe/client'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -10,6 +18,11 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f
 
 export const dynamic = 'force-dynamic'
 
+/**
+ * Handles Stripe webhook events: creates orders on payment_intent.succeeded, marks swipers active on account.updated.
+ * @returns JSON { received: true } on success; 400/500 on signature validation or processing errors
+ * @called-by Stripe webhook delivery
+ */
 export async function POST(request: NextRequest) {
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
     if (!webhookSecret) {

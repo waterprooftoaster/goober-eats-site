@@ -1,8 +1,21 @@
+/**
+ * @file route.ts
+ * @description GET endpoint for guests to load their order's conversation and messages.
+ *   Called by: app/order/[orderId]/page.tsx (guest view)
+ * @dependencies lib/supabase/service.ts, lib/api/guest-auth.ts, lib/api/helpers.ts
+ */
+
 import { NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { validateGuestOrder } from '@/lib/api/guest-auth'
 import { apiSuccess } from '@/lib/api/helpers'
 
+/**
+ * Returns the conversation and messages for a guest's order, authenticated via cookie.
+ * @param params - Route params containing the order UUID
+ * @returns JSON { conversation, messages, order_status } or 400/401/403 on auth failure
+ * @called-by app/order/[orderId]/page.tsx (guest view)
+ */
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ orderId: string }> }

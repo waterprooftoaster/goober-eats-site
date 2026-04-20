@@ -15,6 +15,11 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { addCartItemSchema } from '@/lib/types/api'
 import { apiError, apiSuccess, getAuthenticatedUser, getOrCreateSessionId, CART_SESSION_COOKIE } from '@/lib/api/helpers'
 
+/**
+ * Adds a menu item with selected options to the cart; auto-inserts linked items when applicable.
+ * @returns 201 with the new cart_item row; 400/404/409 on validation or eatery conflict
+ * @called-by frontend add-to-cart button
+ */
 export async function POST(request: NextRequest) {
   const body = await request.json()
   const parsed = addCartItemSchema.safeParse(body)

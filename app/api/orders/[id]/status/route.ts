@@ -1,3 +1,13 @@
+/**
+ * @file route.ts
+ * @description PATCH endpoint to advance an order through the state machine.
+ *   Validates transitions, enforces per-role authorization, guards completion (payment + delivery photo),
+ *   triggers Stripe transfer on completion, and sends system chat messages on status change.
+ *   Called by: swiper/orderer order action buttons
+ * @dependencies lib/supabase/server.ts, lib/supabase/service.ts, lib/orders/state-machine.ts,
+ *               lib/stripe/transfer.ts, lib/chat/system-messages.ts
+ */
+
 import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -14,6 +24,12 @@ const STATUS_MESSAGES: Partial<Record<string, string>> = {
   cancelled: 'Order was cancelled',
 }
 
+/**
+ * Advances an order through the state machine; triggers Stripe transfer on completion.
+ * @param params - Route params containing the order UUID
+ * @returns Updated order row on success; 400/401/403/404/409 on validation, auth, or race failures
+ * @called-by swiper/orderer order action buttons
+ */
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

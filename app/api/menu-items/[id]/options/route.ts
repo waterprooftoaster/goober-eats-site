@@ -16,6 +16,12 @@ const paramsSchema = z.object({
   id: z.uuid(),
 })
 
+/**
+ * Returns option groups with their options for the given menu item, resolved via the junction table.
+ * @param params - Route params containing the menu item UUID
+ * @returns JSON { groups: GroupWithOptions[] }; 400/404 on invalid ID or missing item
+ * @called-by frontend menu item modal
+ */
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

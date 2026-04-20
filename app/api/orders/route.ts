@@ -1,7 +1,19 @@
+/**
+ * @file route.ts
+ * @description GET endpoint listing the authenticated user's orders, filterable by role and status.
+ *   Called by: app/orders/page.tsx, app/current-orders/page.tsx
+ * @dependencies lib/supabase/server.ts, lib/api/helpers.ts
+ */
+
 import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { apiError, apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
 
+/**
+ * Lists orders for the authenticated user, with optional role and status filters.
+ * @returns JSON array of order rows; 401 if unauthenticated
+ * @called-by app/orders/page.tsx, app/current-orders/page.tsx
+ */
 export async function GET(request: NextRequest) {
   const supabase = await createClient()
   const user = await getAuthenticatedUser(supabase)

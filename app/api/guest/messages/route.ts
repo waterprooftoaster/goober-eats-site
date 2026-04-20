@@ -1,9 +1,21 @@
+/**
+ * @file route.ts
+ * @description POST endpoint for guests to send messages in their order's conversation.
+ *   Called by: components/chat/ (guest chat panel)
+ * @dependencies lib/supabase/service.ts, lib/api/guest-auth.ts, lib/api/helpers.ts
+ */
+
 import { NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { sendMessageSchema } from '@/lib/types/api'
 import { validateGuestOrder } from '@/lib/api/guest-auth'
 import { apiError, apiSuccess } from '@/lib/api/helpers'
 
+/**
+ * Sends a message in the conversation for the guest's order.
+ * @returns 201 with the new message row; 400/401/403 on validation or auth failure
+ * @called-by components/chat/ (guest chat panel)
+ */
 export async function POST(request: NextRequest) {
   const body = await request.json()
   const parsed = sendMessageSchema.safeParse(body)

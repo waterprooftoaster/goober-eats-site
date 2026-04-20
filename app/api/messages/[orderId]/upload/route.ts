@@ -1,3 +1,11 @@
+/**
+ * @file route.ts
+ * @description POST endpoint for swipers to upload a delivery photo (JPEG/WebP, max 1MB).
+ *   Saves to Supabase Storage delivery-photos bucket and inserts a delivery_photo message row.
+ *   Called by: chat delivery photo send button
+ * @dependencies lib/supabase/server.ts, lib/api/helpers.ts
+ */
+
 import { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
@@ -7,6 +15,12 @@ const uuidSchema = z.string().uuid()
 const ALLOWED_TYPES = ['image/jpeg', 'image/webp'] as const
 const MAX_SIZE_BYTES = 1024 * 1024
 
+/**
+ * Uploads a delivery photo for the swiper and creates a delivery_photo message in the conversation.
+ * @param params - Route params containing the order UUID
+ * @returns 201 with the new message row; 400/401/403/500 on validation, auth, or upload failures
+ * @called-by chat delivery photo send button
+ */
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ orderId: string }> }
