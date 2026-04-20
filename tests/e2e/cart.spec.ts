@@ -1,3 +1,9 @@
+/**
+ * @file cart.spec.ts
+ * @description E2E tests for the cart page and cart modal intercepted route.
+ *   Called by: Playwright test runner
+ */
+
 import { test, expect } from '@playwright/test'
 import { navigateToFirstEatery } from './helpers'
 

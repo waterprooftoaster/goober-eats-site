@@ -1,3 +1,9 @@
+/**
+ * @file cart.spec.ts
+ * @description Authenticated E2E tests for cart management (add, remove, clear).
+ *   Called by: Playwright "authenticated" project
+ */
+
 import { test, expect } from '@playwright/test'
 import { navigateToFirstEatery } from '../helpers'
 

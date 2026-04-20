@@ -1,3 +1,9 @@
+/**
+ * @file orders-status.spec.ts
+ * @description E2E tests for order status API endpoints (PATCH /api/orders/[id]/accept, etc.).
+ *   Called by: Playwright test runner
+ */
+
 import { test, expect } from '@playwright/test'
 
 const FAKE_ID = '00000000-0000-4000-8000-000000000001'

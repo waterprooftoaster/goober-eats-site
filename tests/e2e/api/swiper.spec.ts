@@ -1,3 +1,9 @@
+/**
+ * @file swiper.spec.ts
+ * @description E2E tests for swiper-related API endpoints, including authorization guard checks.
+ *   Called by: Playwright test runner
+ */
+
 import { test, expect } from '@playwright/test'
 
 test.describe('Swiper API — unauthenticated', () => {

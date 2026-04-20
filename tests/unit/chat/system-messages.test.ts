@@ -1,3 +1,9 @@
+/**
+ * @file system-messages.test.ts
+ * @description Unit tests for system message generation from order status transitions.
+ *   Called by: Vitest
+ */
+
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const { mockFrom } = vi.hoisted(() => ({

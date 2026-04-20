@@ -1,3 +1,9 @@
+/**
+ * @file count.test.ts
+ * @description Unit tests for the GET /api/cart/count route handler.
+ *   Called by: Vitest
+ */
+
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // ---------------------------------------------------------------------------

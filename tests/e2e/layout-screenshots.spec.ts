@@ -1,3 +1,9 @@
+/**
+ * @file layout-screenshots.spec.ts
+ * @description Visual snapshot tests that capture page layout screenshots for key routes.
+ *   Called by: Playwright test runner
+ */
+
 import { test } from '@playwright/test'
 import path from 'path'
 

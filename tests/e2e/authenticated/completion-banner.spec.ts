@@ -1,3 +1,9 @@
+/**
+ * @file completion-banner.spec.ts
+ * @description Authenticated E2E tests for the order completion banner shown to swipers.
+ *   Called by: Playwright "authenticated" project
+ */
+
 import { test, expect } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 

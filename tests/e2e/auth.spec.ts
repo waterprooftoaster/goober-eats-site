@@ -1,3 +1,9 @@
+/**
+ * @file auth.spec.ts
+ * @description E2E tests for the sign-in/sign-up authentication flow.
+ *   Called by: Playwright test runner
+ */
+
 import { test, expect } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 

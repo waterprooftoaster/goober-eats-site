@@ -1,3 +1,9 @@
+/**
+ * @file cart-badge.spec.ts
+ * @description E2E tests for the header cart badge item count.
+ *   Called by: Playwright test runner
+ */
+
 import { test, expect } from '@playwright/test'
 import { navigateToFirstEatery } from './helpers'
 

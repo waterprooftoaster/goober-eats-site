@@ -1,3 +1,9 @@
+/**
+ * @file verify-order.test.ts
+ * @description Unit tests for the GET /api/guest/verify-order route handler.
+ *   Called by: Vitest
+ */
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { NextRequest } from 'next/server'
 

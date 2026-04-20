@@ -1,3 +1,9 @@
+/**
+ * @file completion-banner.test.tsx
+ * @description Unit tests for the CompletionBanner component shown to swipers after order completion.
+ *   Called by: Vitest
+ */
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'

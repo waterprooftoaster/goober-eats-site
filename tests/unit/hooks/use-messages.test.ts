@@ -1,3 +1,9 @@
+/**
+ * @file use-messages.test.ts
+ * @description Unit tests for the useMessages hook (Realtime message subscription).
+ *   Called by: Vitest
+ */
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
 import type { Conversation, Message } from '@/lib/types/messaging'

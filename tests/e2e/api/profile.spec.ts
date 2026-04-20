@@ -1,3 +1,9 @@
+/**
+ * @file profile.spec.ts
+ * @description E2E tests for PATCH /api/profile covering unauthenticated and authenticated cases.
+ *   Called by: Playwright test runner
+ */
+
 import { test, expect } from '@playwright/test'
 
 test.describe('PATCH /api/profile — unauthenticated', () => {

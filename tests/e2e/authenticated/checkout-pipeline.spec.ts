@@ -1,11 +1,9 @@
 /**
- * Full checkout pipeline E2E: guest places order → swiper accepts → completes → paid.
- *
- * Uses Playwright's `request` API + direct webhook simulation.
- * The payment_intent.succeeded webhook is called with a signed payload
- * to create the guest order (matching the production flow).
- *
- * Requires real Stripe test-mode keys in env to verify the full paid transition.
+ * @file checkout-pipeline.spec.ts
+ * @description E2E test for the full checkout pipeline: guest order → swiper accepts → completes → paid.
+ *   Simulates payment_intent.succeeded via signed webhook payload to match production flow.
+ *   Requires real Stripe test-mode keys in env.
+ *   Called by: Playwright "authenticated" project
  */
 import { test, expect } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'

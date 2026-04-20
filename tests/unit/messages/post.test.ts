@@ -1,3 +1,9 @@
+/**
+ * @file post.test.ts
+ * @description Unit tests for the POST /api/messages route handler.
+ *   Called by: Vitest
+ */
+
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
 

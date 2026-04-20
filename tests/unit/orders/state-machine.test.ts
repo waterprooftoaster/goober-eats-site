@@ -1,3 +1,9 @@
+/**
+ * @file state-machine.test.ts
+ * @description Unit tests for the order state machine canTransition function.
+ *   Called by: Vitest
+ */
+
 import { describe, it, expect } from 'vitest'
 import { canTransition } from '@/lib/orders/state-machine'
 

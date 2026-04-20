@@ -1,3 +1,9 @@
+/**
+ * @file chat.spec.ts
+ * @description Authenticated E2E tests for in-order chat between orderer and swiper.
+ *   Called by: Playwright "authenticated" project
+ */
+
 import { test, expect } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 

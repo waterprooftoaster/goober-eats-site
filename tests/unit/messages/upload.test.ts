@@ -1,3 +1,9 @@
+/**
+ * @file upload.test.ts
+ * @description Unit tests for the message photo upload route handler (POST /api/messages/upload).
+ *   Called by: Vitest
+ */
+
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
 

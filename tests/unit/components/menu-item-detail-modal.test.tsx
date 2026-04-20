@@ -1,3 +1,9 @@
+/**
+ * @file menu-item-detail-modal.test.tsx
+ * @description Unit tests for the MenuItemDetailModal component (item options, add-to-cart).
+ *   Called by: Vitest
+ */
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import React from 'react'
 import { render, screen, waitFor } from '@testing-library/react'

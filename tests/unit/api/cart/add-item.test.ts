@@ -159,6 +159,48 @@ describe('normal option (no linked item)', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Regression: menu_items lookup uses the current `eatery_id` column
+// (guards against the restaurant_id → eatery_id rename being undone or
+// the DB migration drifting away from the code — see bug where the DB
+// still had `restaurant_id` and every POST returned 404).
+// ---------------------------------------------------------------------------
+
+describe('regression: menu_items lookup column', () => {
+  it('selects id, eatery_id and returns 201 on happy path with no options', async () => {
+    const menuSelect = vi.fn()
+    const menuChain: Record<string, unknown> = {
+      eq: vi.fn(function this_eq(this: Record<string, unknown>) { return this }),
+      single: vi.fn(() => Promise.resolve({ data: { id: MENU_ITEM_ID, eatery_id: EATERY_ID }, error: null })),
+    }
+    menuSelect.mockImplementation(() => menuChain)
+    menuChain.select = menuSelect
+
+    const cartItemResult = { data: { id: CART_ITEM_ID, cart_id: CART_ID, menu_item_id: MENU_ITEM_ID, quantity: 1, selected_options: [] }, error: null }
+    const cartItemsChain: Record<string, unknown> = {
+      select: vi.fn(function this_sel(this: Record<string, unknown>) { return this }),
+      single: vi.fn(() => Promise.resolve(cartItemResult)),
+    }
+    cartItemsChain.insert = vi.fn(() => cartItemsChain)
+
+    let cartsCallCount = 0
+    mockServiceFrom.mockImplementation((table: string) => {
+      if (table === 'menu_items') return menuChain
+      if (table === 'carts') {
+        cartsCallCount++
+        if (cartsCallCount === 1) return dbChain({ data: null, error: null })
+        return dbChain({ data: { id: CART_ID, eatery_id: EATERY_ID }, error: null })
+      }
+      if (table === 'cart_items') return cartItemsChain
+      return dbChain()
+    })
+
+    const res = await POST(buildRequest({ menu_item_id: MENU_ITEM_ID, selected_options: [] }))
+    expect(res.status).toBe(201)
+    expect(menuSelect).toHaveBeenCalledWith('id, eatery_id')
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Branch B: linked option (linked_menu_item_id IS NOT NULL)
 // ---------------------------------------------------------------------------
 

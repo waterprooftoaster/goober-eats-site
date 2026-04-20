@@ -1,3 +1,9 @@
+/**
+ * @file webhooks.test.ts
+ * @description Unit tests for the Stripe webhook route handler (POST /api/stripe/webhook).
+ *   Called by: Vitest
+ */
+
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
 import Stripe from 'stripe'

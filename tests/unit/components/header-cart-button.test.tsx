@@ -1,3 +1,9 @@
+/**
+ * @file header-cart-button.test.tsx
+ * @description Unit tests for the HeaderCartButton component (cart count badge in the header).
+ *   Called by: Vitest
+ */
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { usePathname } from 'next/navigation'

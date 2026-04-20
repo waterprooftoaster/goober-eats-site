@@ -1,15 +1,9 @@
 /**
- * E2E tests for the guest anonymous auth + Realtime chat flow.
- *
- * These tests verify:
- * 1. Navigating to /order/guest/[id] triggers anon sign-in and opens the chat panel.
- * 2. Messages inserted by the swiper appear via Realtime (no polling).
- * 3. Guests can send messages that are persisted with their anon user ID.
- * 4. Status changes (accept, un-accept, complete) propagate via Realtime to the panel.
- *
- * Runs in the "chromium" (unauthenticated) Playwright project.
- * Swiper actions are simulated directly via the service client to avoid needing
- * the test user's cookie-based session in this project.
+ * @file guest-chat.spec.ts
+ * @description E2E tests for guest anonymous auth and Realtime chat.
+ *   Verifies anon sign-in, Realtime message delivery, guest send, and order status propagation.
+ *   Swiper actions are simulated via the service client (no auth cookie needed).
+ *   Called by: Playwright "chromium" (unauthenticated) project
  */
 
 import { test, expect } from '@playwright/test'

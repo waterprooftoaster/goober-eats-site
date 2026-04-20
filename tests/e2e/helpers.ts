@@ -1,3 +1,10 @@
+/**
+ * @file helpers.ts
+ * @description Playwright E2E helper utilities shared across specs.
+ *   Provides navigation, DOM querying, and URL-extraction helpers.
+ *   Called by: tests/e2e/eatery.spec.ts, cart.spec.ts, cart-badge.spec.ts, authenticated/cart.spec.ts
+ */
+
 import { type Page, expect } from '@playwright/test'
 
 // Minimum menu items required to satisfy test assertions (e.g. grid count >= 5)

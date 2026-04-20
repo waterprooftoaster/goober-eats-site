@@ -1,3 +1,10 @@
+/**
+ * @file auth.setup.ts
+ * @description Playwright global setup that creates a test user in Supabase and writes
+ *   browser auth state to .auth/user.json for the authenticated test project.
+ *   Called by: Playwright "authenticated" project (playwright.config.ts)
+ */
+
 import { test as setup } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 

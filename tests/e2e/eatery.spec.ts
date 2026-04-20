@@ -1,3 +1,9 @@
+/**
+ * @file eatery.spec.ts
+ * @description E2E tests for the eatery detail page: menu browsing, item modal, and add-to-cart.
+ *   Called by: Playwright test runner
+ */
+
 import { test, expect } from '@playwright/test'
 import { navigateToFirstEatery } from './helpers'
 

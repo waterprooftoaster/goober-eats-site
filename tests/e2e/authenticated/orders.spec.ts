@@ -1,3 +1,9 @@
+/**
+ * @file orders.spec.ts
+ * @description Authenticated E2E tests for the orders listing page.
+ *   Called by: Playwright "authenticated" project
+ */
+
 import { test, expect } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 

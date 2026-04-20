@@ -1,3 +1,9 @@
+/**
+ * @file messages-get.test.ts
+ * @description Unit tests for the GET /api/guest/messages route handler.
+ *   Called by: Vitest
+ */
+
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
 
