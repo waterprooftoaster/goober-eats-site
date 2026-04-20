@@ -1,3 +1,9 @@
+/**
+ * @file next.config.ts
+ * @description Next.js configuration: image remote patterns derived from NEXT_PUBLIC_SUPABASE_URL.
+ *   Called by: Next.js build and dev server
+ */
+
 import type { NextConfig } from 'next'
 
 // Derive hostname + port from NEXT_PUBLIC_SUPABASE_URL so this works for both

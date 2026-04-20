@@ -1,3 +1,9 @@
+/**
+ * @file proxy.ts
+ * @description Thin wrapper that runs Supabase session refresh middleware on every request.
+ *   Called by: middleware.ts
+ */
+
 import { updateSession } from '@/lib/supabase/middleware'
 import type { NextRequest } from 'next/server'
 
