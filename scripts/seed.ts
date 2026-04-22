@@ -252,7 +252,6 @@ async function seedDemoOrder(schoolId: string, ordererId: string): Promise<void>
       cart_screenshot_urls: [path1, path2],
       stripe_payment_intent_id: seedPiId,
       total_cents: totalCents,
-      special_instructions: null,
       status: 'open',
     })
     .select('id')

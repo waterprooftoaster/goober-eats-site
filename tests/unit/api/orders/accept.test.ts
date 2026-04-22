@@ -169,7 +169,6 @@ describe('PATCH /api/orders/[id]/accept', () => {
       cart_screenshot_urls: ['pre-checkout/ABCdef1234/00000000-0000-4000-8000-000000000010.png'],
       status: 'in_progress',
       total_cents: 1500,
-      special_instructions: null,
       guest_name: null,
       guest_phone: null,
       created_at: '2026-04-22T00:00:00Z',

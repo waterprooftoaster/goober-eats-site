@@ -142,7 +142,6 @@ async function handlePaymentIntentSucceeded(
   }
 
   const platformFeeCents = Math.round(totalCents * 0.10)
-  const specialInstructions = (meta.special_instructions ?? '').slice(0, 500) || null
 
   // Create order — unified path for guest and auth.
   // stripe_payment_intent_id has a unique index, so on retry (when the previous
@@ -158,7 +157,6 @@ async function handlePaymentIntentSucceeded(
       cart_screenshot_urls: screenshotPaths,
       stripe_payment_intent_id: pi.id,
       total_cents: totalCents,
-      special_instructions: specialInstructions,
       guest_name: guestName,
       guest_phone: null,
       guest_access_token: isGuest ? crypto.randomUUID() : null,

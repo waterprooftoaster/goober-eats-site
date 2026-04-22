@@ -126,7 +126,7 @@ export async function PATCH(
     .eq('id', id)
     .eq('status', order.status)
     .select(
-      'id, orderer_id, swiper_id, school_id, restaurant_name, cart_screenshot_urls, status, total_cents, special_instructions, guest_name, guest_phone, created_at, updated_at'
+      'id, orderer_id, swiper_id, school_id, restaurant_name, cart_screenshot_urls, status, total_cents, guest_name, guest_phone, created_at, updated_at'
     )
     .single()
 

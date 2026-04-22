@@ -82,7 +82,6 @@ function guestMetadata(overrides: Record<string, string> = {}) {
     restaurant_name: 'Chipotle',
     cart_screenshot_paths: VALID_PATH,
     total_cents: '1500',
-    special_instructions: '',
     guest_name: 'Test Guest',
     ...overrides,
   }
@@ -94,7 +93,6 @@ function authMetadata(overrides: Record<string, string> = {}) {
     restaurant_name: 'Chipotle',
     cart_screenshot_paths: VALID_PATH,
     total_cents: '1500',
-    special_instructions: '',
     orderer_id: VALID_ORDERER_ID,
     ...overrides,
   }
@@ -187,10 +185,11 @@ describe('POST /api/stripe/webhooks', () => {
         })
       )
 
-      // Regression guard — tips were removed as a feature; the orders insert
-      // payload must not include a tip_cents key.
+      // Regression guard — tips and special_instructions were removed as
+      // features; the orders insert payload must not carry either key.
       const [insertArg] = ordersInsert.insert.mock.calls[0]
       expect(insertArg).not.toHaveProperty('tip_cents')
+      expect(insertArg).not.toHaveProperty('special_instructions')
 
       expect(paymentsInsert.insert).toHaveBeenCalledWith(
         expect.objectContaining({
