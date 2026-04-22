@@ -46,20 +46,11 @@ export async function POST(request: NextRequest) {
     total_cents,
     school_id: bodySchoolId,
     guest_name,
-    tip_cents,
-    special_instructions,
   } = parsed.data
 
   const joinedPaths = cart_screenshot_paths.join(',')
   if (joinedPaths.length > METADATA_PATHS_MAX_CHARS) {
     return apiError('Too many or too long screenshot paths for Stripe metadata', 400)
-  }
-
-  // Tip is bounded to the order total so the orderer can never pledge a tip
-  // they did not pay for. (Stripe charges only `total_cents`; the tip is
-  // funded out of that same total when the swiper transfer settles.)
-  if ((tip_cents ?? 0) > total_cents) {
-    return apiError('tip_cents cannot exceed total_cents', 400)
   }
 
   const supabase = await createClient()
@@ -92,7 +83,6 @@ export async function POST(request: NextRequest) {
     schoolId = bodySchoolId
   }
 
-  const tipCents = tip_cents ?? 0
   const platformFeeCents = Math.round(total_cents * 0.10)
 
   const appUrl = process.env.NEXT_PUBLIC_URL
@@ -119,8 +109,6 @@ export async function POST(request: NextRequest) {
     restaurant_name,
     cart_screenshot_paths: joinedPaths,
     total_cents: String(total_cents),
-    tip_cents: String(tipCents),
-    special_instructions: special_instructions ?? '',
     platform_fee_cents: String(platformFeeCents),
   }
 

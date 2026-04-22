@@ -45,62 +45,72 @@ afterEach(() => {
 
 describe('OrderNewForm', () => {
   it('renders the restaurant name input', () => {
-    render(<OrderNewForm isGuest={false} />)
+    render(<OrderNewForm isGuest={false} schools={[]} />)
     expect(screen.getByPlaceholderText(/restaurant/i)).toBeInTheDocument()
   })
 
   it('renders the ScreenshotUploader trigger button', () => {
-    render(<OrderNewForm isGuest={false} />)
+    render(<OrderNewForm isGuest={false} schools={[]} />)
     expect(screen.getByRole('button', { name: /upload screenshots/i })).toBeInTheDocument()
   })
 
   it('renders the TotalInput field', () => {
-    render(<OrderNewForm isGuest={false} />)
+    render(<OrderNewForm isGuest={false} schools={[]} />)
     expect(screen.getByRole('textbox', { name: /total/i })).toBeInTheDocument()
   })
 
   it('renders the verbatim reminder copy', () => {
-    render(<OrderNewForm isGuest={false} />)
+    render(<OrderNewForm isGuest={false} schools={[]} />)
     expect(screen.getByText(VERBATIM_COPY)).toBeInTheDocument()
   })
 
   it('submit button is disabled when restaurant name is empty', () => {
-    render(<OrderNewForm isGuest={false} />)
+    render(<OrderNewForm isGuest={false} schools={[]} />)
     expect(screen.getByRole('button', { name: /place order/i })).toBeDisabled()
   })
 
   it('submit button is disabled when no screenshots are present', async () => {
     const user = userEvent.setup()
-    render(<OrderNewForm isGuest={false} />)
+    render(<OrderNewForm isGuest={false} schools={[]} />)
     await user.type(screen.getByPlaceholderText(/restaurant/i), 'Chipotle')
     expect(screen.getByRole('button', { name: /place order/i })).toBeDisabled()
   })
 
   it('submit button is disabled when total is missing', async () => {
     const user = userEvent.setup()
-    render(<OrderNewForm isGuest={false} />)
+    render(<OrderNewForm isGuest={false} schools={[]} />)
     await user.type(screen.getByPlaceholderText(/restaurant/i), 'Chipotle')
     // No file upload, no total — submit still disabled
     expect(screen.getByRole('button', { name: /place order/i })).toBeDisabled()
   })
 
   it('shows a guest name field when isGuest=true', () => {
-    render(<OrderNewForm isGuest={true} />)
+    render(<OrderNewForm isGuest={true} schools={[{ id: 's1', name: 'NYU' }]} />)
     expect(screen.getByPlaceholderText(/your name/i)).toBeInTheDocument()
   })
 
   it('does not show a guest name field when isGuest=false', () => {
-    render(<OrderNewForm isGuest={false} />)
+    render(<OrderNewForm isGuest={false} schools={[]} />)
     expect(screen.queryByPlaceholderText(/your name/i)).toBeNull()
   })
 
-  it('calls sign-upload endpoint then checkout-session on valid submit', async () => {
+  it('shows a school selector when isGuest=true', () => {
+    render(<OrderNewForm isGuest={true} schools={[{ id: 's1', name: 'NYU' }]} />)
+    expect(screen.getByLabelText(/school/i)).toBeInTheDocument()
+  })
+
+  it('calls upload-url endpoint then checkout-session on valid submit', async () => {
     const user = userEvent.setup()
 
     mockFetch
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ signed_url: 'https://storage.example.com/sign', path: 'cart-screenshots/test.jpg' }),
+        json: async () => ({
+          session_id: 'abc123XYZ_',
+          path: 'pre-checkout/abc123XYZ_/00000000-0000-4000-8000-000000000010.jpg',
+          signed_url: 'https://storage.example.com/sign',
+          token: 'tok',
+        }),
       })
       .mockResolvedValueOnce({ ok: true })  // PUT to signed URL
       .mockResolvedValueOnce({
@@ -108,7 +118,7 @@ describe('OrderNewForm', () => {
         json: async () => ({ clientSecret: 'cs_test_123' }),
       })
 
-    render(<OrderNewForm isGuest={false} />)
+    render(<OrderNewForm isGuest={false} schools={[]} />)
 
     await user.type(screen.getByPlaceholderText(/restaurant/i), 'Chipotle')
 
@@ -127,7 +137,7 @@ describe('OrderNewForm', () => {
 
     await waitFor(() => {
       expect(mockFetch).toHaveBeenCalledWith(
-        '/api/cart-screenshots/sign-upload',
+        '/api/cart-screenshots/upload-url',
         expect.objectContaining({ method: 'POST' })
       )
     })
@@ -140,7 +150,7 @@ describe('OrderNewForm', () => {
     })
   })
 
-  it('shows an error message and does not proceed when sign-upload fails', async () => {
+  it('shows an error message and does not proceed when upload-url fails', async () => {
     const user = userEvent.setup()
 
     mockFetch.mockResolvedValueOnce({
@@ -148,7 +158,7 @@ describe('OrderNewForm', () => {
       json: async () => ({ error: 'Upload failed' }),
     })
 
-    render(<OrderNewForm isGuest={false} />)
+    render(<OrderNewForm isGuest={false} schools={[]} />)
 
     await user.type(screen.getByPlaceholderText(/restaurant/i), 'Chipotle')
     const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement

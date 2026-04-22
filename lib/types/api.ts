@@ -66,8 +66,6 @@ export const createCheckoutSchema = z.object({
   total_cents: z.number().int().min(50).max(50_000),
   school_id: z.string().uuid().optional(),
   guest_name: z.string().trim().min(1).max(100).optional(),
-  tip_cents: z.number().int().min(0).max(10_000).optional(),
-  special_instructions: z.string().trim().max(500).optional(),
 })
 
 export type CreateCheckoutInput = z.infer<typeof createCheckoutSchema>

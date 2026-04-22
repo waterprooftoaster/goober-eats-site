@@ -127,21 +127,6 @@ describe('createCheckoutSchema', () => {
     const r = createCheckoutSchema.safeParse({ ...baseValid, school_id: 'nyu' })
     expect(r.success).toBe(false)
   })
-
-  it('accepts tip_cents in range', () => {
-    expect(createCheckoutSchema.safeParse({ ...baseValid, tip_cents: 0 }).success).toBe(true)
-    expect(createCheckoutSchema.safeParse({ ...baseValid, tip_cents: 10_000 }).success).toBe(true)
-    expect(createCheckoutSchema.safeParse({ ...baseValid, tip_cents: 10_001 }).success).toBe(false)
-  })
-
-  it('accepts special_instructions up to 500 chars', () => {
-    expect(
-      createCheckoutSchema.safeParse({ ...baseValid, special_instructions: 'x'.repeat(500) }).success
-    ).toBe(true)
-    expect(
-      createCheckoutSchema.safeParse({ ...baseValid, special_instructions: 'x'.repeat(501) }).success
-    ).toBe(false)
-  })
 })
 
 describe('screenshotUploadUrlSchema', () => {

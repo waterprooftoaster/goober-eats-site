@@ -34,7 +34,7 @@ export async function GET() {
   const { data: orders, error } = await supabase
     .from('orders')
     .select(
-      'id, restaurant_name, total_cents, tip_cents, special_instructions, cart_screenshot_urls, created_at'
+      'id, restaurant_name, total_cents, cart_screenshot_urls, created_at'
     )
     .eq('status', 'open')
     .is('swiper_id', null)
