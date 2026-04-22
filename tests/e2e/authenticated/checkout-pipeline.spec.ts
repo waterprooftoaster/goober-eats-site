@@ -15,10 +15,6 @@ let supabase: ReturnType<typeof createClient>
 let stripe: InstanceType<typeof Stripe>
 let userId: string
 let schoolId: string
-let eateryId: string
-let menuItemId: string
-let menuItemOriginalCents: number
-let cartId: string
 let orderId: string
 let webhookSecret: string
 let stripeAccountId: string
@@ -32,8 +28,6 @@ test.describe('Checkout Pipeline', () => {
     stripe = new Stripe(process.env.STRIPE_SECRET_KEY!)
     webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!
 
-    await supabase.rpc('seed_dev_eateries')
-
     // Get school
     const { data: school } = await supabase
       .from('schools')
@@ -42,27 +36,6 @@ test.describe('Checkout Pipeline', () => {
       .single()
     if (!school) throw new Error('No schools found')
     schoolId = school.id
-
-    // Get eatery + menu item
-    const { data: menuItem } = await supabase
-      .from('menu_items')
-      .select('id, name, original_price_cents, eatery_id')
-      .eq('is_available', true)
-      .limit(1)
-      .single()
-    if (!menuItem) throw new Error('No menu items found')
-    menuItemId = menuItem.id
-    menuItemOriginalCents = menuItem.original_price_cents
-
-    const { data: eatery } = await supabase
-      .from('eateries')
-      .select('id')
-      .eq('id', menuItem.eatery_id)
-      .eq('school_id', schoolId)
-      .eq('is_active', true)
-      .single()
-    if (!eatery) throw new Error('No eateries found for school')
-    eateryId = eatery.id
 
     // Set up test user as swiper
     const {
@@ -93,22 +66,6 @@ test.describe('Checkout Pipeline', () => {
       },
       { onConflict: 'user_id' }
     )
-
-    // Create a guest cart with one item
-    const { data: cart } = await supabase
-      .from('carts')
-      .insert({ session_id: crypto.randomUUID(), eatery_id: eateryId })
-      .select('id')
-      .single()
-    if (!cart) throw new Error('Failed to create test cart')
-    cartId = cart.id
-
-    await supabase.from('cart_items').insert({
-      cart_id: cartId,
-      menu_item_id: menuItemId,
-      quantity: 2,
-      selected_options: [],
-    })
   })
 
   test.afterAll(async () => {
@@ -117,11 +74,6 @@ test.describe('Checkout Pipeline', () => {
       await supabase.from('messages').delete().eq('conversation_id', orderId)
       await supabase.from('conversations').delete().eq('order_id', orderId)
       await supabase.from('orders').delete().eq('id', orderId)
-    }
-    // Clean up cart if webhook didn't delete it
-    if (cartId) {
-      await supabase.from('cart_items').delete().eq('cart_id', cartId)
-      await supabase.from('carts').delete().eq('id', cartId)
     }
     await supabase.from('stripe_accounts').delete().eq('user_id', userId)
     await supabase
@@ -139,12 +91,8 @@ test.describe('Checkout Pipeline', () => {
     request,
   }) => {
     // ── Step 1: Compute expected values ──────────────────────────────
-
-    const userPriceCents = Math.round(menuItemOriginalCents * 0.5)
-    const totalItemCents = userPriceCents * 2 // quantity=2
-    const tipCents = 100
-    const totalCents = totalItemCents + tipCents
-    const expectedFeeCents = Math.round(totalItemCents * 0.2) // 10% of original = 20% of user price
+    const totalCents = 1500 // $15.00 order
+    const expectedFeeCents = Math.round(totalCents * 0.1) // 10% platform fee
 
     // ── Step 2: Simulate payment_intent.succeeded webhook ──────────────
     const piId = `pi_pipeline_${Date.now()}`
@@ -158,11 +106,10 @@ test.describe('Checkout Pipeline', () => {
           amount: totalCents,
           metadata: {
             is_guest: 'true',
-            cart_id: cartId,
-            eatery_id: eateryId,
+            restaurant_name: 'Chipotle',
+            cart_screenshot_urls: JSON.stringify(['https://example.com/test-cart.png']),
+            school_id: schoolId,
             guest_name: 'Pipeline Guest',
-            tip_cents: String(tipCents),
-            special_instructions: 'Extra ketchup',
             platform_fee_cents: String(expectedFeeCents),
             total_cents: String(totalCents),
           },
@@ -190,7 +137,6 @@ test.describe('Checkout Pipeline', () => {
       .from('orders')
       .select('*')
       .eq('guest_name', 'Pipeline Guest')
-      .eq('eatery_id', eateryId)
       .order('created_at', { ascending: false })
       .limit(1)
 
@@ -199,13 +145,13 @@ test.describe('Checkout Pipeline', () => {
     const order = orders![0]
     orderId = order.id
 
-    expect(order.status).toBe('pending')
+    expect(order.status).toBe('open')
     expect(order.orderer_id).toBeNull()
     expect(order.guest_name).toBe('Pipeline Guest')
     expect(order.stripe_payment_intent_id).toBe(piId)
-    expect(order.tip_cents).toBe(tipCents)
-    expect(order.special_instructions).toBe('Extra ketchup')
     expect(order.total_cents).toBe(totalCents)
+    expect(order.restaurant_name).toBe('Chipotle')
+    expect(order.cart_screenshot_urls).toContain('https://example.com/test-cart.png')
 
     // Verify payment record exists
     const { data: payment } = await supabase
@@ -220,14 +166,6 @@ test.describe('Checkout Pipeline', () => {
     expect(payment!.platform_fee_cents).toBe(expectedFeeCents)
     expect(payment!.payer_id).toBeNull()
     expect(payment!.payee_id).toBeNull() // no swiper yet
-
-    // Verify cart was cleaned up
-    const { data: cartAfter } = await supabase
-      .from('carts')
-      .select('id')
-      .eq('id', cartId)
-      .maybeSingle()
-    expect(cartAfter).toBeNull()
 
     // ── Step 4: Swiper accepts order ───────────────────────────────────
     const acceptRes = await request.fetch(`/api/orders/${orderId}/accept`, {
@@ -245,7 +183,7 @@ test.describe('Checkout Pipeline', () => {
     })
     expect(ipRes.status()).toBe(200)
 
-    // Seed delivery photo for completion requirement
+    // Seed completion photo for the completion requirement
     const { data: conv } = await supabase
       .from('conversations')
       .select('id')
@@ -256,7 +194,7 @@ test.describe('Checkout Pipeline', () => {
     await supabase.from('messages').insert({
       conversation_id: conv!.id,
       sender_id: userId,
-      message_type: 'delivery_photo',
+      message_type: 'completion_photo',
       image_url: 'https://example.com/pipeline-photo.jpg',
       body: null,
     })
@@ -271,7 +209,7 @@ test.describe('Checkout Pipeline', () => {
     // ── Step 7: Verify final state — order must be 'paid' ─────────────
     const { data: finalOrder } = await supabase
       .from('orders')
-      .select('status, total_cents, tip_cents')
+      .select('status, total_cents')
       .eq('id', orderId)
       .single()
 
@@ -287,7 +225,6 @@ test.describe('Checkout Pipeline', () => {
 
     expect(finalPayment).not.toBeNull()
     expect(finalPayment!.platform_fee_cents).toBe(expectedFeeCents)
-    expect(finalPayment!.platform_fee_cents).toBe(Math.round(totalItemCents * 0.2))
     expect(finalPayment!.payee_id).toBe(userId)
   })
 })

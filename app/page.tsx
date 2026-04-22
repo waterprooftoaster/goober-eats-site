@@ -1,62 +1,27 @@
 /**
  * @file page.tsx
- * @description Home page displaying active eateries grouped by school.
- *   Auto-seeds the database in development when no eateries are found.
+ * @description Home page with a CTA directing users to place an order.
  *   Called by: Next.js routing (direct navigation to /)
- * @dependencies lib/supabase/server.ts, lib/dev-seed.ts, components/eatery-card.tsx
  */
 
-import { createClient } from '@/lib/supabase/server'
-import { EateryCard } from '@/components/eatery-card'
-import { seedDevEateries } from '@/lib/dev-seed'
+import Link from 'next/link'
+import { Button } from '@/components/ui/button'
 
 /**
- * Fetches active eateries, groups them by school, and renders each as an EateryCard.
- * @returns Eatery grid grouped by school name
+ * Renders the Goober Eats home page with a "Place an Order" call-to-action.
+ * @returns Static hero section with a link to /order/new
  * @called-by Next.js routing (/)
  */
-export default async function Home() {
-    const supabase = await createClient()
-
-    let { data: eateries } = await supabase
-        .from('eateries')
-        .select('id, name, image_url, schools(name)')
-        .eq('is_active', true)
-        .order('name')
-
-    if (process.env.NODE_ENV === 'development' && (!eateries || eateries.length === 0)) {
-        await seedDevEateries()
-        const { data: seeded } = await supabase
-            .from('eateries')
-            .select('id, name, image_url, schools(name)')
-            .eq('is_active', true)
-        eateries = seeded
-    }
-
-    const grouped = new Map<string, NonNullable<typeof eateries>>()
-    for (const eatery of eateries ?? []) {
-        const school = ((eatery.schools as unknown) as { name: string } | null)?.name ?? 'Other'
-        if (!grouped.has(school)) grouped.set(school, [])
-        grouped.get(school)!.push(eatery)
-    }
-
+export default function HomePage() {
     return (
-        <main className="bg-white space-y-8 p-4">
-            {[...grouped.entries()].map(([schoolName, schoolEateries]) => (
-                <section key={schoolName}>
-                    <h2 className="text-xl tracking-tighter font-bold text-black mb-3">{schoolName}</h2>
-                    <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-                        {schoolEateries.map((eatery) => (
-                            <EateryCard
-                                key={eatery.id}
-                                id={eatery.id}
-                                name={eatery.name}
-                                imageUrl={eatery.image_url}
-                            />
-                        ))}
-                    </div>
-                </section>
-            ))}
+        <main className="flex min-h-[80vh] flex-col items-center justify-center px-4 text-center">
+            <h1 className="text-4xl font-extrabold mb-3">Goober Eats</h1>
+            <p className="text-gray-500 mb-8 max-w-sm">
+                Upload your GrubHub cart. A swiper at your school fills it.
+            </p>
+            <Button asChild size="lg">
+                <Link href="/order/new">Place an Order</Link>
+            </Button>
         </main>
     )
 }
