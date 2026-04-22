@@ -1,86 +1,99 @@
 /**
  * @file route.ts
- * @description POST endpoint that creates a Stripe embedded Checkout session from the caller's cart.
- *   Supports both authenticated and guest users through a unified code path.
+ * @description POST endpoint that creates a Stripe embedded Checkout session
+ *   from the GrubHub-screenshot pivot inputs (restaurant name, 1..5 cart
+ *   screenshot paths, orderer-entered total). Supports authenticated and
+ *   guest checkouts. Platform receives the full charge; the 10% platform fee
+ *   is recorded on the payments row at order creation time and `transfer.ts`
+ *   moves the net to the swiper's connected account on completion.
+ *
+ *   Note on Stripe fee semantics: `application_fee_amount` requires
+ *   `transfer_data.destination` or `on_behalf_of`, neither of which we can
+ *   set at checkout (the swiper is unknown until accept). The two-step
+ *   transfer model is the only practical fit and matches the existing
+ *   `lib/stripe/transfer.ts` flow.
+ *
  *   Called by: components/checkout-form.tsx
- * @dependencies lib/stripe/client.ts, lib/cart/load.ts, lib/pricing.ts, lib/api/helpers.ts
+ * @dependencies lib/stripe/client.ts, lib/supabase/server.ts, lib/supabase/service.ts,
+ *               lib/api/helpers.ts, lib/types/api.ts
  */
 
 import { NextRequest } from 'next/server'
-import { cookies } from 'next/headers'
-import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getStripe } from '@/lib/stripe/client'
-import { loadCart } from '@/lib/cart/load'
-import { platformFeeCents } from '@/lib/pricing'
-import { apiError, apiSuccess, getAuthenticatedUser, CART_SESSION_COOKIE } from '@/lib/api/helpers'
+import { apiError, apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
+import { createCheckoutSchema } from '@/lib/types/api'
 
-const checkoutBodySchema = z.object({
-  tip_cents: z.number().int().min(0).max(10000).optional(),
-  special_instructions: z.string().trim().max(500).optional(),
-  guest_name: z.string().trim().min(1).max(100).optional(),
-})
-
-// M-1: Guest session cookie must be a v4 UUID
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+// Stripe per-field metadata cap is 500 chars; we guard at 450 to keep the
+// joined path list comfortably under, with margin for future fields.
+const METADATA_PATHS_MAX_CHARS = 450
 
 /**
- * Creates a Stripe embedded Checkout session from the caller's current cart.
- * @returns JSON { clientSecret } for the Stripe.js embedded form; 400/500 on invalid cart or Stripe error
+ * Creates a Stripe embedded Checkout session for the GrubHub-screenshot order.
+ * @returns JSON { clientSecret } for the Stripe.js embedded form; 400 on validation failures, 500 on Stripe errors
  * @called-by components/checkout-form.tsx
  */
 export async function POST(request: NextRequest) {
   const body = await request.json()
-  const parsed = checkoutBodySchema.safeParse(body)
+  const parsed = createCheckoutSchema.safeParse(body)
   if (!parsed.success) {
     return apiError(parsed.error.issues[0].message, 400)
   }
-  const { tip_cents, special_instructions, guest_name } = parsed.data
+  const {
+    restaurant_name,
+    cart_screenshot_paths,
+    total_cents,
+    school_id: bodySchoolId,
+    guest_name,
+    tip_cents,
+    special_instructions,
+  } = parsed.data
+
+  const joinedPaths = cart_screenshot_paths.join(',')
+  if (joinedPaths.length > METADATA_PATHS_MAX_CHARS) {
+    return apiError('Too many or too long screenshot paths for Stripe metadata', 400)
+  }
+
+  // Tip is bounded to the order total so the orderer can never pledge a tip
+  // they did not pay for. (Stripe charges only `total_cents`; the tip is
+  // funded out of that same total when the swiper transfer settles.)
+  if ((tip_cents ?? 0) > total_cents) {
+    return apiError('tip_cents cannot exceed total_cents', 400)
+  }
 
   const supabase = await createClient()
   const user = await getAuthenticatedUser(supabase)
-  const cookieStore = await cookies()
-  const service = createServiceClient()
 
-  // Find the user's cart
-  let cart: { id: string; eatery_id: string } | null = null
+  // Resolve school_id authoritatively per caller type.
+  let schoolId: string
   if (user) {
-    const { data } = await service
-      .from('carts')
-      .select('id, eatery_id')
-      .eq('user_id', user.id)
-      .maybeSingle()
-    cart = data
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('school_id')
+      .eq('id', user.id)
+      .single()
+    if (!profile?.school_id) {
+      return apiError('You must select a school before checking out', 400)
+    }
+    schoolId = profile.school_id
   } else {
-    const sessionId = cookieStore.get(CART_SESSION_COOKIE)?.value
-    if (!sessionId) return apiError('No cart found', 400)
-    if (!UUID_RE.test(sessionId)) return apiError('Invalid session', 400)
-    const { data } = await service
-      .from('carts')
-      .select('id, eatery_id')
-      .eq('session_id', sessionId)
+    if (!bodySchoolId) return apiError('school_id is required for guest checkout', 400)
+    if (!guest_name) return apiError('Guest checkout requires a name', 400)
+    // Guest path uses service client because anon SELECT on schools is allowed,
+    // but staying explicit avoids surprises if the policy is tightened later.
+    const service = createServiceClient()
+    const { data: school } = await service
+      .from('schools')
+      .select('id')
+      .eq('id', bodySchoolId)
       .maybeSingle()
-    cart = data
+    if (!school) return apiError('Unknown school', 400)
+    schoolId = bodySchoolId
   }
 
-  if (!cart) return apiError('No cart found', 400)
-
-  const loaded = await loadCart(service, cart)
-  if (loaded.items.length === 0) return apiError('Cart is empty', 400)
-
-  if (!user && !guest_name) {
-    return apiError('Guest checkout requires a name', 400)
-  }
-
-  // Pricing: user pays 50% of original (already computed in loadCart)
-  const totalItemCents = loaded.items.reduce(
-    (sum, item) => sum + item.quantity * item.price_cents,
-    0
-  )
-  const tipCents = Math.min(tip_cents ?? 0, totalItemCents)
-  const totalCents = totalItemCents + tipCents
-  const feeCents = platformFeeCents(totalItemCents)
+  const tipCents = tip_cents ?? 0
+  const platformFeeCents = Math.round(total_cents * 0.10)
 
   const appUrl = process.env.NEXT_PUBLIC_URL
   if (!appUrl || !appUrl.startsWith('http')) {
@@ -88,23 +101,27 @@ export async function POST(request: NextRequest) {
   }
   const returnUrl = `${appUrl}/checkout/return?session_id={CHECKOUT_SESSION_ID}`
 
-  const lineItems = loaded.items.map((item) => ({
-    price_data: {
-      currency: 'usd',
-      unit_amount: item.price_cents,
-      product_data: { name: item.name },
+  const lineItems = [
+    {
+      price_data: {
+        currency: 'usd',
+        unit_amount: total_cents,
+        product_data: { name: restaurant_name },
+      },
+      quantity: 1,
     },
-    quantity: item.quantity,
-  }))
+  ]
 
-  // Unified metadata — goes on both session and PI
+  // Unified metadata — applied to both session and payment_intent_data so the
+  // webhook handler can recover full order context from the PI alone.
   const metadata: Record<string, string> = {
-    cart_id: cart.id,
-    eatery_id: loaded.eatery_id,
+    school_id: schoolId,
+    restaurant_name,
+    cart_screenshot_paths: joinedPaths,
+    total_cents: String(total_cents),
     tip_cents: String(tipCents),
     special_instructions: special_instructions ?? '',
-    platform_fee_cents: String(feeCents),
-    total_cents: String(totalCents),
+    platform_fee_cents: String(platformFeeCents),
   }
 
   if (user) {

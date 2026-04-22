@@ -32,20 +32,17 @@ export const metadata: Metadata = {
 };
 
 /**
- * Renders the root HTML shell with fonts, providers, header, banner, modal, and chat panel.
+ * Renders the root HTML shell with fonts, providers, header, banner slot, and chat panel.
  * @param children - Page content
- * @param modal - Parallel route @modal slot
  * @param banner - Parallel route @banner slot
  * @returns Full HTML document with all layout wrappers
  * @called-by Next.js App Router
  */
 export default async function RootLayout({
   children,
-  modal,
   banner,
 }: Readonly<{
   children: React.ReactNode;
-  modal: React.ReactNode;
   banner: React.ReactNode;
 }>) {
   const supabase = await createClient();
@@ -60,7 +57,7 @@ export default async function RootLayout({
     ? (await supabase
         .from('orders')
         .select('*', { count: 'exact', head: true })
-        .eq('status', 'pending')
+        .eq('status', 'open')
       ).count ?? 0
     : 0
 
@@ -77,7 +74,6 @@ export default async function RootLayout({
           {banner}
           <div className="px-6">{children}</div>
           <SwiperOrdersButton isSwiper={isSwiper} pendingOrderCount={pendingOrderCount} />
-          {modal}
           <ChatPanel currentUserId={user?.id ?? null} />
         </ChatPanelProvider>
       </body>

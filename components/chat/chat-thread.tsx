@@ -38,7 +38,7 @@ export function ChatThread({ pseudoMessages, messages, currentUserId, messagesEn
         </div>
       ))}
       {messages.map((message) => {
-        const isPhoto = message.message_type === 'delivery_photo'
+        const isPhoto = message.message_type === 'completion_photo'
         const isOwn = message.sender_id === currentUserId
 
         return (
@@ -58,7 +58,7 @@ export function ChatThread({ pseudoMessages, messages, currentUserId, messagesEn
               >
                 <Image
                   src={message.image_url}
-                  alt="Delivery photo"
+                  alt="Completion photo"
                   width={200}
                   height={200}
                   className="cursor-pointer rounded-lg border border-gray-100 object-cover transition-opacity hover:opacity-90"

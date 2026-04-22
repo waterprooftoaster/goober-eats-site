@@ -1,49 +1,25 @@
 /**
  * @file header.tsx
- * @description Server-rendered navigation header with logo, auth links, and live cart item badge.
+ * @description Server-rendered navigation header with logo and auth links.
  *   Called by: app/layout.tsx (via HeaderWrapper)
- * @dependencies lib/supabase/server.ts, lib/supabase/service.ts, components/header-cart-button.tsx
+ * @dependencies lib/supabase/server.ts, lib/api/helpers.ts
  */
 
 import Link from "next/link"
-import { cookies } from "next/headers"
 import { Home, User } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
-import { createServiceClient } from "@/lib/supabase/service"
 import { getAuthenticatedUser } from "@/lib/api/helpers"
-import { HeaderCartButton } from "@/components/header-cart-button"
 
 const iconBtnClass = "rounded-full p-2 text-white transition-colors hover:bg-white/10"
 
 /**
- * Fetches the current cart item count and renders the top navigation bar.
- * @returns Header with logo, home/account links, HeaderCartButton, and sign-in/up links for guests
+ * Renders the top navigation bar with logo, home/profile links, and sign-in/up links for guests.
+ * @returns Header element
  * @called-by app/layout.tsx
  */
 export async function Header() {
     const supabase = await createClient()
     const user = await getAuthenticatedUser(supabase)
-
-    const cookieStore = await cookies()
-    const service = createServiceClient()
-    let itemCount = 0
-    {
-        let cartId: string | null = null
-        if (user) {
-            const { data } = await service.from('carts').select('id').eq('user_id', user.id).maybeSingle()
-            cartId = data?.id ?? null
-        } else {
-            const sessionId = cookieStore.get('cart_session_id')?.value
-            if (sessionId) {
-                const { data } = await service.from('carts').select('id').eq('session_id', sessionId).maybeSingle()
-                cartId = data?.id ?? null
-            }
-        }
-        if (cartId) {
-            const { data: items } = await service.from('cart_items').select('quantity').eq('cart_id', cartId)
-            itemCount = (items ?? []).reduce((sum, i) => sum + (i.quantity as number), 0)
-        }
-    }
 
     return (
         <header className="flex items-center justify-between px-5 py-3">
@@ -65,8 +41,6 @@ export async function Header() {
                         </Link>
                     )}
                 </div>
-
-                <HeaderCartButton itemCount={itemCount} />
 
                 {!user && (
                     <>

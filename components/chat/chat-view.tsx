@@ -82,12 +82,12 @@ function ChatViewCore({
   }
 
   if (orderStatus === 'completed') {
-    const deliveryPhoto =
-      [...messages].reverse().find((m) => m.message_type === 'delivery_photo') ?? null
+    const completionPhoto =
+      [...messages].reverse().find((m) => m.message_type === 'completion_photo') ?? null
     const isSwiper = currentUserId !== null && currentUserId === conversation?.swiper_id
     return (
       <OrderCompletedView
-        deliveryPhoto={deliveryPhoto}
+        deliveryPhoto={completionPhoto}
         label={isSwiper ? 'Order Completed' : undefined}
       />
     )

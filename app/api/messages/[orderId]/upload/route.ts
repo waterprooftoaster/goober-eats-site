@@ -1,8 +1,9 @@
 /**
  * @file route.ts
- * @description POST endpoint for swipers to upload a delivery photo (JPEG/WebP, max 1MB).
- *   Saves to Supabase Storage delivery-photos bucket and inserts a delivery_photo message row.
- *   Called by: chat delivery photo send button
+ * @description POST endpoint for swipers to upload a completion photo
+ *   (JPEG/WebP, max 1MB). Saves to the Supabase Storage `completion-photos`
+ *   bucket and inserts a `completion_photo` message into the order conversation.
+ *   Called by: chat completion-photo send button
  * @dependencies lib/supabase/server.ts, lib/api/helpers.ts
  */
 
@@ -16,10 +17,10 @@ const ALLOWED_TYPES = ['image/jpeg', 'image/webp'] as const
 const MAX_SIZE_BYTES = 1024 * 1024
 
 /**
- * Uploads a delivery photo for the swiper and creates a delivery_photo message in the conversation.
+ * Uploads a completion photo for the swiper and creates a completion_photo message in the conversation.
  * @param params - Route params containing the order UUID
  * @returns 201 with the new message row; 400/401/403/500 on validation, auth, or upload failures
- * @called-by chat delivery photo send button
+ * @called-by chat completion-photo send button
  */
 export async function POST(
   request: NextRequest,
@@ -49,7 +50,6 @@ export async function POST(
     return apiError('File must be 1 MB or smaller', 400)
   }
 
-  // Verify conversation exists and user is the swiper
   const { data: conversation } = await supabase
     .from('conversations')
     .select('id, swiper_id')
@@ -61,7 +61,7 @@ export async function POST(
   }
 
   if (conversation.swiper_id !== user.id) {
-    return apiError('Only the swiper can upload delivery photos', 403)
+    return apiError('Only the swiper can upload completion photos', 403)
   }
 
   const ext = file.type === 'image/jpeg' ? 'jpg' : 'webp'
@@ -69,7 +69,7 @@ export async function POST(
   const path = `${orderId}/${uuid}.${ext}`
 
   const { error: uploadError } = await supabase.storage
-    .from('delivery-photos')
+    .from('completion-photos')
     .upload(path, await file.arrayBuffer(), { contentType: file.type })
 
   if (uploadError) {
@@ -77,7 +77,7 @@ export async function POST(
   }
 
   const { data: { publicUrl } } = supabase.storage
-    .from('delivery-photos')
+    .from('completion-photos')
     .getPublicUrl(path)
 
   const { data: message, error: msgError } = await supabase
@@ -86,7 +86,7 @@ export async function POST(
       conversation_id: conversation.id,
       sender_id: user.id,
       body: null,
-      message_type: 'delivery_photo',
+      message_type: 'completion_photo',
       image_url: publicUrl,
     })
     .select()

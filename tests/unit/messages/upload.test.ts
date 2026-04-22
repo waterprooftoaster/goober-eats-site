@@ -41,8 +41,8 @@ const MOCK_MESSAGE = {
   conversation_id: MOCK_CONVERSATION.id,
   sender_id: MOCK_USER.id,
   body: null,
-  message_type: 'delivery_photo',
-  image_url: 'https://example.com/delivery-photos/order/uuid.jpg',
+  message_type: 'completion_photo',
+  image_url: 'https://example.com/completion-photos/order/uuid.jpg',
   sent_at: new Date().toISOString(),
   expires_at: new Date().toISOString(),
 }
@@ -144,7 +144,7 @@ describe('POST /api/messages/[orderId]/upload', () => {
     const res = await POST(makeRequest(VALID_ORDER_ID, makeFile('image/jpeg', 100)), makeParams(VALID_ORDER_ID))
     expect(res.status).toBe(201)
     const json = await res.json()
-    expect(json).toMatchObject({ message_type: 'delivery_photo', image_url: MOCK_MESSAGE.image_url })
+    expect(json).toMatchObject({ message_type: 'completion_photo', image_url: MOCK_MESSAGE.image_url })
   })
 
   it('returns 201 with message on valid WebP upload', async () => {
@@ -153,6 +153,6 @@ describe('POST /api/messages/[orderId]/upload', () => {
     const res = await POST(makeRequest(VALID_ORDER_ID, makeFile('image/webp', 100)), makeParams(VALID_ORDER_ID))
     expect(res.status).toBe(201)
     const json = await res.json()
-    expect(json).toMatchObject({ message_type: 'delivery_photo' })
+    expect(json).toMatchObject({ message_type: 'completion_photo' })
   })
 })

@@ -75,17 +75,17 @@ describe('ChatThread', () => {
     expect(separators).toHaveLength(0)
   })
 
-  it('renders delivery photo as img inside a link', () => {
+  it('renders completion photo as img inside a link', () => {
     renderThread([
       makeMessage({
         id: 'p',
         sender_id: 'user-swiper',
-        message_type: 'delivery_photo',
+        message_type: 'completion_photo',
         body: null,
         image_url: 'https://example.com/photo.jpg',
       }),
     ])
-    const img = screen.getByRole('img', { name: /delivery photo/i })
+    const img = screen.getByRole('img', { name: /completion photo/i })
     // next/image rewrites src to /_next/image?url=<encoded>; decode to verify the right URL is used
     expect(decodeURIComponent(img.getAttribute('src') ?? '')).toContain('https://example.com/photo.jpg')
     const link = img.closest('a')

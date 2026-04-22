@@ -20,7 +20,7 @@ import type { OrderStatus } from '@/lib/types/database'
 
 const STATUS_MESSAGES: Partial<Record<string, string>> = {
   open: 'Swiper is no longer available — your order is open again',
-  completed: 'Order completed — check delivery photo',
+  completed: 'Order completed — check completion photo',
   cancelled: 'Order was cancelled',
 }
 
@@ -102,10 +102,10 @@ export async function PATCH(
         .from('messages')
         .select('id', { count: 'exact', head: true })
         .eq('conversation_id', conv.id)
-        .eq('message_type', 'delivery_photo')
+        .eq('message_type', 'completion_photo')
 
       if (!count || count === 0) {
-        return apiError('A delivery photo is required to complete the order', 400)
+        return apiError('A completion photo is required to complete the order', 400)
       }
     }
   }
@@ -126,7 +126,7 @@ export async function PATCH(
     .eq('id', id)
     .eq('status', order.status)
     .select(
-      'id, orderer_id, swiper_id, eatery_id, status, items, total_cents, tip_cents, special_instructions, guest_name, guest_phone, created_at, updated_at'
+      'id, orderer_id, swiper_id, school_id, restaurant_name, cart_screenshot_urls, status, total_cents, tip_cents, special_instructions, guest_name, guest_phone, created_at, updated_at'
     )
     .single()
 

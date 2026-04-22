@@ -101,9 +101,9 @@ describe('POST /api/guest/messages', () => {
     expect(res.status).toBe(400)
   })
 
-  it('returns 400 when message_type is delivery_photo', async () => {
+  it('returns 400 when message_type is completion_photo', async () => {
     setupValidAuth()
-    const res = await POST(makeRequest({ order_id: VALID_ORDER_ID, body: 'photo', message_type: 'delivery_photo' }))
+    const res = await POST(makeRequest({ order_id: VALID_ORDER_ID, body: 'photo', message_type: 'completion_photo' }))
     expect(res.status).toBe(400)
   })
 
