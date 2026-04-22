@@ -13,8 +13,8 @@ import { getAuthenticatedUser } from "@/lib/api/helpers"
 const iconBtnClass = "rounded-full p-2 text-white transition-colors hover:bg-white/10"
 
 /**
- * Renders the top navigation bar with logo, home/profile links, and sign-in/up links for guests.
- * @returns Header element
+ * Renders the top navigation bar with logo, home/account icons, and sign-in/up links for guests.
+ * @returns Navigation header
  * @called-by app/layout.tsx
  */
 export async function Header() {

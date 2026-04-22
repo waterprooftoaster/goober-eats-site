@@ -32,25 +32,20 @@ export default async function PendingOrdersPage() {
   let orders: PendingOrder[] = []
 
   if (profile?.school_id) {
-    const { data: eateries } = await supabase
-      .from('eateries')
-      .select('id')
+    const { data } = await supabase
+      .from('orders')
+      .select('id, total_cents, restaurant_name, cart_screenshot_urls, created_at')
+      .eq('status', 'open')
+      .is('swiper_id', null)
       .eq('school_id', profile.school_id)
-      .eq('is_active', true)
-    const eateryIds = (eateries ?? []).map((e) => e.id)
-
-    if (eateryIds.length > 0) {
-      const { data } = await supabase
-        .from('orders')
-        .select(
-          'id, total_cents, tip_cents, items, special_instructions, created_at, eateries!orders_eatery_id_fkey(id, name)'
-        )
-        .eq('status', 'open')
-        .is('swiper_id', null)
-        .in('eatery_id', eateryIds)
-        .order('created_at', { ascending: true })
-      orders = (data ?? []) as unknown as PendingOrder[]
-    }
+      .order('created_at', { ascending: true })
+    orders = (data ?? []).map((row) => ({
+      id: row.id,
+      total_cents: row.total_cents,
+      restaurant_name: row.restaurant_name,
+      cart_screenshot_urls: (row.cart_screenshot_urls as string[]) ?? [],
+      created_at: row.created_at,
+    }))
   }
 
   return (

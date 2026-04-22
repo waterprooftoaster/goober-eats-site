@@ -67,7 +67,7 @@ test.describe('Authentication flow', () => {
 
     // Should redirect to homepage
     await page.waitForURL('/', { timeout: 15000 })
-    await expect(page.locator('[data-testid="eatery-card"]').first()).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Place an Order' })).toBeVisible()
 
     // --- Sign Out ---
     await page.goto('/account')
@@ -175,6 +175,6 @@ test.describe('Signup via form', () => {
 
     // Should redirect to homepage — no "Not authenticated" error
     await page.waitForURL('/', { timeout: 15000 })
-    await expect(page.locator('[data-testid="eatery-card"]').first()).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Place an Order' })).toBeVisible()
   })
 })

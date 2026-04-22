@@ -1,24 +1,27 @@
 /**
  * @file page.tsx
- * @description Home page placeholder. The eatery-browsing home grid was removed
- *   in the GrubHub-screenshot pivot; post-pivot orders originate from the
- *   upload flow, not an eatery grid. Frontend discovery UX is being rebuilt
- *   on a separate branch.
+ * @description Home page with a CTA directing users to place an order.
  *   Called by: Next.js routing (direct navigation to /)
  */
 
+import Link from 'next/link'
+import { Button } from '@/components/ui/button'
+
 /**
- * Renders a minimal home placeholder while the new upload-driven ordering UI is rebuilt.
- * @returns Placeholder home page
+ * Renders the Goober Eats home page with a "Place an Order" call-to-action.
+ * @returns Static hero section with a link to /order/new
  * @called-by Next.js routing (/)
  */
-export default function Home() {
+export default function HomePage() {
     return (
-        <main className="bg-white space-y-4 p-4">
-            <h1 className="text-xl tracking-tighter font-bold text-black">goober Eats</h1>
-            <p className="text-sm text-gray-600">
-                Ordering is being updated. Check back soon.
+        <main className="flex min-h-[80vh] flex-col items-center justify-center px-4 text-center">
+            <h1 className="text-4xl font-extrabold mb-3">Goober Eats</h1>
+            <p className="text-gray-500 mb-8 max-w-sm">
+                Upload your GrubHub cart. A swiper at your school fills it.
             </p>
+            <Button asChild size="lg">
+                <Link href="/order/new">Place an Order</Link>
+            </Button>
         </main>
     )
 }
