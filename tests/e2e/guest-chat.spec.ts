@@ -210,7 +210,6 @@ test.describe('Guest Anon Auth + Realtime Chat', () => {
           },
         ],
         total_cents: menuItemPriceCents,
-        tip_cents: 0,
         guest_name: 'Guest Chat E2E',
         guest_access_token: GUEST_TOKEN,
       })

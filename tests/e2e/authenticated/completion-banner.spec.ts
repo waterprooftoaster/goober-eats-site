@@ -81,7 +81,6 @@ test.describe('CompletionBanner', () => {
           },
         ],
         total_cents: menuItem.original_price_cents,
-        tip_cents: 0,
         guest_name: 'Banner Test',
         guest_access_token: GUEST_TOKEN,
       })

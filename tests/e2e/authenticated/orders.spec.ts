@@ -61,7 +61,6 @@ test.describe('Authenticated orders', () => {
           },
         ],
         total_cents: priceCents,
-        tip_cents: 0,
       })
       .select('id')
       .single()

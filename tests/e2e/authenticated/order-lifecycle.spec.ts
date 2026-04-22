@@ -82,7 +82,6 @@ test.describe('Order Lifecycle', () => {
           },
         ],
         total_cents: menuItem.original_price_cents,
-        tip_cents: 0,
         guest_name: 'Lifecycle Test',
       })
       .select('id')
@@ -197,7 +196,6 @@ test.describe('Order Lifecycle', () => {
         status: 'open',
         items: [{ menu_item_id: menuItem.id, name: menuItem.name, price_cents: menuItem.original_price_cents, quantity: 1 }],
         total_cents: menuItem.original_price_cents,
-        tip_cents: 0,
         guest_name: 'Un-accept Test',
         guest_phone: '+15005550006',
       })

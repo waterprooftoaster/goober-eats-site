@@ -83,7 +83,7 @@ export async function PATCH(
     .eq('status', 'open')
     .is('swiper_id', null)
     .select(
-      'id, orderer_id, swiper_id, school_id, restaurant_name, cart_screenshot_urls, status, total_cents, tip_cents, special_instructions, guest_name, guest_phone, created_at, updated_at'
+      'id, orderer_id, swiper_id, school_id, restaurant_name, cart_screenshot_urls, status, total_cents, special_instructions, guest_name, guest_phone, created_at, updated_at'
     )
     .single()
 

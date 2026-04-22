@@ -82,7 +82,6 @@ function guestMetadata(overrides: Record<string, string> = {}) {
     restaurant_name: 'Chipotle',
     cart_screenshot_paths: VALID_PATH,
     total_cents: '1500',
-    tip_cents: '0',
     special_instructions: '',
     guest_name: 'Test Guest',
     ...overrides,
@@ -95,7 +94,6 @@ function authMetadata(overrides: Record<string, string> = {}) {
     restaurant_name: 'Chipotle',
     cart_screenshot_paths: VALID_PATH,
     total_cents: '1500',
-    tip_cents: '0',
     special_instructions: '',
     orderer_id: VALID_ORDERER_ID,
     ...overrides,
@@ -185,10 +183,14 @@ describe('POST /api/stripe/webhooks', () => {
           cart_screenshot_urls: [VALID_PATH],
           guest_name: 'Test Guest',
           total_cents: 1500,
-          tip_cents: 0,
           stripe_payment_intent_id: VALID_PI_ID,
         })
       )
+
+      // Regression guard — tips were removed as a feature; the orders insert
+      // payload must not include a tip_cents key.
+      const [insertArg] = ordersInsert.insert.mock.calls[0]
+      expect(insertArg).not.toHaveProperty('tip_cents')
 
       expect(paymentsInsert.insert).toHaveBeenCalledWith(
         expect.objectContaining({

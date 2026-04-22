@@ -24,8 +24,7 @@ import { platformFeeCents } from '@/lib/pricing'
 export async function transferToSwiper(
   orderId: string,
   swiperId: string,
-  totalCents: number,
-  tipCents: number
+  totalCents: number
 ) {
   const service = createServiceClient()
 
@@ -52,8 +51,7 @@ export async function transferToSwiper(
     return
   }
 
-  const itemsCents = totalCents - tipCents
-  const fee = platformFeeCents(itemsCents)
+  const fee = platformFeeCents(totalCents)
   const transferAmount = totalCents - fee
 
   try {

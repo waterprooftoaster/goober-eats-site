@@ -32,7 +32,6 @@ export interface Order {
   stripe_payment_intent_id: string | null
   status: OrderStatus
   total_cents: number
-  tip_cents: number
   special_instructions: string | null
   guest_name: string | null
   guest_phone: string | null

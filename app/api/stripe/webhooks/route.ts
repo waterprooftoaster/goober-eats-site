@@ -141,7 +141,6 @@ async function handlePaymentIntentSucceeded(
     return null
   }
 
-  const tipCents = Math.max(0, Math.min(parseInt(meta.tip_cents ?? '0', 10) || 0, totalCents))
   const platformFeeCents = Math.round(totalCents * 0.10)
   const specialInstructions = (meta.special_instructions ?? '').slice(0, 500) || null
 
@@ -159,7 +158,6 @@ async function handlePaymentIntentSucceeded(
       cart_screenshot_urls: screenshotPaths,
       stripe_payment_intent_id: pi.id,
       total_cents: totalCents,
-      tip_cents: tipCents,
       special_instructions: specialInstructions,
       guest_name: guestName,
       guest_phone: null,

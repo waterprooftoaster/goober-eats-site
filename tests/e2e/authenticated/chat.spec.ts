@@ -86,7 +86,6 @@ test.describe('Chat Flow', () => {
           },
         ],
         total_cents: menuItem.original_price_cents,
-        tip_cents: 0,
         guest_name: 'Chat Test',
       })
       .select('id')

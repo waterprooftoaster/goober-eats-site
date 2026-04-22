@@ -126,7 +126,7 @@ export async function PATCH(
     .eq('id', id)
     .eq('status', order.status)
     .select(
-      'id, orderer_id, swiper_id, school_id, restaurant_name, cart_screenshot_urls, status, total_cents, tip_cents, special_instructions, guest_name, guest_phone, created_at, updated_at'
+      'id, orderer_id, swiper_id, school_id, restaurant_name, cart_screenshot_urls, status, total_cents, special_instructions, guest_name, guest_phone, created_at, updated_at'
     )
     .single()
 
@@ -136,7 +136,7 @@ export async function PATCH(
 
   // Transfer funds to swiper (payment captured at checkout for both guest and auth)
   if (newStatus === 'completed' && updated.swiper_id) {
-    await transferToSwiper(updated.id, updated.swiper_id, updated.total_cents, updated.tip_cents)
+    await transferToSwiper(updated.id, updated.swiper_id, updated.total_cents)
   }
 
   if (STATUS_MESSAGES[newStatus]) {
