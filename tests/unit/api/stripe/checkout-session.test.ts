@@ -73,6 +73,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   process.env.STRIPE_SECRET_KEY = 'sk_test_fake'
   process.env.NEXT_PUBLIC_URL = 'http://localhost:3000'
+  // Simulates a single-school deployment so guests don't need to supply school_id.
+  process.env.DEFAULT_SCHOOL_ID = NYU_SCHOOL_ID
   mockStripeSessionsCreate.mockResolvedValue({ client_secret: 'cs_test_secret' })
 })
 
@@ -190,12 +192,19 @@ describe('POST /api/stripe/checkout-session', () => {
   })
 
   describe('guest flow', () => {
-    it('requires school_id in body', async () => {
+    it('uses DEFAULT_SCHOOL_ID when school_id omitted from body', async () => {
       mockGuest()
-      const res = await POST(
-        buildRequest({ ...baseBody, guest_name: 'Alex' })
-      )
-      expect(res.status).toBe(400)
+      const res = await POST(buildRequest({ ...baseBody, guest_name: 'Alex' }))
+      expect(res.status).toBe(200)
+      const [[arg]] = mockStripeSessionsCreate.mock.calls
+      expect(arg.metadata.school_id).toBe(NYU_SCHOOL_ID)
+    })
+
+    it('returns 500 when school_id absent from body and DEFAULT_SCHOOL_ID not configured', async () => {
+      mockGuest()
+      delete process.env.DEFAULT_SCHOOL_ID
+      const res = await POST(buildRequest({ ...baseBody, guest_name: 'Alex' }))
+      expect(res.status).toBe(500)
     })
 
     it('requires guest_name', async () => {

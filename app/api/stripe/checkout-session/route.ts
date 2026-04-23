@@ -13,7 +13,7 @@
  *   transfer model is the only practical fit and matches the existing
  *   `lib/stripe/transfer.ts` flow.
  *
- *   Called by: components/checkout-form.tsx
+ *   Called by: app/checkout/page.tsx
  * @dependencies lib/stripe/client.ts, lib/supabase/server.ts, lib/supabase/service.ts,
  *               lib/api/helpers.ts, lib/types/api.ts
  */
@@ -32,7 +32,7 @@ const METADATA_PATHS_MAX_CHARS = 450
 /**
  * Creates a Stripe embedded Checkout session for the GrubHub-screenshot order.
  * @returns JSON { clientSecret } for the Stripe.js embedded form; 400 on validation failures, 500 on Stripe errors
- * @called-by components/checkout-form.tsx
+ * @called-by app/checkout/page.tsx
  */
 export async function POST(request: NextRequest) {
   const body = await request.json()
@@ -56,31 +56,34 @@ export async function POST(request: NextRequest) {
   const supabase = await createClient()
   const user = await getAuthenticatedUser(supabase)
 
-  // Resolve school_id authoritatively per caller type.
-  let schoolId: string
+  // Resolve school_id and orderer identity. Anonymous sessions (from home-page
+  // signInAnonymously) have a Supabase user but no profile; treat them as guests.
+  let realAuthProfile: { school_id: string } | null = null
   if (user) {
     const { data: profile } = await supabase
       .from('profiles')
       .select('school_id')
       .eq('id', user.id)
-      .single()
-    if (!profile?.school_id) {
-      return apiError('You must select a school before checking out', 400)
-    }
-    schoolId = profile.school_id
+      .maybeSingle()
+    if (profile?.school_id) realAuthProfile = profile as { school_id: string }
+  }
+
+  let schoolId: string
+  if (realAuthProfile) {
+    schoolId = realAuthProfile.school_id
   } else {
-    if (!bodySchoolId) return apiError('school_id is required for guest checkout', 400)
     if (!guest_name) return apiError('Guest checkout requires a name', 400)
-    // Guest path uses service client because anon SELECT on schools is allowed,
-    // but staying explicit avoids surprises if the policy is tightened later.
+    // Use the body-supplied school_id or fall back to the deployment default.
+    const resolvedSchoolId = bodySchoolId ?? process.env.DEFAULT_SCHOOL_ID
+    if (!resolvedSchoolId) return apiError('School not configured', 500)
     const service = createServiceClient()
     const { data: school } = await service
       .from('schools')
       .select('id')
-      .eq('id', bodySchoolId)
+      .eq('id', resolvedSchoolId)
       .maybeSingle()
     if (!school) return apiError('Unknown school', 400)
-    schoolId = bodySchoolId
+    schoolId = resolvedSchoolId
   }
 
   const platformFeeCents = Math.round(total_cents * 0.10)
@@ -112,7 +115,7 @@ export async function POST(request: NextRequest) {
     platform_fee_cents: String(platformFeeCents),
   }
 
-  if (user) {
+  if (realAuthProfile && user) {
     metadata.orderer_id = user.id
   } else {
     metadata.is_guest = 'true'
@@ -128,7 +131,7 @@ export async function POST(request: NextRequest) {
       metadata,
       line_items: lineItems,
       payment_intent_data: { metadata },
-      ...(user?.email && { customer_email: user.email }),
+      ...(realAuthProfile && user?.email && { customer_email: user.email }),
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Stripe error'

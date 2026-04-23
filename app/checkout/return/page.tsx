@@ -1,0 +1,45 @@
+/**
+ * @file page.tsx
+ * @description Stripe Embedded Checkout return handler. Receives the Checkout
+ *   session_id from Stripe, retrieves the session to get the PaymentIntent ID,
+ *   then routes guests to /api/guest/verify-order and authenticated users to /orders.
+ *   Called by: Stripe return_url redirect after payment
+ * @dependencies lib/stripe/client.ts
+ */
+
+import { redirect } from 'next/navigation'
+import { getStripe } from '@/lib/stripe/client'
+
+interface Props {
+  searchParams: Promise<{ session_id?: string }>
+}
+
+/**
+ * Server component that resolves the Stripe Checkout session and routes the user post-payment.
+ * @param searchParams - URL search params containing session_id from Stripe
+ * @called-by Stripe return_url redirect
+ */
+export default async function CheckoutReturnPage({ searchParams }: Props) {
+  const { session_id } = await searchParams
+  if (!session_id) redirect('/')
+
+  let session
+  try {
+    session = await getStripe().checkout.sessions.retrieve(session_id)
+  } catch {
+    redirect('/')
+  }
+
+  const piId =
+    typeof session.payment_intent === 'string'
+      ? session.payment_intent
+      : session.payment_intent?.id
+
+  if (!piId) redirect('/')
+
+  if (session.metadata?.is_guest === 'true') {
+    redirect(`/api/guest/verify-order?pi_id=${piId}`)
+  }
+
+  redirect('/orders')
+}

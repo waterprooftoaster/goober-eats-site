@@ -29,12 +29,20 @@ test('tablet 768px — homepage CTA', async ({ page }) => {
   })
 })
 
-test('phone 375px — order new page', async ({ page }) => {
+test('phone 375px — checkout page', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 })
-  await page.goto('/order/new')
+  // Seed sessionStorage so the checkout page does not redirect back to /
+  await page.goto('/')
+  await page.evaluate(() => {
+    sessionStorage.setItem(
+      'pending_screenshots',
+      JSON.stringify(['pre-checkout/abc1234567/00000000-0000-4000-8000-000000000000.png'])
+    )
+  })
+  await page.goto('/checkout')
   await page.waitForLoadState('networkidle')
   await page.screenshot({
-    path: path.join(SCREENSHOT_DIR, 'order-new-phone-375.png'),
+    path: path.join(SCREENSHOT_DIR, 'checkout-phone-375.png'),
     fullPage: true,
   })
 })
