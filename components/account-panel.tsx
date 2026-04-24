@@ -14,10 +14,18 @@ import { SwiperSection } from '@/app/account/swiper-section'
 
 type School = { id: string; name: string }
 
+interface StripeAccountStatus {
+  onboarding_complete: boolean
+  charges_enabled: boolean
+  payouts_enabled: boolean
+  disabled_reason: string | null
+  currently_due: string[]
+}
+
 interface AccountPanelProps {
   email: string
   profile: { is_swiper: boolean; school_id: string | null }
-  stripeAccount: { onboarding_complete: boolean } | null
+  stripeAccount: StripeAccountStatus | null
   schools: School[]
 }
 

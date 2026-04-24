@@ -13,9 +13,9 @@
  *   transfer model is the only practical fit and matches the existing
  *   `lib/stripe/transfer.ts` flow.
  *
- *   Called by: components/checkout-form.tsx
+ *   Called by: app/order/new/order-new-form.tsx
  * @dependencies lib/stripe/client.ts, lib/supabase/server.ts, lib/supabase/service.ts,
- *               lib/api/helpers.ts, lib/types/api.ts
+ *               lib/api/helpers.ts, lib/types/api.ts, lib/pricing.ts
  */
 
 import { NextRequest } from 'next/server'
@@ -24,6 +24,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { getStripe } from '@/lib/stripe/client'
 import { apiError, apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
 import { createCheckoutSchema } from '@/lib/types/api'
+import { platformFeeCents } from '@/lib/pricing'
 
 // Stripe per-field metadata cap is 500 chars; we guard at 450 to keep the
 // joined path list comfortably under, with margin for future fields.
@@ -32,7 +33,7 @@ const METADATA_PATHS_MAX_CHARS = 450
 /**
  * Creates a Stripe embedded Checkout session for the GrubHub-screenshot order.
  * @returns JSON { clientSecret } for the Stripe.js embedded form; 400 on validation failures, 500 on Stripe errors
- * @called-by components/checkout-form.tsx
+ * @called-by app/order/new/order-new-form.tsx
  */
 export async function POST(request: NextRequest) {
   const body = await request.json()
@@ -83,7 +84,7 @@ export async function POST(request: NextRequest) {
     schoolId = bodySchoolId
   }
 
-  const platformFeeCents = Math.round(total_cents * 0.10)
+  const feeCents = platformFeeCents(total_cents)
 
   const appUrl = process.env.NEXT_PUBLIC_URL
   if (!appUrl || !appUrl.startsWith('http')) {
@@ -109,7 +110,7 @@ export async function POST(request: NextRequest) {
     restaurant_name,
     cart_screenshot_paths: joinedPaths,
     total_cents: String(total_cents),
-    platform_fee_cents: String(platformFeeCents),
+    platform_fee_cents: String(feeCents),
   }
 
   if (user) {

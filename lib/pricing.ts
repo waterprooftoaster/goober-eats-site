@@ -1,20 +1,24 @@
 /**
  * @file pricing.ts
- * @description Pricing calculations for orderer payments and platform fee splits.
- *   Called by: app/api/stripe/checkout-session/route.ts, lib/stripe/transfer.ts, lib/cart/load.ts
- *
- * Pricing policy:
- *   User pays  50% of original_price_cents
- *   Platform   10% of original_price_cents (= 20% of user payment)
- *   Swiper     40% of original_price_cents (= user payment − platform fee)
+ * @description Single source of truth for the Goober Eats platform-fee
+ *   formula: a flat 10% of what the orderer pays. Used at checkout (sent to
+ *   Stripe as `application_fee_amount` metadata), on payment creation
+ *   (`payments.platform_fee_cents`), and at transfer time (deducted from
+ *   the swiper payout).
+ *   Called by: app/api/stripe/checkout-session/route.ts,
+ *     app/api/stripe/webhooks/route.ts, lib/stripe/transfer.ts, scripts/seed.ts
  */
 
-export function ordererPriceCents(originalCents: number): number {
-  return Math.round(originalCents * 0.5)
-}
+const PLATFORM_FEE_RATE = 0.10
 
-export function platformFeeCents(itemsTotalCents: number): number {
-  // itemsTotalCents is what the user pays (50% of original),
-  // so 20% of that equals 10% of the original price.
-  return Math.round(itemsTotalCents * 0.2)
+/**
+ * Computes the 10% platform fee (in cents) from an orderer total.
+ * @param totalCents - Orderer-paid total, integer cents, >= 0
+ * @returns Fee in cents, rounded half-away-from-zero
+ * @called-by checkout-session/route.ts, webhooks/route.ts, transfer.ts, seed.ts
+ */
+export function platformFeeCents(totalCents: number): number {
+  // Sub-cent drift is bounded at <1 cent per order — acceptable for a 10%
+  // fee and avoids the complexity of carrying fractional cents in the DB.
+  return Math.round(totalCents * PLATFORM_FEE_RATE)
 }

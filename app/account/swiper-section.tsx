@@ -4,19 +4,30 @@
  * @file swiper-section.tsx
  * @description Client components for the swiper-specific section of the account page.
  *   Shows swiper status, school selector, and Stripe Connect link/relink controls.
+ *   Surfaces a human-readable Stripe `disabled_reason` when the Connect
+ *   account is not currently accepting transfers (finding #12).
  *   Called by: components/account-panel.tsx
- * @dependencies lib/supabase/server.ts (data passed via props)
+ * @dependencies lib/stripe/account-state.ts (canAccept, humanReason)
  */
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { canAccept, humanReason, type AccountState } from '@/lib/stripe/account-state'
 
 type School = { id: string; name: string }
 
+interface StripeAccountStatus {
+  onboarding_complete: boolean
+  charges_enabled: boolean
+  payouts_enabled: boolean
+  disabled_reason: string | null
+  currently_due: string[]
+}
+
 type Props = {
   profile: { is_swiper: boolean; school_id: string | null }
-  stripeAccount: { onboarding_complete: boolean } | null
+  stripeAccount: StripeAccountStatus | null
   schools: School[]
 }
 
@@ -27,10 +38,20 @@ type Props = {
  */
 export function SwiperSection({ profile, stripeAccount, schools }: Props) {
   if (profile.is_swiper) {
+    const accountState: AccountState | null = stripeAccount
+      ? {
+          onboardingComplete: stripeAccount.onboarding_complete,
+          chargesEnabled: stripeAccount.charges_enabled,
+          payoutsEnabled: stripeAccount.payouts_enabled,
+          disabledReason: stripeAccount.disabled_reason,
+          currentlyDue: stripeAccount.currently_due,
+        }
+      : null
+
     return (
       <SwiperStatus
         profile={profile}
-        stripeConnected={stripeAccount?.onboarding_complete === true}
+        accountState={accountState}
         schools={schools}
       />
     )
@@ -57,16 +78,18 @@ export function SwiperSection({ profile, stripeAccount, schools }: Props) {
 
 type SwiperStatusProps = {
   profile: { school_id: string | null }
-  stripeConnected: boolean
+  accountState: AccountState | null
   schools: School[]
 }
 
 /**
  * Renders the active swiper's school selector and Stripe Connect account status.
+ *   When the Connect account is not accepting transfers, shows a plain-English
+ *   disabled reason (via `humanReason`) alongside the pending pill.
  * @returns School and payment account management UI
  * @called-by SwiperSection
  */
-function SwiperStatus({ profile, stripeConnected, schools }: SwiperStatusProps) {
+function SwiperStatus({ profile, accountState, schools }: SwiperStatusProps) {
   const [changingSchool, setChangingSchool] = useState(false)
   const [schoolId, setSchoolId] = useState(profile.school_id ?? '')
   const [saving, setSaving] = useState(false)
@@ -76,6 +99,10 @@ function SwiperStatus({ profile, stripeConnected, schools }: SwiperStatusProps) 
   const router = useRouter()
 
   const currentSchool = schools.find((s) => s.id === profile.school_id)
+  const stripeReady = accountState !== null && canAccept(accountState)
+  const disabledExplainer = accountState
+    ? humanReason(accountState.disabledReason)
+    : null
 
   async function handleSaveSchool() {
     if (!schoolId) return
@@ -174,7 +201,7 @@ function SwiperStatus({ profile, stripeConnected, schools }: SwiperStatusProps) 
         {/* Stripe status */}
         <div>
           <p className="text-sm text-gray-500 mb-1">Payment account</p>
-          {stripeConnected ? (
+          {stripeReady ? (
             <div className="flex items-center gap-3">
               <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
                 Connected
@@ -188,17 +215,24 @@ function SwiperStatus({ profile, stripeConnected, schools }: SwiperStatusProps) 
               </button>
             </div>
           ) : (
-            <div className="flex items-center gap-3">
-              <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700">
-                Pending
-              </span>
-              <button
-                onClick={handleRelinkPayment}
-                disabled={linking}
-                className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              >
-                {linking ? 'Opening Stripe…' : 'Complete Payment Setup'}
-              </button>
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700">
+                  Pending
+                </span>
+                <button
+                  onClick={handleRelinkPayment}
+                  disabled={linking}
+                  className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  {linking ? 'Opening Stripe…' : 'Complete Payment Setup'}
+                </button>
+              </div>
+              {disabledExplainer && (
+                <p className="text-xs text-gray-600 leading-snug">
+                  {disabledExplainer}
+                </p>
+              )}
             </div>
           )}
         </div>

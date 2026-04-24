@@ -13,6 +13,7 @@ import { readFileSync } from 'fs'
 import { resolve } from 'path'
 import { randomBytes, randomUUID } from 'crypto'
 import { createClient } from '@supabase/supabase-js'
+import { platformFeeCents } from '../lib/pricing'
 
 // ---------------------------------------------------------------------------
 // Bootstrap env
@@ -241,7 +242,7 @@ async function seedDemoOrder(schoolId: string, ordererId: string): Promise<void>
   }
 
   const totalCents = 1500
-  const platformFeeCents = Math.round(totalCents * 0.10)
+  const feeCents = platformFeeCents(totalCents)
 
   const { data: order, error: orderErr } = await supabase
     .from('orders')
@@ -265,7 +266,7 @@ async function seedDemoOrder(schoolId: string, ordererId: string): Promise<void>
       order_id: order.id,
       stripe_payment_intent_id: seedPiId,
       amount_cents: totalCents,
-      platform_fee_cents: platformFeeCents,
+      platform_fee_cents: feeCents,
       status: 'succeeded',
       payer_id: ordererId,
       payee_id: null,

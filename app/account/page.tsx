@@ -32,7 +32,7 @@ export default async function AccountPage() {
       .single(),
     supabase
       .from('stripe_accounts')
-      .select('onboarding_complete')
+      .select('onboarding_complete, charges_enabled, payouts_enabled, disabled_reason, currently_due')
       .eq('user_id', user.id)
       .maybeSingle(),
     supabase.from('schools').select('id, name').order('name'),

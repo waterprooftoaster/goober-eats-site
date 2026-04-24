@@ -1,20 +1,36 @@
 /**
  * @file route.ts
- * @description Stripe webhook handler. Creates orders on
- *   payment_intent.succeeded from metadata embedded by /api/stripe/checkout-session
- *   (school_id, restaurant_name, cart_screenshot_paths, total_cents). Idempotent
- *   via the unique index on payments.stripe_payment_intent_id; an orphan order
- *   from a partially-failed prior attempt is recovered by PI ID lookup.
- *   Marks swipers active on account.updated when Stripe Connect onboarding
- *   completes.
+ * @description Stripe webhook handler. Verifies the event signature,
+ *   records every event in `stripe_events` for replay dedup, then
+ *   dispatches to per-event handlers.
+ *
+ *   Handled events:
+ *     - payment_intent.succeeded    — creates order + payment row
+ *     - payment_intent.payment_failed — no-op
+ *     - checkout.session.completed  — no-op (order creation via PI)
+ *     - checkout.session.expired    — no-op
+ *     - account.updated             — persists Stripe Connect state; downgrades
+ *                                     onboarding_complete when charges are disabled
+ *     - charge.dispute.created      — marks payments.status = 'disputed'
+ *     - charge.dispute.closed       — won → 'succeeded'; lost → records note
+ *                                     when funds already transferred
+ *     - charge.refunded             — marks payments.status = 'refunded'
+ *
+ *   Idempotency: stripe_events has a UNIQUE constraint on event.id; the
+ *   `recordEvent` helper short-circuits on replay.
  *   Called by: Stripe webhook delivery (not directly by app code)
- * @dependencies lib/stripe/client.ts, lib/supabase/service.ts, lib/api/helpers.ts
+ * @dependencies lib/stripe/client.ts, lib/supabase/service.ts, lib/api/helpers.ts,
+ *               lib/stripe/webhook-idempotency.ts, lib/stripe/account-state.ts,
+ *               lib/pricing.ts
  */
 
 import { NextRequest } from 'next/server'
 import { getStripe } from '@/lib/stripe/client'
 import { createServiceClient } from '@/lib/supabase/service'
 import { apiError, apiSuccess } from '@/lib/api/helpers'
+import { recordEvent } from '@/lib/stripe/webhook-idempotency'
+import { fromStripeAccount } from '@/lib/stripe/account-state'
+import { platformFeeCents } from '@/lib/pricing'
 import type Stripe from 'stripe'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -24,8 +40,8 @@ const SCREENSHOT_PATH_RE =
 export const dynamic = 'force-dynamic'
 
 /**
- * Handles Stripe webhook events: creates orders on payment_intent.succeeded, marks swipers active on account.updated.
- * @returns JSON { received: true } on success; 400/500 on signature validation or processing errors
+ * Handles Stripe webhook events with signature verification and idempotency.
+ * @returns JSON on success; 400/500 on signature validation or processing errors
  * @called-by Stripe webhook delivery
  */
 export async function POST(request: NextRequest) {
@@ -39,6 +55,7 @@ export async function POST(request: NextRequest) {
   const signature = request.headers.get('stripe-signature')
   if (!signature) return apiError('Missing stripe-signature header', 400)
 
+  // SIGNATURE VERIFICATION FIRST — never touch the DB on untrusted input.
   let event: Stripe.Event
   try {
     event = getStripe().webhooks.constructEvent(body, signature, webhookSecret)
@@ -47,9 +64,22 @@ export async function POST(request: NextRequest) {
     return apiError('Invalid webhook signature', 400)
   }
 
-  console.log(`webhook received: ${event.type}`, { eventId: event.id })
-
   const supabase = createServiceClient()
+
+  // Idempotency AFTER signature — writes to stripe_events so malformed
+  // payloads can't pollute the dedup table.
+  let duplicate = false
+  try {
+    const result = await recordEvent(event.id, event.type, supabase)
+    duplicate = result.isDuplicate
+  } catch (err) {
+    console.error('webhook: failed to record event for idempotency', { eventId: event.id, err })
+    return apiError('Failed to process webhook', 500)
+  }
+
+  if (duplicate) {
+    return apiSuccess({ received: true, duplicate: true })
+  }
 
   switch (event.type) {
     case 'payment_intent.succeeded': {
@@ -60,26 +90,40 @@ export async function POST(request: NextRequest) {
     }
 
     case 'payment_intent.payment_failed': {
-      // No-op for checkout flow: no order exists in our DB until
-      // payment_intent.succeeded fires.
       break
     }
 
     case 'checkout.session.completed': {
-      // No-op: order creation is handled by payment_intent.succeeded.
       const session = event.data.object as Stripe.Checkout.Session
       console.log(`checkout.session.completed: session ${session.id} (no-op)`)
       break
     }
 
     case 'checkout.session.expired': {
-      // No-op: no order exists to clean up.
       break
     }
 
     case 'account.updated': {
       const account = event.data.object as Stripe.Account
       await handleAccountUpdated(account, supabase)
+      break
+    }
+
+    case 'charge.dispute.created': {
+      const dispute = event.data.object as Stripe.Dispute
+      await handleDisputeCreated(dispute, supabase)
+      break
+    }
+
+    case 'charge.dispute.closed': {
+      const dispute = event.data.object as Stripe.Dispute
+      await handleDisputeClosed(dispute, supabase)
+      break
+    }
+
+    case 'charge.refunded': {
+      const charge = event.data.object as Stripe.Charge
+      await handleChargeRefunded(charge, supabase)
       break
     }
   }
@@ -109,8 +153,6 @@ async function handlePaymentIntentSucceeded(
   })
 
   const isGuest = meta.is_guest === 'true'
-  // Cap guest_name to the same 100-char ceiling as the request schema to
-  // defend against metadata tampering by a compromised platform key.
   const guestName = isGuest ? (meta.guest_name ?? '').slice(0, 100) || null : null
   const ordererId = isGuest ? null : meta.orderer_id
 
@@ -121,7 +163,10 @@ async function handlePaymentIntentSucceeded(
   }
   const { schoolId, restaurantName, totalCents, screenshotPaths } = validation
 
-  // Idempotency: skip if payment already recorded for this PI.
+  // Row-level idempotency: skip if payment already recorded for this PI.
+  // (Complements the event-level guard in stripe_events; needed because a
+  // brand-new event_id can still refer to a PI we've already persisted
+  // from a prior delivery cycle.)
   const { data: existingPayment, error: paymentCheckError } = await supabase
     .from('payments')
     .select('id')
@@ -141,12 +186,8 @@ async function handlePaymentIntentSucceeded(
     return null
   }
 
-  const platformFeeCents = Math.round(totalCents * 0.10)
+  const feeCents = platformFeeCents(totalCents)
 
-  // Create order — unified path for guest and auth.
-  // stripe_payment_intent_id has a unique index, so on retry (when the previous
-  // attempt created the order but payment insert failed) the insert fails and
-  // we recover the existing order below.
   let orderId: string
   const { data: order, error: orderError } = await supabase
     .from('orders')
@@ -184,7 +225,7 @@ async function handlePaymentIntentSucceeded(
     order_id: orderId,
     stripe_payment_intent_id: pi.id,
     amount_cents: totalCents,
-    platform_fee_cents: platformFeeCents,
+    platform_fee_cents: feeCents,
     status: 'succeeded',
     payer_id: ordererId,
     payee_id: null,
@@ -209,9 +250,7 @@ type MetadataOk = {
 type MetadataErr = { ok: false; reason: string }
 
 /**
- * Validates the Stripe metadata required to create an order; rejects
- * malformed UUIDs, missing fields, oversized restaurant_name, and any
- * screenshot path that does not match the canonical pre-checkout layout.
+ * Validates the Stripe metadata required to create an order.
  * @param meta - Raw metadata from the PaymentIntent
  * @param isGuest - True when the metadata indicates a guest checkout
  * @param guestName - Pre-extracted guest name (or null for auth flow)
@@ -239,8 +278,6 @@ function validatePaymentIntentMetadata(
   }
   if (!totalCentsRaw) return { ok: false, reason: 'missing total_cents' }
   const totalCents = parseInt(totalCentsRaw, 10)
-  // Mirrors createCheckoutSchema bounds in lib/types/api.ts. Defends against
-  // post-checkout metadata tampering by a compromised platform key.
   if (!Number.isInteger(totalCents) || totalCents < 50 || totalCents > 50_000) {
     return { ok: false, reason: 'invalid total_cents' }
   }
@@ -265,9 +302,10 @@ function validatePaymentIntentMetadata(
 }
 
 /**
- * On Stripe Connect onboarding completion, marks stripe_accounts.onboarding_complete
- * and auto-activates is_swiper for users who already have a school_id.
- * @param account - The Stripe.Account object from the account.updated event
+ * Persists the full Stripe Connect state onto stripe_accounts. Downgrades
+ *   onboarding_complete whenever charges stop working; auto-activates
+ *   is_swiper when onboarding has just crossed the threshold.
+ * @param account - Stripe.Account from the account.updated event
  * @param supabase - Service-role Supabase client
  * @called-by POST handler above
  */
@@ -275,36 +313,176 @@ async function handleAccountUpdated(
   account: Stripe.Account,
   supabase: ServiceClient
 ): Promise<void> {
-  if (!account.details_submitted || !account.charges_enabled) return
-
   const { data: existing } = await supabase
     .from('stripe_accounts')
-    .select('id, user_id')
+    .select('id, user_id, onboarding_complete')
     .eq('stripe_account_id', account.id)
     .maybeSingle()
   if (!existing) return
 
-  console.log(`[webhook] account.updated: ${account.id}`)
-  await supabase
+  const state = fromStripeAccount(account)
+
+  const { error: updateError } = await supabase
     .from('stripe_accounts')
-    .update({ onboarding_complete: true })
+    .update({
+      onboarding_complete: state.onboardingComplete,
+      charges_enabled: state.chargesEnabled,
+      payouts_enabled: state.payoutsEnabled,
+      disabled_reason: state.disabledReason,
+      currently_due: state.currentlyDue,
+    })
     .eq('stripe_account_id', account.id)
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('school_id')
-    .eq('id', existing.user_id)
-    .single()
-
-  if (profile?.school_id) {
-    await supabase
-      .from('profiles')
-      .update({ is_swiper: true })
-      .eq('id', existing.user_id)
-      .eq('is_swiper', false)
-  } else {
-    console.warn(
-      `account.updated: skipping is_swiper activation for user ${existing.user_id} — no school_id set`
-    )
+  if (updateError) {
+    // Surface the error so Stripe retries the webhook rather than leaving
+    // stale DB state when the UPDATE silently drops (row locked, etc.).
+    console.error('account.updated: failed to persist Connect state', {
+      accountId: account.id,
+      error: updateError,
+    })
+    throw updateError
   }
+
+  // Only auto-activate is_swiper when onboarding crosses from false → true.
+  // This preserves the prior one-shot activation and avoids fighting the
+  // user if they manually toggled is_swiper.
+  const becameActive =
+    !existing.onboarding_complete && state.onboardingComplete
+
+  if (becameActive) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('school_id')
+      .eq('id', existing.user_id)
+      .single()
+
+    if (profile?.school_id) {
+      await supabase
+        .from('profiles')
+        .update({ is_swiper: true })
+        .eq('id', existing.user_id)
+        .eq('is_swiper', false)
+    } else {
+      console.warn(
+        `account.updated: skipping is_swiper activation for user ${existing.user_id} — no school_id set`
+      )
+    }
+  }
+}
+
+/**
+ * Marks the payment row disputed when Stripe opens a chargeback.
+ * @param dispute - Stripe.Dispute from the charge.dispute.created event
+ * @param supabase - Service-role Supabase client
+ * @called-by POST handler above
+ */
+async function handleDisputeCreated(
+  dispute: Stripe.Dispute,
+  supabase: ServiceClient
+): Promise<void> {
+  const paymentIntentId = resolvePaymentIntentId(dispute.payment_intent)
+  if (!paymentIntentId) {
+    console.warn('charge.dispute.created: no payment_intent on dispute', { disputeId: dispute.id })
+    return
+  }
+
+  const { error } = await supabase
+    .from('payments')
+    .update({ status: 'disputed' })
+    .eq('stripe_payment_intent_id', paymentIntentId)
+
+  if (error) {
+    console.error('charge.dispute.created: failed to mark payment disputed', {
+      disputeId: dispute.id,
+      paymentIntentId,
+      error,
+    })
+  }
+}
+
+/**
+ * Closes a dispute: won → payments.status = 'succeeded'; lost → records a
+ *   transfer_failures row when funds had already transferred to the swiper.
+ * @param dispute - Stripe.Dispute from the charge.dispute.closed event
+ * @param supabase - Service-role Supabase client
+ * @called-by POST handler above
+ */
+async function handleDisputeClosed(
+  dispute: Stripe.Dispute,
+  supabase: ServiceClient
+): Promise<void> {
+  const paymentIntentId = resolvePaymentIntentId(dispute.payment_intent)
+  if (!paymentIntentId) {
+    console.warn('charge.dispute.closed: no payment_intent on dispute', { disputeId: dispute.id })
+    return
+  }
+
+  if (dispute.status === 'won') {
+    // Only un-flag payments still marked disputed; avoids overwriting a
+    // concurrent state change (e.g. a manual refund that landed first).
+    await supabase
+      .from('payments')
+      .update({ status: 'succeeded' })
+      .eq('stripe_payment_intent_id', paymentIntentId)
+      .eq('status', 'disputed')
+    return
+  }
+
+  if (dispute.status === 'lost') {
+    const { data: payment } = await supabase
+      .from('payments')
+      .select('order_id, payee_id')
+      .eq('stripe_payment_intent_id', paymentIntentId)
+      .maybeSingle()
+
+    if (payment?.payee_id) {
+      // Funds already transferred to the swiper. Auto-reversal is out of
+      // scope per the original prompt; persist a marker row so ops can
+      // reconcile manually.
+      await supabase.from('transfer_failures').insert({
+        order_id: payment.order_id,
+        stripe_error_code: 'dispute-lost-post-transfer',
+        stripe_error_message: `Dispute ${dispute.id} was lost; funds already transferred to swiper.`,
+      })
+    }
+    return
+  }
+
+  // warning_* / needs_response / under_review: no action.
+}
+
+/**
+ * Marks the payment refunded when Stripe records a full refund on the charge.
+ * @param charge - Stripe.Charge from the charge.refunded event
+ * @param supabase - Service-role Supabase client
+ * @called-by POST handler above
+ */
+async function handleChargeRefunded(
+  charge: Stripe.Charge,
+  supabase: ServiceClient
+): Promise<void> {
+  const paymentIntentId =
+    typeof charge.payment_intent === 'string'
+      ? charge.payment_intent
+      : charge.payment_intent?.id ?? null
+  if (!paymentIntentId) return
+
+  // Idempotent with the cancel-refund flow: if the payment is already
+  // marked refunded, this UPDATE is a no-op.
+  await supabase
+    .from('payments')
+    .update({ status: 'refunded' })
+    .eq('stripe_payment_intent_id', paymentIntentId)
+}
+
+/**
+ * Narrows `dispute.payment_intent` (string | PaymentIntent | null) to the id.
+ * @param pi - The payment_intent field from the dispute object
+ * @returns The payment intent id or null
+ */
+function resolvePaymentIntentId(
+  pi: string | Stripe.PaymentIntent | null | undefined
+): string | null {
+  if (!pi) return null
+  return typeof pi === 'string' ? pi : pi.id
 }

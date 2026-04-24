@@ -4,14 +4,19 @@
  *   Runs eligibility checks via the user client then uses the service client for
  *   the atomic swiper_id claim (RLS cannot cover the null → user transition).
  *   School scoping reads orders.school_id directly post-pivot (no eateries join).
+ *   Uses `canAccept` from lib/stripe/account-state so the gate checks
+ *   onboarding_complete AND charges_enabled AND payouts_enabled AND the
+ *   absence of a Stripe disabled_reason — not just the legacy onboarding flag.
  *   Called by: swiper orders UI (accept button)
- * @dependencies lib/supabase/server.ts, lib/supabase/service.ts, lib/api/helpers.ts
+ * @dependencies lib/supabase/server.ts, lib/supabase/service.ts, lib/api/helpers.ts,
+ *               lib/stripe/account-state.ts
  */
 
 import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { apiError, apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
+import { canAccept, humanReason } from '@/lib/stripe/account-state'
 
 /**
  * Atomically claims an open order for the calling swiper after eligibility validation.
@@ -44,12 +49,27 @@ export async function PATCH(
 
   const { data: stripeAccount } = await supabase
     .from('stripe_accounts')
-    .select('onboarding_complete')
+    .select('onboarding_complete, charges_enabled, payouts_enabled, disabled_reason, currently_due')
     .eq('user_id', user.id)
     .single()
 
-  if (!stripeAccount?.onboarding_complete) {
+  if (!stripeAccount) {
     return apiError('Stripe onboarding must be completed first', 403)
+  }
+
+  const accountState = {
+    onboardingComplete: stripeAccount.onboarding_complete,
+    chargesEnabled: stripeAccount.charges_enabled,
+    payoutsEnabled: stripeAccount.payouts_enabled,
+    disabledReason: stripeAccount.disabled_reason,
+    currentlyDue: stripeAccount.currently_due,
+  }
+
+  if (!canAccept(accountState)) {
+    const reason =
+      humanReason(stripeAccount.disabled_reason) ??
+      'Your Stripe account cannot accept transfers right now'
+    return apiError(reason, 403)
   }
 
   const { data: profile } = await supabase

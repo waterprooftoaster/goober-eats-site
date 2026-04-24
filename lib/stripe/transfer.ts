@@ -1,6 +1,16 @@
 /**
  * @file transfer.ts
- * @description Transfers funds from the platform to the swiper's Stripe connected account on order completion.
+ * @description Transfers funds from the platform to the swiper's Stripe
+ *   connected account on order completion. Checkout keeps funds on the
+ *   platform (no `transfer_data.destination` — swiper is unknown at
+ *   checkout time), so this is where the 10% platform fee is applied and
+ *   the remainder routed to the swiper.
+ *
+ *   On Stripe failure a row is inserted into `transfer_failures` instead
+ *   of the prior silent console.error; ops can query the unresolved-
+ *   failures index to retry. The historical `UPDATE orders SET status='paid'`
+ *   was removed because `'paid'` was dropped from the order_status enum
+ *   in migration 20260329000000; 'completed' is the terminal state.
  *   Called by: app/api/orders/[id]/status/route.ts
  * @dependencies lib/stripe/client.ts, lib/supabase/service.ts, lib/pricing.ts
  */
@@ -12,23 +22,21 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { platformFeeCents } from '@/lib/pricing'
 
 /**
- * Transfer funds from the platform to the swiper's connected Stripe account.
- *
- * Called when any order (guest or auth) reaches the 'completed' status.
- * Payment was captured upfront via Stripe Checkout.
- *
- * Idempotency: Stripe's idempotency key (`transfer-${orderId}`) prevents
- * double-charges. The DB payee_id write happens after the Stripe call
- * succeeds so a failed transfer doesn't block future retry attempts.
+ * Transfers the order amount minus the 10% platform fee to the swiper's
+ *   Stripe Connect account; records a row in `transfer_failures` on error.
+ * @param orderId - The completed order's UUID
+ * @param swiperId - The swiper profile.id the transfer should reach
+ * @param totalCents - Orderer-paid total in cents; fee is 10% of this
+ * @called-by app/api/orders/[id]/status/route.ts (completion branch)
  */
 export async function transferToSwiper(
   orderId: string,
   swiperId: string,
   totalCents: number
-) {
+): Promise<void> {
   const service = createServiceClient()
 
-  // Check if transfer already completed (payee_id already set)
+  // Skip if already transferred (payee_id set on a succeeded payment).
   const { data: payment } = await service
     .from('payments')
     .select('id, payee_id')
@@ -47,7 +55,11 @@ export async function transferToSwiper(
     .single()
 
   if (!stripeAccount) {
-    console.error(`Transfer failed: no Stripe account for swiper ${swiperId}`)
+    await service.from('transfer_failures').insert({
+      order_id: orderId,
+      stripe_error_code: 'no_connected_account',
+      stripe_error_message: `Swiper ${swiperId} has no Stripe connected account`,
+    })
     return
   }
 
@@ -65,25 +77,39 @@ export async function transferToSwiper(
       { idempotencyKey: `transfer-${orderId}` }
     )
   } catch (err) {
+    const code = extractStripeCode(err)
     const message = err instanceof Error ? err.message : 'Unknown error'
-    console.error(`Transfer failed for order ${orderId}: ${message}`)
+
+    // TODO(ops): wire a pager/alerting hook here so unresolved transfer
+    // failures surface beyond the DB. The partial index on
+    // transfer_failures.resolved_at IS NULL supports the dashboard query.
+    await service.from('transfer_failures').insert({
+      order_id: orderId,
+      stripe_error_code: code,
+      stripe_error_message: message,
+    })
     return
   }
 
-  // Mark payment as transferred and advance order to 'paid'
+  // Only mark transferred after the Stripe call succeeds. Leaves
+  // orders.status at 'completed' (terminal per migration 20260329000000).
   await service
     .from('payments')
     .update({ payee_id: swiperId })
     .eq('order_id', orderId)
     .is('payee_id', null)
+}
 
-  const { error: statusError } = await service
-    .from('orders')
-    .update({ status: 'paid' })
-    .eq('id', orderId)
-    .eq('status', 'completed')
+// --- Helpers ---
 
-  if (statusError) {
-    console.error(`Transfer succeeded but failed to update order ${orderId} to paid: ${statusError.message}`)
+/**
+ * Narrows an unknown thrown value into the Stripe `code` string when present.
+ * @param err - Anything caught from `transfers.create`
+ * @returns The Stripe error code (e.g. 'balance_insufficient') or null
+ */
+function extractStripeCode(err: unknown): string | null {
+  if (err && typeof err === 'object' && 'code' in err && typeof err.code === 'string') {
+    return err.code
   }
+  return null
 }

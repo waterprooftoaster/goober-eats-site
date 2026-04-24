@@ -20,7 +20,12 @@ export type OrderStatus =
   | 'completed'
   | 'cancelled'
 
-export type PaymentStatus = 'pending' | 'succeeded' | 'failed' | 'refunded'
+export type PaymentStatus =
+  | 'pending'
+  | 'succeeded'
+  | 'failed'
+  | 'refunded'
+  | 'disputed'
 
 export interface Order {
   id: string
@@ -57,5 +62,9 @@ export interface StripeAccount {
   user_id: string
   stripe_account_id: string
   onboarding_complete: boolean
+  charges_enabled: boolean
+  payouts_enabled: boolean
+  disabled_reason: string | null
+  currently_due: string[]
   created_at: string
 }
