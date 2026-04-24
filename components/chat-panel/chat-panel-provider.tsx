@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { ordersOrdererChannel } from '@/lib/constants'
 import { ChatPanelContext } from './chat-panel-context'
 import type { OrderEntry } from './chat-panel-context'
 import type { OrderStatus } from '@/lib/types/database'
@@ -118,6 +119,7 @@ export function ChatPanelProvider({ userId, children }: Props) {
   // Uses anon_user_id filter for anonymous users, orderer_id for authenticated users.
   useEffect(() => {
     if (!userId) return
+    const uid: string = userId
 
     const supabase = createClient()
 
@@ -127,14 +129,14 @@ export function ChatPanelProvider({ userId, children }: Props) {
       const filterField = isAnon ? 'anon_user_id' : 'orderer_id'
 
       const channel = supabase
-        .channel(`orders:orderer:${userId}`)
+        .channel(ordersOrdererChannel(uid))
         .on<{ id: string; status: OrderStatus }>(
           'postgres_changes',
           {
             event: 'UPDATE',
             schema: 'public',
             table: 'orders',
-            filter: `${filterField}=eq.${userId}`,
+            filter: `${filterField}=eq.${uid}`,
           },
           (payload) => {
             // Only update panels that are currently open

@@ -46,6 +46,7 @@ export function SwiperSection({ profile, stripeAccount, schools }: Props) {
         </p>
         <Link
           href="/swiper-registration"
+          data-testid="account-become-swiper-cta"
           className="inline-block rounded-md bg-black px-4 py-2 text-white hover:bg-gray-800"
         >
           Get Started
@@ -145,6 +146,7 @@ function SwiperStatus({ profile, stripeConnected, schools }: SwiperStatusProps) 
                 name="school_id"
                 value={schoolId}
                 onChange={(e) => setSchoolId(e.target.value)}
+                data-testid="account-school-selector"
                 className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black"
               >
                 <option value="">Select a school…</option>
@@ -157,6 +159,7 @@ function SwiperStatus({ profile, stripeConnected, schools }: SwiperStatusProps) 
               <button
                 onClick={handleSaveSchool}
                 disabled={saving || !schoolId}
+                data-testid="account-school-save-button"
                 className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
               >
                 {saving ? 'Saving…' : 'Save School'}
@@ -176,12 +179,13 @@ function SwiperStatus({ profile, stripeConnected, schools }: SwiperStatusProps) 
           <p className="text-sm text-gray-500 mb-1">Payment account</p>
           {stripeConnected ? (
             <div className="flex items-center gap-3">
-              <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+              <span data-testid="account-stripe-status" className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
                 Connected
               </span>
               <button
                 onClick={handleRelinkPayment}
                 disabled={linking}
+                data-testid="account-stripe-dashboard-button"
                 className="text-sm text-gray-500 underline hover:text-gray-700 disabled:opacity-50"
               >
                 {linking ? 'Opening Stripe…' : 'Update payment info'}
@@ -189,12 +193,13 @@ function SwiperStatus({ profile, stripeConnected, schools }: SwiperStatusProps) 
             </div>
           ) : (
             <div className="flex items-center gap-3">
-              <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700">
+              <span data-testid="account-stripe-status" className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700">
                 Pending
               </span>
               <button
                 onClick={handleRelinkPayment}
                 disabled={linking}
+                data-testid="account-stripe-link-button"
                 className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
               >
                 {linking ? 'Opening Stripe…' : 'Complete Payment Setup'}

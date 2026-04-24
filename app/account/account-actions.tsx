@@ -50,6 +50,7 @@ export function AccountActions() {
       <button
         type="button"
         onClick={handleSignOut}
+        data-testid="account-signout-button"
         className="w-full rounded-md border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50"
       >
         Sign Out
@@ -62,6 +63,7 @@ export function AccountActions() {
       {!confirming ? (
         <button
           onClick={() => setConfirming(true)}
+          data-testid="account-delete-button"
           className="w-full rounded-md border border-red-300 px-4 py-2 text-red-600 hover:bg-red-50"
         >
           Delete Account

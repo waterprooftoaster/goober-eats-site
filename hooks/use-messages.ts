@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { messagesChannel } from '@/lib/constants'
 import type { Conversation, Message } from '@/lib/types/messaging'
 
 interface UseMessagesResult {
@@ -63,7 +64,7 @@ export function useMessages(orderId: string | null): UseMessagesResult {
     if (!conversation) return
     const supabase = createClient()
     const channel = supabase
-      .channel(`messages:${conversation.id}`)
+      .channel(messagesChannel(conversation.id))
       .on<Message>(
         'postgres_changes',
         {

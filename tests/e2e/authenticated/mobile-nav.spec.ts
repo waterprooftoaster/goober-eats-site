@@ -56,6 +56,9 @@ test.describe('Mobile navigation', () => {
   })
 
   test('swiper dashboard icon visible and navigates', async ({ page }) => {
+    // Pre-existing broken: route `/swiper/dashboard` does not exist in current app.
+    // Left unmigrated; flagged in SESSION_LOG. Migration will happen when the
+    // Swiper Dashboard page is introduced (Session 07 shell rewrite at earliest).
     await page.setViewportSize(MOBILE_VIEWPORT)
     await page.goto('/')
     const link = page.getByRole('link', { name: 'Swiper Dashboard' })
@@ -67,7 +70,7 @@ test.describe('Mobile navigation', () => {
   test('pending orders icon visible and navigates', async ({ page }) => {
     await page.setViewportSize(MOBILE_VIEWPORT)
     await page.goto('/')
-    const link = page.getByRole('link', { name: 'Pending Orders' })
+    const link = page.getByTestId('swiper-orders-button')
     await expect(link).toBeVisible()
     await link.click()
     await expect(page).toHaveURL('/swiper/orders')
@@ -76,6 +79,6 @@ test.describe('Mobile navigation', () => {
   test('profile icon visible at mobile viewport', async ({ page }) => {
     await page.setViewportSize(MOBILE_VIEWPORT)
     await page.goto('/')
-    await expect(page.getByRole('link', { name: 'Profile' })).toBeVisible()
+    await expect(page.getByTestId('header-account-link')).toBeVisible()
   })
 })

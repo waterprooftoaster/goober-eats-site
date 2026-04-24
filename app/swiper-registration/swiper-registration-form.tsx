@@ -73,7 +73,7 @@ export function SwiperRegistrationForm({ schoolId, schoolName, schools }: Props)
         Fulfill orders using your meal plan and earn money per delivery.
       </p>
 
-      {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
+      {error && <p data-testid="swiper-reg-error-message" className="text-sm text-red-600 mb-4">{error}</p>}
 
       {/* School section */}
       <div className="mb-6">
@@ -85,6 +85,7 @@ export function SwiperRegistrationForm({ schoolId, schoolName, schools }: Props)
             <select
               value={selectedSchoolId}
               onChange={(e) => setSelectedSchoolId(e.target.value)}
+              data-testid="swiper-reg-school-selector"
               className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black"
             >
               <option value="">Select a school…</option>
@@ -97,6 +98,7 @@ export function SwiperRegistrationForm({ schoolId, schoolName, schools }: Props)
             <button
               onClick={handleSaveSchool}
               disabled={saving || !selectedSchoolId}
+              data-testid="swiper-reg-save-button"
               className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
             >
               {saving ? 'Saving…' : 'Save School'}
@@ -109,6 +111,7 @@ export function SwiperRegistrationForm({ schoolId, schoolName, schools }: Props)
       <button
         onClick={handleContinue}
         disabled={!schoolConfirmed || connecting}
+        data-testid="swiper-reg-continue-button"
         className="w-full rounded-md bg-black px-4 py-2 text-white hover:bg-gray-800 disabled:opacity-50"
       >
         {connecting ? 'Opening Stripe…' : 'Continue to Payment Setup'}

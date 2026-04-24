@@ -10,10 +10,11 @@
 import type { RefObject } from 'react'
 import Image from 'next/image'
 import type { Message } from '@/lib/types/messaging'
+import type { PseudoMessage } from '@/components/chat/chat-view'
 import { cn } from '@/lib/utils'
 
 interface Props {
-  pseudoMessages: string[]
+  pseudoMessages: PseudoMessage[]
   messages: Message[]
   currentUserId: string | null
   messagesEndRef: RefObject<HTMLDivElement | null>
@@ -29,11 +30,15 @@ interface Props {
  */
 export function ChatThread({ pseudoMessages, messages, currentUserId, messagesEndRef }: Props) {
   return (
-    <div className="flex-1 space-y-1 overflow-y-auto px-4 py-3">
-      {pseudoMessages.map((text, i) => (
-        <div key={`pseudo-${i}`} className="mb-1 mr-auto flex max-w-[75%] flex-col items-start">
+    <div data-testid="chat-thread" className="flex-1 space-y-1 overflow-y-auto px-4 py-3">
+      {pseudoMessages.map((pseudo, i) => (
+        <div
+          key={`pseudo-${i}`}
+          className="mb-1 mr-auto flex max-w-[75%] flex-col items-start"
+          data-testid={pseudo.testid}
+        >
           <div className="rounded-2xl rounded-bl-sm bg-gray-100 px-3 py-2 text-sm text-gray-900">
-            {text}
+            {pseudo.text}
           </div>
         </div>
       ))}

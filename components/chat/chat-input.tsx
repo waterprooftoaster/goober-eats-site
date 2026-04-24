@@ -94,6 +94,7 @@ export function ChatInput({ orderId, onSend, disabled }: Props) {
           disabled={isDisabled}
           rows={1}
           placeholder={disabled ? 'Conversation closed' : 'Type a message…'}
+          data-testid={disabled ? 'chat-input-waiting' : 'chat-input-active'}
           className={cn(
             'flex-1 resize-none rounded-lg border border-gray-200 bg-transparent px-3 py-2 text-sm',
             'placeholder:text-gray-400 outline-none',
@@ -117,6 +118,7 @@ export function ChatInput({ orderId, onSend, disabled }: Props) {
           disabled={isDisabled}
           onClick={() => fileInputRef.current?.click()}
           aria-label="Upload delivery photo"
+          data-testid="chat-photo-upload"
         >
           <Camera className="h-4 w-4" />
         </Button>
@@ -126,6 +128,7 @@ export function ChatInput({ orderId, onSend, disabled }: Props) {
           disabled={isDisabled || !body.trim()}
           onClick={handleSend}
           aria-label="Send message"
+          data-testid="chat-send-button"
         >
           {sending ? (
             <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />

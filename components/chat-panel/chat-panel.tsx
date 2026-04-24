@@ -48,6 +48,7 @@ function ChatPanelItem({ entry, index, currentUserId, onToggle, onClose, onStatu
       <div className={cn(mobileClass)}>
         <button
           onClick={() => onToggle(orderId)}
+          data-testid="chat-panel-header"
           className={cn(
             'flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-medium text-white shadow-lg hover:bg-gray-800',
             index === 0 && 'max-sm:w-full max-sm:justify-between max-sm:rounded-none max-sm:shadow-none'
@@ -68,7 +69,7 @@ function ChatPanelItem({ entry, index, currentUserId, onToggle, onClose, onStatu
         mobileClass
       )}
     >
-      <div className="flex items-center justify-between border-b border-gray-200 px-4 py-2.5">
+      <div data-testid="chat-panel-header" className="flex items-center justify-between border-b border-gray-200 px-4 py-2.5">
         <span className="text-sm font-semibold">Order #{shortId}</span>
         {status === 'completed' ? (
           <button
@@ -121,7 +122,7 @@ export function ChatPanel({ currentUserId }: Props) {
   const reversed = [...panelList].reverse()
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col-reverse gap-4 max-sm:inset-x-0 max-sm:bottom-0 max-sm:right-0">
+    <div data-testid="chat-panel-stack" className="fixed bottom-4 right-4 z-50 flex flex-col-reverse gap-4 max-sm:inset-x-0 max-sm:bottom-0 max-sm:right-0">
       {reversed.map((entry, index) => (
         <ChatPanelItem
           key={entry.orderId}

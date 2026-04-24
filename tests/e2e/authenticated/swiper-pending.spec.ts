@@ -57,11 +57,11 @@ test.describe('Pending Orders', () => {
 
   test('page loads and shows Open Orders heading', async ({ page }) => {
     await page.goto('/swiper/orders')
-    await expect(page.getByRole('heading', { name: 'Open Orders' })).toBeVisible()
+    await expect(page.getByTestId('swiper-orders-page')).toBeVisible()
   })
 
   test('sidebar shows Pending Orders link', async ({ page }) => {
     await page.goto('/')
-    await expect(page.getByRole('link', { name: /pending orders/i })).toBeVisible()
+    await expect(page.getByTestId('swiper-orders-button')).toBeVisible()
   })
 })

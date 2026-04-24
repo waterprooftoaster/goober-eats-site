@@ -30,10 +30,14 @@ export function SwiperOrdersButton({ isSwiper, pendingOrderCount }: SwiperOrders
       href="/swiper/orders"
       className="fixed bottom-6 left-6 z-50 relative rounded-full bg-black p-3 text-white shadow-lg transition-colors hover:bg-black/80"
       aria-label="Swiper Orders"
+      data-testid="swiper-orders-button"
     >
       <ClipboardList className="h-6 w-6" />
       {pendingOrderCount > 0 && (
-        <span className="absolute -top-1 -right-1 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+        <span
+          data-testid="swiper-orders-badge"
+          className="absolute -top-1 -right-1 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white"
+        >
           {pendingOrderCount > 99 ? '99+' : pendingOrderCount}
         </span>
       )}

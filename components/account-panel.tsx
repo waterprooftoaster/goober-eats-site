@@ -33,7 +33,7 @@ export function AccountPanel({ email, profile, stripeAccount, schools }: Account
   const router = useRouter()
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div data-testid="account-page" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       {/* Backdrop */}
       <button
         type="button"
@@ -43,7 +43,7 @@ export function AccountPanel({ email, profile, stripeAccount, schools }: Account
       />
 
       {/* Card */}
-      <div className="relative z-10 w-full mx-4 max-w-sm bg-white rounded-xl shadow-xl overflow-y-auto max-h-[90vh]">
+      <div data-testid="account-modal" className="relative z-10 w-full mx-4 max-w-sm bg-white rounded-xl shadow-xl overflow-y-auto max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-100 px-4 py-4">
           <h1 className="text-base font-semibold text-gray-900">Account</h1>
@@ -59,7 +59,7 @@ export function AccountPanel({ email, profile, stripeAccount, schools }: Account
 
         {/* Content */}
         <div className="p-6">
-          <p className="text-sm text-gray-500 mb-6">{email}</p>
+          <p data-testid="account-email-display" className="text-sm text-gray-500 mb-6">{email}</p>
           <AccountActions />
           <SwiperSection
             profile={profile}

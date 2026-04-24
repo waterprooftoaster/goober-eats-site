@@ -14,6 +14,7 @@ import { useRouter } from 'next/navigation'
 import { ImagePlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
+import { PENDING_SCREENSHOTS_KEY } from '@/lib/constants'
 
 type Stage = 'idle' | 'selected' | 'uploading' | 'error'
 
@@ -75,7 +76,7 @@ export default function HomePage() {
       })
       if (!putRes.ok) throw new Error('Upload failed. Please try again.')
 
-      sessionStorage.setItem('pending_screenshots', JSON.stringify([signed.path]))
+      sessionStorage.setItem(PENDING_SCREENSHOTS_KEY, JSON.stringify([signed.path]))
       router.push('/checkout')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
@@ -86,7 +87,7 @@ export default function HomePage() {
   const isUploading = stage === 'uploading'
 
   return (
-    <main className="flex min-h-[80vh] flex-col items-center justify-center px-4 gap-6">
+    <main data-testid="home-page" className="flex min-h-[80vh] flex-col items-center justify-center px-4 gap-6">
       <div
         className="relative w-80 h-80 rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 flex items-center justify-center cursor-pointer overflow-hidden hover:border-gray-400 transition-colors"
         onClick={() => !isUploading && inputRef.current?.click()}
@@ -108,6 +109,7 @@ export default function HomePage() {
         accept="image/*"
         className="hidden"
         onChange={handleFileChange}
+        data-testid="home-file-input"
       />
 
       {stage !== 'idle' && (
@@ -116,12 +118,13 @@ export default function HomePage() {
           disabled={isUploading}
           size="lg"
           className="w-80"
+          data-testid="home-place-order-button"
         >
           {isUploading ? 'Uploading…' : 'Place Order'}
         </Button>
       )}
 
-      {error && <p className="text-sm text-red-600 text-center max-w-xs">{error}</p>}
+      {error && <p data-testid="home-error-message" className="text-sm text-red-600 text-center max-w-xs">{error}</p>}
     </main>
   )
 }

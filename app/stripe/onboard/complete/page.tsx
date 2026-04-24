@@ -76,7 +76,7 @@ export default async function StripeOnboardCompletePage() {
 
   // Fallback: onboarding not yet complete or school not set
   return (
-    <main className="min-h-screen bg-white">
+    <main data-testid="onboard-almost-there-page" className="min-h-screen bg-white">
       <div className="mx-auto max-w-md p-8">
         <h1 className="text-2xl font-bold mb-4">Almost there!</h1>
         <p className="text-gray-600 mb-8">

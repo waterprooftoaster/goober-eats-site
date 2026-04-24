@@ -15,6 +15,7 @@ import { loadStripe } from '@stripe/stripe-js'
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { PENDING_SCREENSHOTS_KEY } from '@/lib/constants'
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!)
 
@@ -34,7 +35,7 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (initialized.current) return
     initialized.current = true
-    const raw = sessionStorage.getItem('pending_screenshots')
+    const raw = sessionStorage.getItem(PENDING_SCREENSHOTS_KEY)
     let paths: string[] = []
     if (raw) {
       try {
@@ -82,7 +83,7 @@ export default function CheckoutPage() {
       if (!json.clientSecret) throw new Error('No client secret returned')
       // Clear sessionStorage only after the session is confirmed to prevent
       // losing the paths if the Stripe call fails.
-      sessionStorage.removeItem('pending_screenshots')
+      sessionStorage.removeItem(PENDING_SCREENSHOTS_KEY)
       setClientSecret(json.clientSecret)
       setStage('checkout')
     } catch (err) {

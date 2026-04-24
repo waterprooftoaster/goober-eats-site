@@ -8,6 +8,7 @@ import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { createRef } from 'react'
 import { ChatThread } from '@/components/chat/chat-thread'
+import type { PseudoMessage } from '@/components/chat/chat-view'
 import type { Message } from '@/lib/types/messaging'
 
 const CONV_ID = 'conv-111'
@@ -27,7 +28,8 @@ function makeMessage(overrides: Partial<Message> = {}): Message {
   }
 }
 
-function renderThread(messages: Message[], pseudoMessages: string[] = []) {
+function renderThread(messages: Message[], pseudoTexts: string[] = []) {
+  const pseudoMessages: PseudoMessage[] = pseudoTexts.map((text) => ({ text }))
   const messagesEndRef = createRef<HTMLDivElement>()
   return render(
     <ChatThread

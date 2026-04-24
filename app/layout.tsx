@@ -65,6 +65,7 @@ export default async function RootLayout({
     <html
       lang="en"
       className={`${plusJakartaSans.variable} ${geistMono.variable} antialiased`}
+      data-testid="root-layout"
     >
       <body>
         <ChatPanelProvider userId={user?.id ?? null}>

@@ -43,19 +43,20 @@ test.describe('Authentication flow', () => {
     await page.waitForLoadState('networkidle')
 
     // Step 1: Enter email
-    await page.getByPlaceholder('Enter your email').fill(SIGNUP_EMAIL)
-    await page.getByRole('button', { name: 'Continue', exact: true }).click()
+    await page.getByTestId('auth-email-input').fill(SIGNUP_EMAIL)
+    await page.getByTestId('auth-continue-button').click()
 
     // Step 2: Enter password (user exists in auth → single password field, sign-in mode)
-    await page.getByPlaceholder('Password', { exact: true }).fill(SIGNUP_PASSWORD)
-    await page.getByRole('button', { name: 'Sign In' }).click()
+    await page.getByTestId('auth-password-input').fill(SIGNUP_PASSWORD)
+    await page.getByTestId('auth-signin-button').click()
 
     // Step 3: Onboarding — server action detects missing profile and returns needsOnboarding
-    await expect(page.getByText('What should we call you?')).toBeVisible({ timeout: 15000 })
-    await page.getByPlaceholder('Enter your full name').fill(SIGNUP_FULL_NAME)
+    await expect(page.getByTestId('auth-fullname-input')).toBeVisible({ timeout: 15000 })
+    await page.getByTestId('auth-fullname-input').fill(SIGNUP_FULL_NAME)
+    await page.getByTestId('auth-name-continue-button').click()
 
     // Select a school (now required) — type to filter, arrow down to highlight, Enter to select
-    const schoolInput = page.getByPlaceholder('Search schools...')
+    const schoolInput = page.getByTestId('auth-school-input').getByRole('combobox')
     await schoolInput.fill('NYU')
     await schoolInput.press('ArrowDown')
     await schoolInput.press('Enter')
@@ -63,16 +64,16 @@ test.describe('Authentication flow', () => {
     // Verify a school was selected (hidden input should have a value)
     await expect(page.locator('input[name="school_id"]')).not.toHaveValue('')
 
-    await page.getByRole('button', { name: 'Get Started' }).click()
+    await page.getByTestId('auth-onboarding-complete-button').click()
 
     // Should redirect to homepage
     await page.waitForURL('/', { timeout: 15000 })
-    await expect(page.getByRole('link', { name: 'Place an Order' })).toBeVisible()
+    await expect(page.getByTestId('home-page')).toBeVisible()
 
     // --- Sign Out ---
     await page.goto('/account')
-    await expect(page.getByText(SIGNUP_EMAIL)).toBeVisible({ timeout: 10000 })
-    await page.getByRole('button', { name: 'Sign Out' }).click()
+    await expect(page.getByTestId('account-email-display')).toHaveText(SIGNUP_EMAIL, { timeout: 10000 })
+    await page.getByTestId('account-signout-button').click()
     await page.waitForURL('/', { timeout: 15000 })
 
     // --- Sign In again (profile now exists, goes straight to homepage) ---
@@ -80,12 +81,12 @@ test.describe('Authentication flow', () => {
     await page.waitForLoadState('networkidle')
 
     // Step 1: Enter email
-    await page.getByPlaceholder('Enter your email').fill(SIGNUP_EMAIL)
-    await page.getByRole('button', { name: 'Continue', exact: true }).click()
+    await page.getByTestId('auth-email-input').fill(SIGNUP_EMAIL)
+    await page.getByTestId('auth-continue-button').click()
 
     // Step 2: Enter password (existing user = sign-in mode)
-    await page.getByPlaceholder('Password', { exact: true }).fill(SIGNUP_PASSWORD)
-    await page.getByRole('button', { name: 'Sign In' }).click()
+    await page.getByTestId('auth-password-input').fill(SIGNUP_PASSWORD)
+    await page.getByTestId('auth-signin-button').click()
 
     // Should redirect to homepage
     await page.waitForURL('/', { timeout: 15000 })
@@ -149,20 +150,21 @@ test.describe('Signup via form', () => {
     await page.waitForLoadState('networkidle')
 
     // Step 1: Enter email
-    await page.getByPlaceholder('Enter your email').fill(FORM_SIGNUP_EMAIL)
-    await page.getByRole('button', { name: 'Continue', exact: true }).click()
+    await page.getByTestId('auth-email-input').fill(FORM_SIGNUP_EMAIL)
+    await page.getByTestId('auth-continue-button').click()
 
     // Step 2: Fill both password fields (new user → sign-up mode with two fields)
-    await page.getByPlaceholder('Password', { exact: true }).fill(FORM_SIGNUP_PASSWORD)
-    await page.getByPlaceholder('Confirm Password').fill(FORM_SIGNUP_PASSWORD)
-    await page.getByRole('button', { name: 'Sign Up' }).click()
+    await page.getByTestId('auth-password-input').fill(FORM_SIGNUP_PASSWORD)
+    await page.getByTestId('auth-password-confirm-input').fill(FORM_SIGNUP_PASSWORD)
+    await page.getByTestId('auth-signup-button').click()
 
     // Step 3: Onboarding — full name with spaces
-    await expect(page.getByText('What should we call you?')).toBeVisible({ timeout: 15000 })
-    await page.getByPlaceholder('Enter your full name').fill('Jane Doe')
+    await expect(page.getByTestId('auth-fullname-input')).toBeVisible({ timeout: 15000 })
+    await page.getByTestId('auth-fullname-input').fill('Jane Doe')
+    await page.getByTestId('auth-name-continue-button').click()
 
     // Enter-to-select in school combobox: type to filter, arrow down to highlight, Enter to select
-    const schoolInput = page.getByPlaceholder('Search schools...')
+    const schoolInput = page.getByTestId('auth-school-input').getByRole('combobox')
     await schoolInput.fill('NYU')
     await schoolInput.press('ArrowDown')
     await schoolInput.press('Enter')
@@ -171,10 +173,10 @@ test.describe('Signup via form', () => {
     await expect(page.locator('input[name="school_id"]')).not.toHaveValue('')
 
     // Submit onboarding
-    await page.getByRole('button', { name: 'Get Started' }).click()
+    await page.getByTestId('auth-onboarding-complete-button').click()
 
     // Should redirect to homepage — no "Not authenticated" error
     await page.waitForURL('/', { timeout: 15000 })
-    await expect(page.getByRole('link', { name: 'Place an Order' })).toBeVisible()
+    await expect(page.getByTestId('home-page')).toBeVisible()
   })
 })

@@ -108,7 +108,7 @@ export function LoginForm({
         {effectiveStep === 'email' && (
           <>
             {callbackError && (
-              <p className="text-sm text-red-600 text-center">{callbackError}</p>
+              <p data-testid="auth-callback-error" className="text-sm text-red-600 text-center">{callbackError}</p>
             )}
 
             <h1 className={headingStyle}>Enter your email</h1>
@@ -126,6 +126,7 @@ export function LoginForm({
                   }
                 }}
                 className={inputStyle}
+                data-testid="auth-email-input"
               />
               {emailError && (
                 <p className="mt-1 text-sm text-red-600">{emailError}</p>
@@ -137,6 +138,7 @@ export function LoginForm({
               onClick={handleContinue}
               disabled={checkingEmail}
               className="w-full h-12 rounded-md bg-black text-white hover:bg-gray-800 disabled:opacity-50"
+              data-testid="auth-continue-button"
             >
               {checkingEmail ? '...' : 'Continue'}
             </button>
@@ -146,12 +148,13 @@ export function LoginForm({
         {effectiveStep === 'password' && (
           <>
             {error && (
-              <p className="text-sm text-red-600 text-center">{error}</p>
+              <p data-testid="auth-form-error" className="text-sm text-red-600 text-center">{error}</p>
             )}
 
             <button
               type="button"
               onClick={() => setStep('email')}
+              data-testid="auth-back-button"
               className="text-sm text-gray-500 hover:text-black"
             >
               &larr; Back
@@ -169,6 +172,7 @@ export function LoginForm({
                 required
                 minLength={6}
                 className={inputStyle}
+                data-testid="auth-password-input"
               />
 
               {emailExists === false && (
@@ -181,6 +185,7 @@ export function LoginForm({
                     required
                     minLength={6}
                     className={inputStyle}
+                    data-testid="auth-password-confirm-input"
                   />
                 </>
               )}
@@ -189,6 +194,7 @@ export function LoginForm({
                 type="submit"
                 disabled={authPending}
                 className="w-full h-12 rounded-md bg-black text-white hover:bg-gray-800 disabled:opacity-50"
+                data-testid={emailExists ? 'auth-signin-button' : 'auth-signup-button'}
               >
                 {authPending
                   ? '...'
@@ -210,6 +216,7 @@ export function LoginForm({
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               maxLength={100}
+              data-testid="auth-fullname-input"
               className={inputStyle}
             />
 
@@ -217,6 +224,7 @@ export function LoginForm({
               type="button"
               onClick={() => setStep('school')}
               disabled={!fullName.trim()}
+              data-testid="auth-name-continue-button"
               className="w-full h-12 rounded-md bg-black text-white hover:bg-gray-800 disabled:opacity-50"
             >
               Continue
@@ -227,7 +235,7 @@ export function LoginForm({
         {effectiveStep === 'school' && (
           <>
             {onboardingState && 'error' in onboardingState && (
-              <p className="text-sm text-red-600 text-center">
+              <p data-testid="auth-form-error" className="text-sm text-red-600 text-center">
                 {onboardingState.error}
               </p>
             )}
@@ -235,6 +243,7 @@ export function LoginForm({
             <button
               type="button"
               onClick={() => setStep('name')}
+              data-testid="auth-back-button"
               className="text-sm text-gray-500 hover:text-black"
             >
               &larr; Back
@@ -245,43 +254,46 @@ export function LoginForm({
             <form action={onboardingAction} className="space-y-6">
               <input type="hidden" name="full_name" value={fullName} />
 
-              <Combobox
-                value={selectedSchool}
-                onValueChange={(value) =>
-                  setSelectedSchool(value as { value: string; label: string } | null)
-                }
-                onInputValueChange={(inputValue) =>
-                  setSchoolSearchQuery(inputValue)
-                }
-                isItemEqualToValue={(a, b) => a.value === b.value}
-                autoHighlight
-              >
-                <ComboboxInput
-                  placeholder="Search schools..."
-                  className="h-12 rounded-md border-gray-300 text-base focus:border-black focus:ring-1 focus:ring-black"
-                />
-                <ComboboxContent>
-                  <ComboboxList>
-                    {schools.map((school) => (
-                      <ComboboxItem
-                        key={school.id}
-                        value={{ value: school.id, label: school.name }}
-                        className="py-3 text-base"
-                      >
-                        {school.name}
-                      </ComboboxItem>
-                    ))}
-                    {schoolSearchQuery.trim().length > 0 && (
-                      <ComboboxEmpty>No schools found</ComboboxEmpty>
-                    )}
-                  </ComboboxList>
-                </ComboboxContent>
-              </Combobox>
+              <div data-testid="auth-school-input">
+                <Combobox
+                  value={selectedSchool}
+                  onValueChange={(value) =>
+                    setSelectedSchool(value as { value: string; label: string } | null)
+                  }
+                  onInputValueChange={(inputValue) =>
+                    setSchoolSearchQuery(inputValue)
+                  }
+                  isItemEqualToValue={(a, b) => a.value === b.value}
+                  autoHighlight
+                >
+                  <ComboboxInput
+                    placeholder="Search schools..."
+                    className="h-12 rounded-md border-gray-300 text-base focus:border-black focus:ring-1 focus:ring-black"
+                  />
+                  <ComboboxContent>
+                    <ComboboxList>
+                      {schools.map((school) => (
+                        <ComboboxItem
+                          key={school.id}
+                          value={{ value: school.id, label: school.name }}
+                          className="py-3 text-base"
+                        >
+                          {school.name}
+                        </ComboboxItem>
+                      ))}
+                      {schoolSearchQuery.trim().length > 0 && (
+                        <ComboboxEmpty>No schools found</ComboboxEmpty>
+                      )}
+                    </ComboboxList>
+                  </ComboboxContent>
+                </Combobox>
+              </div>
               <input type="hidden" name="school_id" value={selectedSchool?.value ?? ''} />
 
               <button
                 type="submit"
                 disabled={onboardingPending || !selectedSchool}
+                data-testid="auth-onboarding-complete-button"
                 className="w-full h-12 rounded-md bg-black text-white hover:bg-gray-800 disabled:opacity-50"
               >
                 {onboardingPending ? '...' : 'Get Started'}

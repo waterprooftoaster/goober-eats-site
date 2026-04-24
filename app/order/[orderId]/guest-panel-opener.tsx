@@ -51,8 +51,8 @@ export function GuestPanelOpener({ orderId, initialStatus, eateryName }: Props) 
   }, [orderId, initialStatus, eateryName, openPanel, router])
 
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-gray-900" />
+    <div data-testid="guest-panel-opener" className="flex min-h-screen items-center justify-center">
+      <div data-testid="guest-bootstrap-spinner" className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-gray-900" />
     </div>
   )
 }

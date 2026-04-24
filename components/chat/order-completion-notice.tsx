@@ -20,7 +20,7 @@ interface Props {
  */
 export function OrderCompletedView({ deliveryPhoto, label = 'Your order is ready!' }: Props) {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-4 p-4">
+    <div data-testid="order-completed-view" className="flex h-full flex-col items-center justify-center gap-4 p-4">
       {deliveryPhoto?.image_url && (
         <a
           href={deliveryPhoto.image_url}

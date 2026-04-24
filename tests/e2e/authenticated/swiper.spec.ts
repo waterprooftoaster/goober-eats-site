@@ -126,13 +126,13 @@ test.describe('Account page — swiper section', () => {
 
   test('shows "Become a Swiper" section for non-swiper', async ({ page }) => {
     await page.goto('/account')
-    await expect(page.getByText('Become a Swiper')).toBeVisible()
+    await expect(page.getByTestId('account-become-swiper-cta')).toBeVisible()
   })
 
   test('school select and save updates profile', async ({ page }) => {
     await page.goto('/swiper-registration')
     // Select the first school option (not the placeholder)
-    const select = page.locator('select')
+    const select = page.getByTestId('swiper-reg-school-selector')
     await expect(select).toBeVisible()
     const options = await select.locator('option').all()
     // Find a non-empty option value
@@ -146,8 +146,8 @@ test.describe('Account page — swiper section', () => {
     }
     expect(targetValue).toBeTruthy()
     await select.selectOption(targetValue)
-    await page.getByRole('button', { name: 'Save School' }).click()
+    await page.getByTestId('swiper-reg-save-button').click()
     // After saving, the school name should be displayed and the Continue button enabled
-    await expect(page.getByRole('button', { name: 'Continue to Payment Setup' })).toBeEnabled()
+    await expect(page.getByTestId('swiper-reg-continue-button')).toBeEnabled()
   })
 })

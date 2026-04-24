@@ -105,7 +105,7 @@ export function CompletionBanner({ orderId, onStatusChange }: Props) {
   const isBusy = uploading || completing || unaccepting
 
   return (
-    <div className="px-4 py-2">
+    <div data-testid="completion-banner" className="px-4 py-2">
       <input
         ref={fileInputRef}
         type="file"
@@ -119,6 +119,7 @@ export function CompletionBanner({ orderId, onStatusChange }: Props) {
           size="sm"
           disabled={isBusy}
           onClick={() => fileInputRef.current?.click()}
+          data-testid="swiper-complete-order-button"
         >
           {uploading || completing ? (
             <>
@@ -134,6 +135,7 @@ export function CompletionBanner({ orderId, onStatusChange }: Props) {
           variant="ghost"
           disabled={isBusy}
           onClick={handleUnaccept}
+          data-testid="swiper-unaccept-button"
         >
           {unaccepting ? (
             <>

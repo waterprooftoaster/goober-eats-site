@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "lint:features-hash": "node docs/redesign/check-features-hash.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

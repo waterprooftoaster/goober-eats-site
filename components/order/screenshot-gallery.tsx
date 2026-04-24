@@ -33,7 +33,7 @@ export function ScreenshotGallery({ urls }: ScreenshotGalleryProps) {
 
   return (
     <>
-      <div className="flex overflow-x-auto gap-2 pb-1">
+      <div data-testid="swiper-screenshot-gallery" className="flex overflow-x-auto gap-2 pb-1">
         {urls.map((url, i) => (
           <button
             key={i}

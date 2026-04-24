@@ -19,6 +19,11 @@ import type { OrderStatus } from '@/lib/types/database'
 
 const CLOSED_STATUSES: OrderStatus[] = ['completed', 'cancelled']
 
+export interface PseudoMessage {
+  text: string
+  testid?: string
+}
+
 interface CoreProps {
   orderId: string
   eateryName: string
@@ -67,7 +72,7 @@ function ChatViewCore({
 
   if (isLoading) {
     return (
-      <div className="flex flex-1 items-center justify-center py-16">
+      <div data-testid="chat-view" className="flex flex-1 items-center justify-center py-16">
         <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-gray-900" />
       </div>
     )
@@ -75,7 +80,7 @@ function ChatViewCore({
 
   if (error) {
     return (
-      <div className="flex flex-1 items-center justify-center py-16">
+      <div data-testid="chat-view" className="flex flex-1 items-center justify-center py-16">
         <p className="text-sm text-gray-500">{error}</p>
       </div>
     )
@@ -96,7 +101,7 @@ function ChatViewCore({
   const statusMessages = getStatusMessages(orderStatus, orderId, eateryName, conversation, currentUserId)
 
   return (
-    <div className="flex h-full flex-col">
+    <div data-testid="chat-view" className="flex h-full flex-col">
       <ChatThread
         pseudoMessages={statusMessages}
         messages={messages}
@@ -166,21 +171,29 @@ function getStatusMessages(
   eateryName: string,
   conversation: Conversation | null,
   currentUserId: string | null
-): string[] {
+): PseudoMessage[] {
   const shortId = orderId.slice(0, 8)
   // conversation is null in 'open' state, so swiper_id check resolves to false
   const isSwiper = currentUserId !== null && currentUserId === conversation?.swiper_id
-  const placedMsg = `You've successfully placed order #${shortId} at ${eateryName}! Hold tight while a swiper accepts your order.`
+  const placedMsg: PseudoMessage = {
+    text: `You've successfully placed order #${shortId} at ${eateryName}! Hold tight while a swiper accepts your order.`,
+    testid: 'chat-pseudo-placed-order',
+  }
 
   if (orderStatus === 'open' && !isSwiper) {
     return [placedMsg]
   }
   if (orderStatus === 'in_progress' && !isSwiper) {
     const name = conversation?.swiper_full_name ?? 'Your swiper'
-    return [placedMsg, `Swiper ${name} is preparing your order!`]
+    return [
+      placedMsg,
+      { text: `Swiper ${name} is preparing your order!`, testid: 'chat-pseudo-in-progress' },
+    ]
   }
   if (orderStatus === 'in_progress' && isSwiper) {
-    return [`You've successfully accepted order #${shortId}! Take a picture of where you left the order to complete the order.`]
+    return [
+      { text: `You've successfully accepted order #${shortId}! Take a picture of where you left the order to complete the order.`, testid: 'chat-pseudo-in-progress' },
+    ]
   }
   return []
 }

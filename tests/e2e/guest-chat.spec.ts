@@ -79,14 +79,18 @@ async function openGuestPanel(page: PlaywrightPage, context: PlaywrightContext) 
   await page.goto(`/order/${orderId}`)
   // GuestPanelOpener redirects to / after opening the panel
   const shortId = orderId.slice(0, 8)
-  // Use exact match to target only the panel header span, not system message body
-  await expect(page.getByText(`Order #${shortId}`, { exact: true })).toBeVisible({ timeout: 15000 })
+  // Filter the testid-anchored header by shortId to target this specific order's panel
+  await expect(
+    page.getByTestId('chat-panel-header').filter({ hasText: `Order #${shortId}` })
+  ).toBeVisible({ timeout: 15000 })
 
   // Navigate to / so the SSR root layout re-renders with the anon session cookie,
   // giving ChatPanelProvider a non-null userId which activates the Realtime
   // subscription for order status changes.
   await page.goto('/')
-  await expect(page.getByText(`Order #${shortId}`, { exact: true })).toBeVisible({ timeout: 10000 })
+  await expect(
+    page.getByTestId('chat-panel-header').filter({ hasText: `Order #${shortId}` })
+  ).toBeVisible({ timeout: 10000 })
 
   // Wait for the second useMessages fetch to complete so React state is populated
   // before callers assert on message content.
@@ -307,12 +311,12 @@ test.describe('Guest Anon Auth + Realtime Chat', () => {
     // After reload, the anon user is authenticated in the SSR layout (userId != null).
     // ChatViewCore renders the empty state with a disabled chat input
     // (disabled because !conversation is true).
-    const input = page.getByPlaceholder('Conversation closed')
+    const input = page.getByTestId('chat-input-waiting')
     await expect(input).toBeVisible({ timeout: 8000 })
     await expect(input).toBeDisabled()
 
     // The placed-order pseudo-message should be visible in open state
-    await expect(page.getByText(/successfully placed order/i)).toBeVisible({ timeout: 5000 })
+    await expect(page.getByTestId('chat-pseudo-placed-order')).toBeVisible({ timeout: 5000 })
   })
 
   // -------------------------------------------------------------------------
@@ -327,10 +331,10 @@ test.describe('Guest Anon Auth + Realtime Chat', () => {
     await openGuestPanel(page, context)
 
     // The in-progress pseudo-message should be visible (client-side, not from DB)
-    await expect(page.getByText(/is preparing your order/i)).toBeVisible({ timeout: 15000 })
+    await expect(page.getByTestId('chat-pseudo-in-progress')).toBeVisible({ timeout: 15000 })
 
     // The chat input should now be enabled (conversation exists, status is in_progress)
-    await expect(page.getByPlaceholder('Type a message…')).toBeEnabled({ timeout: 5000 })
+    await expect(page.getByTestId('chat-input-active')).toBeEnabled({ timeout: 5000 })
 
     // Removed UI chrome should not be present
     await expect(page.getByText('Type here to contact your swiper.')).not.toBeVisible()
@@ -354,7 +358,7 @@ test.describe('Guest Anon Auth + Realtime Chat', () => {
     await openGuestPanel(page, context)
 
     // Wait for panel to show the existing system message (initial fetch complete).
-    await expect(page.getByText(/is preparing your order/i)).toBeVisible({ timeout: 10000 })
+    await expect(page.getByTestId('chat-pseudo-in-progress')).toBeVisible({ timeout: 10000 })
 
     // Track all HTTP requests after panel is loaded — Realtime uses WebSocket not HTTP
     const pollingRequests: string[] = []
@@ -391,14 +395,14 @@ test.describe('Guest Anon Auth + Realtime Chat', () => {
     await openGuestPanel(page, context)
 
     // Wait for the conversation to be visible
-    await expect(page.getByText(/is preparing your order/i)).toBeVisible({ timeout: 10000 })
+    await expect(page.getByTestId('chat-pseudo-in-progress')).toBeVisible({ timeout: 10000 })
 
     // Type and send a message
     const guestMessage = `Hello from guest ${Date.now()}`
-    const textarea = page.getByPlaceholder('Type a message…')
+    const textarea = page.getByTestId('chat-input-active')
     await expect(textarea).toBeEnabled({ timeout: 5000 })
     await textarea.fill(guestMessage)
-    await page.getByRole('button', { name: 'Send message' }).click()
+    await page.getByTestId('chat-send-button').click()
 
     // Message should appear in the thread (added via Realtime after successful POST)
     await expect(page.getByText(guestMessage)).toBeVisible({ timeout: 8000 })
@@ -451,14 +455,14 @@ test.describe('Guest Anon Auth + Realtime Chat', () => {
     await openGuestPanel(page, context)
 
     // Conversation system message should be visible
-    await expect(page.getByText(/is preparing your order/i)).toBeVisible({ timeout: 10000 })
+    await expect(page.getByTestId('chat-pseudo-in-progress')).toBeVisible({ timeout: 10000 })
 
     // Simulate un-accept (status → open, swiper_id → null)
     await simulateUnaccept(supabase)
 
     // Panel should reflect the status change without a page reload.
     // When status reverts to 'open', the placed-order pseudo-message reappears.
-    await expect(page.getByText(/successfully placed order/i)).toBeVisible({ timeout: 8000 })
+    await expect(page.getByTestId('chat-pseudo-placed-order')).toBeVisible({ timeout: 8000 })
 
     await expect(page).toHaveURL('/')
     // Verify via DB that status is 'open'
@@ -482,7 +486,7 @@ test.describe('Guest Anon Auth + Realtime Chat', () => {
     await openGuestPanel(page, context)
 
     // Wait for conversation to appear
-    await expect(page.getByText(/is preparing your order/i)).toBeVisible({ timeout: 10000 })
+    await expect(page.getByTestId('chat-pseudo-in-progress')).toBeVisible({ timeout: 10000 })
 
     // Insert a delivery photo message (required for completion guard)
     await supabase.from('messages').insert({
@@ -501,7 +505,7 @@ test.describe('Guest Anon Auth + Realtime Chat', () => {
 
     // The panel's ChatPanelProvider listens for status updates via Realtime.
     // When status = 'completed', ChatViewCore renders OrderCompletedView.
-    await expect(page.getByText('Order Completed!')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByTestId('order-completed-view')).toBeVisible({ timeout: 10000 })
 
     // Confirm we never left the page
     await expect(page).toHaveURL('/')

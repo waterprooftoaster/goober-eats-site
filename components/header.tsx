@@ -22,8 +22,8 @@ export async function Header() {
     const user = await getAuthenticatedUser(supabase)
 
     return (
-        <header className="flex items-center justify-between px-5 py-3">
-            <Link href="/" className="flex items-center ml-5">
+        <header data-testid="header" className="flex items-center justify-between px-5 py-3">
+            <Link href="/" className="flex items-center ml-5" data-testid="header-home-link">
                 <span className="text-white text-xl leading-none">
                     <span className="font-semibold tracking-tighter">goober</span>
                     <span className="font-extrabold"> Eats</span>
@@ -36,14 +36,14 @@ export async function Header() {
                         <Home className="h-5 w-5" />
                     </Link>
                     {user && (
-                        <Link href="/account" className={iconBtnClass} aria-label="Profile">
+                        <Link href="/account" className={iconBtnClass} aria-label="Profile" data-testid="header-account-link">
                             <User className="h-5 w-5" />
                         </Link>
                     )}
                 </div>
 
                 {!user && (
-                    <>
+                    <div className="contents" data-testid="header-auth-buttons">
                         <Link
                             href="/auth/login"
                             className="px-4 py-2 text-sm font-bold text-white"
@@ -56,7 +56,7 @@ export async function Header() {
                         >
                             Sign Up
                         </Link>
-                    </>
+                    </div>
                 )}
             </div>
         </header>

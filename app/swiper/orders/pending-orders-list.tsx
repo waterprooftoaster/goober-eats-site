@@ -68,9 +68,9 @@ export function PendingOrdersList({ orders: initialOrders }: Props) {
   }
 
   return (
-    <div>
+    <div data-testid="pending-orders-list">
       {successMsg && (
-        <div className="mb-4 rounded-md bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-800">
+        <div data-testid="swiper-accept-success-banner" className="mb-4 rounded-md bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-800">
           {successMsg}
         </div>
       )}
@@ -81,7 +81,7 @@ export function PendingOrdersList({ orders: initialOrders }: Props) {
       )}
 
       {orders.length === 0 ? (
-        <p className="text-sm text-gray-500 py-8 text-center">
+        <p data-testid="swiper-orders-empty-state" className="text-sm text-gray-500 py-8 text-center">
           No open orders at your school right now. Check back soon.
         </p>
       ) : (
@@ -100,7 +100,7 @@ export function PendingOrdersList({ orders: initialOrders }: Props) {
       {/* Order Detail Dialog */}
       {selectedOrder && (
         <div className="fixed inset-0 bg-black/40 z-40 flex items-end md:items-center justify-center">
-          <div className="bg-white rounded-t-lg md:rounded-lg w-full md:max-w-md md:mx-4 p-6 z-50 relative">
+          <div data-testid="swiper-order-detail-modal" className="bg-white rounded-t-lg md:rounded-lg w-full md:max-w-md md:mx-4 p-6 z-50 relative">
             <button
               onClick={() => { setSelectedOrder(null); setError(null) }}
               className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-lg leading-none"
@@ -133,6 +133,7 @@ export function PendingOrdersList({ orders: initialOrders }: Props) {
             <button
               onClick={handleAccept}
               disabled={accepting}
+              data-testid="swiper-accept-button"
               className="w-full rounded-md bg-black px-4 py-3 text-white font-medium hover:bg-gray-800 disabled:opacity-50"
             >
               {accepting ? 'Accepting…' : 'Accept Order'}

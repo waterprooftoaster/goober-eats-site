@@ -44,7 +44,7 @@ export default async function SwiperRegistrationPage() {
     : null
 
   return (
-    <main className="min-h-screen bg-white">
+    <main data-testid="swiper-registration-page" className="min-h-screen bg-white">
       <div className="mx-auto max-w-md p-8">
         <SwiperRegistrationForm
           schoolId={profile?.school_id ?? null}

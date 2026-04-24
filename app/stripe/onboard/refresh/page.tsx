@@ -13,7 +13,7 @@ import Link from 'next/link'
  */
 export default function StripeOnboardRefreshPage() {
   return (
-    <main className="min-h-screen bg-white">
+    <main data-testid="onboard-refresh-page" className="min-h-screen bg-white">
       <div className="mx-auto max-w-md p-8">
         <h1 className="text-2xl font-bold mb-4">Session expired</h1>
         <p className="text-gray-600 mb-8">

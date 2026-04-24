@@ -111,13 +111,13 @@ test.describe('CompletionBanner', () => {
 
   test('swiper sees CompletionBanner when order is in_progress (regression)', async ({ page }) => {
     await page.goto(`/order/${orderId}/chat`)
-    await expect(page.getByRole('button', { name: 'Complete Order' })).toBeVisible()
+    await expect(page.getByTestId('swiper-complete-order-button')).toBeVisible()
   })
 
   test('Complete Order and Unaccept buttons are both visible side-by-side', async ({ page }) => {
     await page.goto(`/order/${orderId}/chat`)
-    const completeBtn = page.getByRole('button', { name: 'Complete Order' })
-    const unacceptBtn = page.getByRole('button', { name: 'Unaccept' })
+    const completeBtn = page.getByTestId('swiper-complete-order-button')
+    const unacceptBtn = page.getByTestId('swiper-unaccept-button')
     await expect(completeBtn).toBeVisible()
     await expect(unacceptBtn).toBeVisible()
   })
@@ -138,10 +138,12 @@ test.describe('CompletionBanner', () => {
 
     // Wait for the chat panel to appear (panel header contains the short order ID)
     const shortId = orderId.slice(0, 8)
-    await expect(page.getByText(`Order #${shortId}`)).toBeVisible({ timeout: 10000 })
+    await expect(
+      page.getByTestId('chat-panel-header').filter({ hasText: `Order #${shortId}` })
+    ).toBeVisible({ timeout: 10000 })
 
     // Buttons must NOT be visible — guests have currentUserId=null so condition fails
-    await expect(page.getByRole('button', { name: 'Complete Order' })).not.toBeVisible()
+    await expect(page.getByTestId('swiper-complete-order-button')).not.toBeVisible()
   })
 
   test('clicking Unaccept resets order to open and banner disappears', async ({ page, request }) => {
@@ -161,12 +163,12 @@ test.describe('CompletionBanner', () => {
     }
 
     await page.goto(`/order/${orderId}/chat`)
-    await expect(page.getByRole('button', { name: 'Complete Order' })).toBeVisible()
+    await expect(page.getByTestId('swiper-complete-order-button')).toBeVisible()
 
-    await page.getByRole('button', { name: 'Unaccept' }).click()
+    await page.getByTestId('swiper-unaccept-button').click()
 
     // Buttons disappear (component returns null after done=true)
-    await expect(page.getByRole('button', { name: 'Complete Order' })).not.toBeVisible()
+    await expect(page.getByTestId('swiper-complete-order-button')).not.toBeVisible()
 
     // Verify order is back to open via Supabase directly
     const { data: order } = await supabase
