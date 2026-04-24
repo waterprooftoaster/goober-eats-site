@@ -206,7 +206,10 @@ test.describe('Checkout Pipeline', () => {
     })
     expect(completeRes.status()).toBe(200)
 
-    // ── Step 7: Verify final state — order must be 'paid' ─────────────
+    // ── Step 7: Verify final state — order terminal at 'completed' ────
+    // (Finding #5: 'paid' was dropped from the enum in migration
+    // 20260329000000; 'completed' is now the terminal state after a
+    // successful transfer.)
     const { data: finalOrder } = await supabase
       .from('orders')
       .select('status, total_cents')
@@ -214,7 +217,7 @@ test.describe('Checkout Pipeline', () => {
       .single()
 
     expect(finalOrder).not.toBeNull()
-    expect(finalOrder!.status).toBe('paid')
+    expect(finalOrder!.status).toBe('completed')
 
     // Verify payment: fee math + payee_id is swiper
     const { data: finalPayment } = await supabase

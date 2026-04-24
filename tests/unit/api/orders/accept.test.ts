@@ -52,7 +52,23 @@ async function callPatch(): Promise<Response> {
   return PATCH(req, { params: Promise.resolve({ id: ORDER_ID }) })
 }
 
-function setupEligibleSwiper(schoolId: string) {
+interface StripeAccountFixture {
+  onboarding_complete: boolean
+  charges_enabled: boolean
+  payouts_enabled: boolean
+  disabled_reason: string | null
+  currently_due: string[]
+}
+
+const HEALTHY_STRIPE_ACCOUNT: StripeAccountFixture = {
+  onboarding_complete: true,
+  charges_enabled: true,
+  payouts_enabled: true,
+  disabled_reason: null,
+  currently_due: [],
+}
+
+function setupEligibleSwiper(schoolId: string, stripeOverrides: Partial<StripeAccountFixture> = {}) {
   // Server client chain:
   //   1. orders.select (order row)
   //   2. stripe_accounts.select
@@ -70,7 +86,9 @@ function setupEligibleSwiper(schoolId: string) {
         },
       })
     )
-    .mockReturnValueOnce(dbResult({ data: { onboarding_complete: true } }))
+    .mockReturnValueOnce(
+      dbResult({ data: { ...HEALTHY_STRIPE_ACCOUNT, ...stripeOverrides } })
+    )
     .mockReturnValueOnce(
       dbResult({ data: { is_swiper: true, school_id: NYU_SCHOOL_ID, full_name: 'Alex' } })
     )
@@ -78,6 +96,10 @@ function setupEligibleSwiper(schoolId: string) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // mockReset clears the mockReturnValueOnce queue so "charges_enabled:false"
+  // short-circuit tests don't leave a dangling profile mock for the next test.
+  mockServerFrom.mockReset()
+  mockServiceFrom.mockReset()
   mockGetUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null })
 })
 
@@ -133,9 +155,34 @@ describe('PATCH /api/orders/[id]/accept', () => {
           },
         })
       )
-      .mockReturnValueOnce(dbResult({ data: { onboarding_complete: false } }))
+      .mockReturnValueOnce(dbResult({ data: null }))
     const res = await callPatch()
     expect(res.status).toBe(403)
+  })
+
+  // Finding #4: composite gate — onboarding_complete alone is not enough.
+  it('returns 403 when charges are disabled (composite gate, finding #4)', async () => {
+    setupEligibleSwiper(NYU_SCHOOL_ID, { charges_enabled: false })
+    const res = await callPatch()
+    expect(res.status).toBe(403)
+    expect(mockServiceFrom).not.toHaveBeenCalled()
+  })
+
+  it('returns 403 when payouts are disabled', async () => {
+    setupEligibleSwiper(NYU_SCHOOL_ID, { payouts_enabled: false })
+    const res = await callPatch()
+    expect(res.status).toBe(403)
+  })
+
+  it('surfaces a human-readable disabled_reason in the error when present (finding #12)', async () => {
+    setupEligibleSwiper(NYU_SCHOOL_ID, {
+      charges_enabled: false,
+      disabled_reason: 'requirements.past_due',
+    })
+    const res = await callPatch()
+    expect(res.status).toBe(403)
+    const body = await res.json()
+    expect(body.error).toMatch(/additional information/i)
   })
 
   it('returns 403 when the swiper attempts to accept their own order', async () => {

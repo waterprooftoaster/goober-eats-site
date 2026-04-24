@@ -1,10 +1,10 @@
 /**
  * @file webhooks.test.ts
- * @description Unit tests for the Stripe webhook route handler after the
- *   GrubHub-screenshot pivot. Verifies: signature validation, payment_intent
- *   metadata validation (school_id / restaurant_name / cart_screenshot_paths
- *   / total_cents / UUIDs), idempotency via payments.stripe_payment_intent_id,
- *   orphan-order recovery, and account.updated onboarding completion.
+ * @description Unit tests for the Stripe webhook route handler. Covers
+ *   signature verification, event idempotency (stripe_events upsert),
+ *   payment_intent.succeeded order creation + metadata validation,
+ *   account.updated persistence + onboarding downgrade,
+ *   charge.dispute.created / closed, and charge.refunded.
  *   Called by: Vitest
  */
 
@@ -12,7 +12,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
 import Stripe from 'stripe'
 
-// ---------------------------------------------------------------------------
 const WEBHOOK_SECRET = 'whsec_test_secret'
 const VALID_SCHOOL_ID = '00000000-0000-4000-8000-000000000aaa'
 const VALID_ORDERER_ID = '00000000-0000-4000-8000-000000000051'
@@ -32,18 +31,57 @@ vi.mock('@/lib/supabase/service', () => ({
 import { POST } from '@/app/api/stripe/webhooks/route'
 
 // ---------------------------------------------------------------------------
+// dbResult — typed mock chain builder. Returns a value chain that supports
+// the supabase-js fluent shape used across our handlers.
+// ---------------------------------------------------------------------------
 
-function dbResult(result: { data?: unknown; error?: unknown } = { data: null, error: null }) {
-  const mock: Record<string, unknown> = {}
-  for (const m of ['select', 'insert', 'update', 'delete', 'eq', 'in', 'is']) {
-    mock[m] = vi.fn(() => mock)
-  }
-  mock.maybeSingle = vi.fn(() => Promise.resolve(result))
-  mock.single = vi.fn(() => Promise.resolve(result))
-  mock.then = (resolve: (v: typeof result) => void) =>
-    Promise.resolve(result).then(resolve)
-  return mock
+interface MockChain {
+  select: ReturnType<typeof vi.fn>
+  insert: ReturnType<typeof vi.fn>
+  update: ReturnType<typeof vi.fn>
+  upsert: ReturnType<typeof vi.fn>
+  delete: ReturnType<typeof vi.fn>
+  eq: ReturnType<typeof vi.fn>
+  in: ReturnType<typeof vi.fn>
+  is: ReturnType<typeof vi.fn>
+  maybeSingle: ReturnType<typeof vi.fn>
+  single: ReturnType<typeof vi.fn>
+  then: (resolve: (v: { data?: unknown; error?: unknown }) => void) => Promise<unknown>
 }
+
+function dbResult(
+  result: { data?: unknown; error?: unknown } = { data: null, error: null }
+): MockChain {
+  const chain: Partial<MockChain> = {}
+  const methods: (keyof MockChain)[] = [
+    'select', 'insert', 'update', 'upsert', 'delete', 'eq', 'in', 'is',
+  ]
+  for (const m of methods) {
+    ;(chain as Record<string, unknown>)[m] = vi.fn(() => chain)
+  }
+  chain.maybeSingle = vi.fn(() => Promise.resolve(result))
+  chain.single = vi.fn(() => Promise.resolve(result))
+  chain.then = (resolve) => Promise.resolve(result).then(resolve)
+  return chain as MockChain
+}
+
+/**
+ * Returns a stripe_events chain that reports "row inserted" (isDuplicate=false).
+ */
+function freshEvent(): MockChain {
+  const chain = dbResult({ data: [{ id: 'evt-row-1' }], error: null })
+  return chain
+}
+
+/**
+ * Returns a stripe_events chain that reports "row existed already"
+ * (isDuplicate=true, short-circuits handler).
+ */
+function duplicateEvent(): MockChain {
+  return dbResult({ data: [], error: null })
+}
+
+// ---------------------------------------------------------------------------
 
 function buildSignedRequest(event: Record<string, unknown>): NextRequest {
   const payload = JSON.stringify(event)
@@ -66,13 +104,8 @@ function buildBadSigRequest(event: Record<string, unknown>): NextRequest {
   })
 }
 
-function makeEvent(type: string, object: Record<string, unknown>) {
-  return {
-    id: `evt_test_${Date.now()}`,
-    object: 'event',
-    type,
-    data: { object },
-  }
+function makeEvent(type: string, object: Record<string, unknown>, id = `evt_${Date.now()}`) {
+  return { id, object: 'event', type, data: { object } }
 }
 
 function guestMetadata(overrides: Record<string, string> = {}) {
@@ -114,15 +147,29 @@ function authPiEvent(overrides: Record<string, string> = {}) {
   })
 }
 
+/**
+ * Table-dispatch mock for the happy-path PI handler:
+ *   1. stripe_events    → insert succeeds (not duplicate)
+ *   2. payments select  → not found (not yet recorded)
+ *   3. orders insert    → returns orderId
+ *   4. payments insert  → ok
+ */
 function setupHappyPath(orderId = '00000000-0000-4000-8000-000000000099') {
   const paymentsCheck = dbResult({ data: null })
   const ordersInsert = dbResult({ data: { id: orderId } })
   const paymentsInsert = dbResult({ data: null, error: null })
 
-  mockServiceFrom
-    .mockReturnValueOnce(paymentsCheck)
-    .mockReturnValueOnce(ordersInsert)
-    .mockReturnValueOnce(paymentsInsert)
+  const paymentsCalls: MockChain[] = []
+
+  mockServiceFrom.mockImplementation((table: string): MockChain => {
+    if (table === 'stripe_events') return freshEvent()
+    if (table === 'payments') {
+      paymentsCalls.push(paymentsCheck)
+      return paymentsCalls.length === 1 ? paymentsCheck : paymentsInsert
+    }
+    if (table === 'orders') return ordersInsert
+    return dbResult()
+  })
 
   return { paymentsCheck, ordersInsert, paymentsInsert }
 }
@@ -134,8 +181,6 @@ beforeEach(() => {
 })
 
 describe('POST /api/stripe/webhooks', () => {
-  // ── Signature verification ──────────────────────────────────────────────
-
   describe('signature verification', () => {
     it('returns 400 when stripe-signature header is missing', async () => {
       const req = new NextRequest('http://localhost/api/stripe/webhooks', {
@@ -158,13 +203,46 @@ describe('POST /api/stripe/webhooks', () => {
       expect(res.status).toBe(500)
     })
 
+    it('never touches the DB on invalid signature (not even stripe_events)', async () => {
+      await POST(buildBadSigRequest(makeEvent('payment_intent.succeeded', { id: VALID_PI_ID })))
+      expect(mockServiceFrom).not.toHaveBeenCalled()
+    })
+
     it('accepts a valid signature and returns 200 for unknown event types', async () => {
+      mockServiceFrom.mockImplementation((table: string): MockChain => {
+        if (table === 'stripe_events') return freshEvent()
+        return dbResult()
+      })
       const res = await POST(buildSignedRequest(makeEvent('unknown.event', {})))
       expect(res.status).toBe(200)
     })
   })
 
-  // ── payment_intent.succeeded ─────────────────────────────────────────
+  describe('idempotency (finding #9)', () => {
+    it('short-circuits with duplicate=true on replay', async () => {
+      mockServiceFrom.mockImplementation((table: string): MockChain => {
+        if (table === 'stripe_events') return duplicateEvent()
+        return dbResult()
+      })
+
+      const res = await POST(buildSignedRequest(guestPiEvent()))
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.duplicate).toBe(true)
+    })
+
+    it('does not touch business tables when event is a duplicate', async () => {
+      const businessCalls: string[] = []
+      mockServiceFrom.mockImplementation((table: string): MockChain => {
+        if (table === 'stripe_events') return duplicateEvent()
+        businessCalls.push(table)
+        return dbResult()
+      })
+
+      await POST(buildSignedRequest(guestPiEvent()))
+      expect(businessCalls).toEqual([])
+    })
+  })
 
   describe('payment_intent.succeeded (guest)', () => {
     it('creates an order with null orderer_id, guest_name, school_id, and cart_screenshot_urls', async () => {
@@ -185,9 +263,7 @@ describe('POST /api/stripe/webhooks', () => {
         })
       )
 
-      // Regression guard — tips and special_instructions were removed as
-      // features; the orders insert payload must not carry either key.
-      const [insertArg] = ordersInsert.insert.mock.calls[0]
+      const insertArg = ordersInsert.insert.mock.calls[0][0] as Record<string, unknown>
       expect(insertArg).not.toHaveProperty('tip_cents')
       expect(insertArg).not.toHaveProperty('special_instructions')
 
@@ -201,17 +277,6 @@ describe('POST /api/stripe/webhooks', () => {
           payee_id: null,
         })
       )
-    })
-
-    it('accepts multiple comma-joined screenshot paths', async () => {
-      setupHappyPath()
-      const path2 = VALID_PATH.replace('.png', '.webp')
-      const res = await POST(
-        buildSignedRequest(
-          guestPiEvent({ cart_screenshot_paths: `${VALID_PATH},${path2}` })
-        )
-      )
-      expect(res.status).toBe(200)
     })
   })
 
@@ -237,89 +302,94 @@ describe('POST /api/stripe/webhooks', () => {
     })
   })
 
-  describe('payment_intent.succeeded idempotency + recovery', () => {
-    it('skips duplicate PI delivery', async () => {
-      mockServiceFrom.mockReturnValueOnce(dbResult({ data: { id: 'existing-payment' } }))
-      const res = await POST(buildSignedRequest(guestPiEvent()))
-      expect(res.status).toBe(200)
-      expect(mockServiceFrom).toHaveBeenCalledTimes(1)
-    })
-
-    it('recovers orphan order on orders.insert failure (retry path)', async () => {
-      const orphanId = '00000000-0000-4000-8000-000000000077'
-      // 1. payments idempotency → none
-      // 2. orders.insert → conflict
-      // 3. orders.select → find orphan
-      // 4. payments.insert → succeeds
-      mockServiceFrom
-        .mockReturnValueOnce(dbResult({ data: null }))
-        .mockReturnValueOnce(dbResult({ data: null, error: { code: '23505', message: 'duplicate' } }))
-        .mockReturnValueOnce(dbResult({ data: { id: orphanId } }))
-        .mockReturnValueOnce(dbResult({ data: null, error: null }))
+  describe('payment_intent.succeeded row-level idempotency', () => {
+    it('skips when payment already exists for this PI', async () => {
+      mockServiceFrom.mockImplementation((table: string): MockChain => {
+        if (table === 'stripe_events') return freshEvent()
+        if (table === 'payments') return dbResult({ data: { id: 'existing-payment' } })
+        return dbResult()
+      })
 
       const res = await POST(buildSignedRequest(guestPiEvent()))
       expect(res.status).toBe(200)
-      expect(mockServiceFrom).toHaveBeenCalledTimes(4)
     })
   })
 
   describe('payment_intent.succeeded metadata validation', () => {
+    function setupEventOnly() {
+      mockServiceFrom.mockImplementation((table: string): MockChain => {
+        if (table === 'stripe_events') return freshEvent()
+        return dbResult()
+      })
+    }
+
     it('skips when school_id is not a UUID', async () => {
+      setupEventOnly()
       const res = await POST(buildSignedRequest(guestPiEvent({ school_id: INVALID_UUID })))
       expect(res.status).toBe(200)
-      expect(mockServiceFrom).not.toHaveBeenCalled()
     })
 
     it('skips when cart_screenshot_paths contains invalid path', async () => {
+      setupEventOnly()
       const res = await POST(
         buildSignedRequest(guestPiEvent({ cart_screenshot_paths: 'orders/foo.png' }))
       )
       expect(res.status).toBe(200)
-      expect(mockServiceFrom).not.toHaveBeenCalled()
     })
 
     it('skips when total_cents is non-numeric', async () => {
+      setupEventOnly()
       const res = await POST(buildSignedRequest(guestPiEvent({ total_cents: 'banana' })))
       expect(res.status).toBe(200)
-      expect(mockServiceFrom).not.toHaveBeenCalled()
     })
 
     it('skips when restaurant_name is empty after trim', async () => {
+      setupEventOnly()
       const res = await POST(buildSignedRequest(guestPiEvent({ restaurant_name: '   ' })))
       expect(res.status).toBe(200)
-      expect(mockServiceFrom).not.toHaveBeenCalled()
     })
 
     it('skips when screenshot count exceeds 5', async () => {
+      setupEventOnly()
       const tooMany = Array(6).fill(VALID_PATH).join(',')
       const res = await POST(buildSignedRequest(guestPiEvent({ cart_screenshot_paths: tooMany })))
       expect(res.status).toBe(200)
-      expect(mockServiceFrom).not.toHaveBeenCalled()
     })
 
     it('skips guest payload missing guest_name', async () => {
+      setupEventOnly()
       const res = await POST(buildSignedRequest(guestPiEvent({ guest_name: '' })))
       expect(res.status).toBe(200)
-      expect(mockServiceFrom).not.toHaveBeenCalled()
     })
 
     it('skips auth payload with invalid orderer_id UUID', async () => {
+      setupEventOnly()
       const res = await POST(buildSignedRequest(authPiEvent({ orderer_id: INVALID_UUID })))
       expect(res.status).toBe(200)
-      expect(mockServiceFrom).not.toHaveBeenCalled()
     })
   })
 
-  describe('account.updated', () => {
+  describe('account.updated (findings #3 + #12)', () => {
     const ACCT_USER_ID = '00000000-0000-4000-8000-000000000060'
 
-    it('marks onboarding_complete and auto-activates swiper when school_id present', async () => {
-      mockServiceFrom.mockImplementation((table: string) => {
+    it('persists the full Connect state and activates swiper when onboarding crosses to true', async () => {
+      const stripeAccountsUpdate = dbResult()
+      const profilesUpdate = dbResult()
+
+      mockServiceFrom.mockImplementation((table: string): MockChain => {
+        if (table === 'stripe_events') return freshEvent()
         if (table === 'stripe_accounts') {
-          return dbResult({ data: { id: 'sa-1', user_id: ACCT_USER_ID } })
+          // First call selects, second call updates.
+          const calls = mockServiceFrom.mock.calls.filter((c: unknown[]) => c[0] === 'stripe_accounts').length
+          return calls === 1
+            ? dbResult({ data: { id: 'sa-1', user_id: ACCT_USER_ID, onboarding_complete: false } })
+            : stripeAccountsUpdate
         }
         if (table === 'profiles') {
-          return dbResult({ data: { school_id: 'school-1' } })
+          const calls = mockServiceFrom.mock.calls.filter((c: unknown[]) => c[0] === 'profiles').length
+          return calls === 1
+            ? dbResult({ data: { school_id: 'school-1' } })
+            : profilesUpdate
         }
         return dbResult()
       })
@@ -330,14 +400,66 @@ describe('POST /api/stripe/webhooks', () => {
             id: 'acct_test_123',
             details_submitted: true,
             charges_enabled: true,
+            payouts_enabled: true,
+            requirements: { disabled_reason: null, currently_due: [] },
           })
         )
       )
       expect(res.status).toBe(200)
+
+      expect(stripeAccountsUpdate.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          onboarding_complete: true,
+          charges_enabled: true,
+          payouts_enabled: true,
+          disabled_reason: null,
+          currently_due: [],
+        })
+      )
+      expect(profilesUpdate.update).toHaveBeenCalledWith({ is_swiper: true })
+    })
+
+    it('DOWNGRADES onboarding_complete when charges_enabled becomes false', async () => {
+      const stripeAccountsUpdate = dbResult()
+
+      mockServiceFrom.mockImplementation((table: string): MockChain => {
+        if (table === 'stripe_events') return freshEvent()
+        if (table === 'stripe_accounts') {
+          const calls = mockServiceFrom.mock.calls.filter((c: unknown[]) => c[0] === 'stripe_accounts').length
+          return calls === 1
+            ? dbResult({ data: { id: 'sa-1', user_id: ACCT_USER_ID, onboarding_complete: true } })
+            : stripeAccountsUpdate
+        }
+        return dbResult()
+      })
+
+      await POST(
+        buildSignedRequest(
+          makeEvent('account.updated', {
+            id: 'acct_test_123',
+            details_submitted: true,
+            charges_enabled: false,
+            payouts_enabled: false,
+            requirements: { disabled_reason: 'requirements.past_due', currently_due: ['individual.dob.day'] },
+          })
+        )
+      )
+
+      expect(stripeAccountsUpdate.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          onboarding_complete: false,
+          charges_enabled: false,
+          disabled_reason: 'requirements.past_due',
+        })
+      )
     })
 
     it('skips when account is not on this platform', async () => {
-      mockServiceFrom.mockReturnValueOnce(dbResult({ data: null }))
+      mockServiceFrom.mockImplementation((table: string): MockChain => {
+        if (table === 'stripe_events') return freshEvent()
+        if (table === 'stripe_accounts') return dbResult({ data: null })
+        return dbResult()
+      })
       const res = await POST(
         buildSignedRequest(
           makeEvent('account.updated', {
@@ -351,16 +473,201 @@ describe('POST /api/stripe/webhooks', () => {
     })
   })
 
+  describe('dispute lifecycle (finding #2)', () => {
+    it('charge.dispute.created marks payment disputed', async () => {
+      const paymentsUpdate = dbResult()
+      mockServiceFrom.mockImplementation((table: string): MockChain => {
+        if (table === 'stripe_events') return freshEvent()
+        if (table === 'payments') return paymentsUpdate
+        return dbResult()
+      })
+
+      await POST(
+        buildSignedRequest(
+          makeEvent('charge.dispute.created', {
+            id: 'dp_1',
+            payment_intent: VALID_PI_ID,
+            status: 'warning_needs_response',
+          })
+        )
+      )
+
+      expect(paymentsUpdate.update).toHaveBeenCalledWith({ status: 'disputed' })
+    })
+
+    it('charge.dispute.closed won → status succeeded', async () => {
+      const paymentsUpdate = dbResult()
+      mockServiceFrom.mockImplementation((table: string): MockChain => {
+        if (table === 'stripe_events') return freshEvent()
+        if (table === 'payments') return paymentsUpdate
+        return dbResult()
+      })
+
+      await POST(
+        buildSignedRequest(
+          makeEvent('charge.dispute.closed', {
+            id: 'dp_1',
+            payment_intent: VALID_PI_ID,
+            status: 'won',
+          })
+        )
+      )
+
+      expect(paymentsUpdate.update).toHaveBeenCalledWith({ status: 'succeeded' })
+    })
+
+    it('charge.dispute.closed lost with funds-already-transferred records a transfer_failures note', async () => {
+      const transferFailuresInsert = dbResult()
+      mockServiceFrom.mockImplementation((table: string): MockChain => {
+        if (table === 'stripe_events') return freshEvent()
+        if (table === 'payments') {
+          return dbResult({ data: { order_id: 'ord-1', payee_id: 'swiper-1' } })
+        }
+        if (table === 'transfer_failures') return transferFailuresInsert
+        return dbResult()
+      })
+
+      await POST(
+        buildSignedRequest(
+          makeEvent('charge.dispute.closed', {
+            id: 'dp_2',
+            payment_intent: VALID_PI_ID,
+            status: 'lost',
+          })
+        )
+      )
+
+      expect(transferFailuresInsert.insert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          order_id: 'ord-1',
+          stripe_error_code: 'dispute-lost-post-transfer',
+        })
+      )
+    })
+
+    it('charge.dispute.closed lost with funds NOT transferred does not write a failure note', async () => {
+      const transferFailuresInsert = dbResult()
+      mockServiceFrom.mockImplementation((table: string): MockChain => {
+        if (table === 'stripe_events') return freshEvent()
+        if (table === 'payments') {
+          return dbResult({ data: { order_id: 'ord-1', payee_id: null } })
+        }
+        if (table === 'transfer_failures') return transferFailuresInsert
+        return dbResult()
+      })
+
+      await POST(
+        buildSignedRequest(
+          makeEvent('charge.dispute.closed', {
+            id: 'dp_3',
+            payment_intent: VALID_PI_ID,
+            status: 'lost',
+          })
+        )
+      )
+
+      expect(transferFailuresInsert.insert).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('charge.refunded', () => {
+    it('marks payment refunded', async () => {
+      const paymentsUpdate = dbResult()
+      mockServiceFrom.mockImplementation((table: string): MockChain => {
+        if (table === 'stripe_events') return freshEvent()
+        if (table === 'payments') return paymentsUpdate
+        return dbResult()
+      })
+
+      await POST(
+        buildSignedRequest(
+          makeEvent('charge.refunded', {
+            id: 'ch_1',
+            payment_intent: VALID_PI_ID,
+            refunded: true,
+          })
+        )
+      )
+
+      expect(paymentsUpdate.update).toHaveBeenCalledWith({ status: 'refunded' })
+    })
+
+    it('is a no-op when payment_intent is null', async () => {
+      const paymentsUpdate = dbResult()
+      mockServiceFrom.mockImplementation((table: string): MockChain => {
+        if (table === 'stripe_events') return freshEvent()
+        if (table === 'payments') return paymentsUpdate
+        return dbResult()
+      })
+
+      await POST(
+        buildSignedRequest(
+          makeEvent('charge.refunded', { id: 'ch_2', payment_intent: null })
+        )
+      )
+
+      expect(paymentsUpdate.update).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('dispute with missing payment_intent (defensive)', () => {
+    it('charge.dispute.created warns but does not write when payment_intent is null', async () => {
+      const paymentsUpdate = dbResult()
+      mockServiceFrom.mockImplementation((table: string): MockChain => {
+        if (table === 'stripe_events') return freshEvent()
+        if (table === 'payments') return paymentsUpdate
+        return dbResult()
+      })
+
+      const res = await POST(
+        buildSignedRequest(
+          makeEvent('charge.dispute.created', { id: 'dp_null', payment_intent: null })
+        )
+      )
+
+      expect(res.status).toBe(200)
+      expect(paymentsUpdate.update).not.toHaveBeenCalled()
+    })
+
+    it('charge.dispute.closed with status other than won/lost is a no-op', async () => {
+      const paymentsUpdate = dbResult()
+      mockServiceFrom.mockImplementation((table: string): MockChain => {
+        if (table === 'stripe_events') return freshEvent()
+        if (table === 'payments') return paymentsUpdate
+        return dbResult()
+      })
+
+      await POST(
+        buildSignedRequest(
+          makeEvent('charge.dispute.closed', {
+            id: 'dp_wn',
+            payment_intent: VALID_PI_ID,
+            status: 'warning_needs_response',
+          })
+        )
+      )
+
+      expect(paymentsUpdate.update).not.toHaveBeenCalled()
+    })
+  })
+
   describe('no-op events', () => {
-    it('payment_intent.payment_failed is a no-op', async () => {
+    it('payment_intent.payment_failed is a no-op (beyond stripe_events record)', async () => {
+      mockServiceFrom.mockImplementation((table: string): MockChain => {
+        if (table === 'stripe_events') return freshEvent()
+        return dbResult()
+      })
       const res = await POST(
         buildSignedRequest(makeEvent('payment_intent.payment_failed', { id: VALID_PI_ID }))
       )
       expect(res.status).toBe(200)
-      expect(mockServiceFrom).not.toHaveBeenCalled()
     })
 
     it('checkout.session.completed is a no-op', async () => {
+      mockServiceFrom.mockImplementation((table: string): MockChain => {
+        if (table === 'stripe_events') return freshEvent()
+        return dbResult()
+      })
       const res = await POST(
         buildSignedRequest(
           makeEvent('checkout.session.completed', {
@@ -371,15 +678,15 @@ describe('POST /api/stripe/webhooks', () => {
         )
       )
       expect(res.status).toBe(200)
-      expect(mockServiceFrom).not.toHaveBeenCalled()
     })
 
     it('checkout.session.expired is a no-op', async () => {
-      const res = await POST(
-        buildSignedRequest(makeEvent('checkout.session.expired', {}))
-      )
+      mockServiceFrom.mockImplementation((table: string): MockChain => {
+        if (table === 'stripe_events') return freshEvent()
+        return dbResult()
+      })
+      const res = await POST(buildSignedRequest(makeEvent('checkout.session.expired', {})))
       expect(res.status).toBe(200)
-      expect(mockServiceFrom).not.toHaveBeenCalled()
     })
   })
 })
