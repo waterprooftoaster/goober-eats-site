@@ -6,6 +6,7 @@
  */
 
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import "./globals.css";
 import { bricolageGrotesque, figtree } from "./fonts";
 import { Header } from "@/components/header";
@@ -14,6 +15,7 @@ import { SwiperOrdersButton } from "@/components/swiper-orders-button";
 import { ChatPanelProvider, ChatPanel } from "@/components/chat-panel";
 import { createClient } from "@/lib/supabase/server";
 import { getAuthenticatedUser } from "@/lib/api/helpers";
+import { resolvePrincipal } from "@/lib/auth/resolve-principal";
 
 export const metadata: Metadata = {
   title: "Goober Eats",
@@ -35,6 +37,8 @@ export default async function RootLayout({
   banner: React.ReactNode;
 }>) {
   const supabase = await createClient();
+  const cookieStore = await cookies();
+  const principal = await resolvePrincipal(supabase, cookieStore);
   const user = await getAuthenticatedUser(supabase);
 
   const isSwiper = user
@@ -59,7 +63,7 @@ export default async function RootLayout({
       <body>
         <ChatPanelProvider userId={user?.id ?? null}>
           <HeaderWrapper hasBanner={!isSwiper}>
-            <Header />
+            <Header principal={principal} />
           </HeaderWrapper>
           {banner}
           <div className="px-6">{children}</div>
