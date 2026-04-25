@@ -218,3 +218,158 @@ Frozen surface (`app/api/**`, `lib/supabase/**`, `lib/stripe/**`,
 **Session 02 — Flows + route tree ADR.** Produce `docs/redesign/01-flows.md`
 (state diagrams for every flow, keyed by feature ID) and `docs/redesign/02-routes.md`
 (route tree decisions for the redesigned shell). No code changes in Session 02.
+
+---
+
+## Session 02 — Flows + route tree ADR (CLOSED)
+
+- **Date:** 2026-04-24
+- **Branch:** `fpoop` (in place; no separate redesign branch)
+- **Phase(s):** 1 (flows) + 2 (route ADR)
+- **Status:** CLOSED
+- features.md SHA-256: `e6be0f544ad92a1ebd9e853687d2fa09f5847633ebdfb21f10f219b1a333539f` (unchanged from Session 01; catalog is locked, sentinel green)
+
+### What shipped
+
+1. **`docs/redesign/01-flows.md`** — nine Mermaid `flowchart TD` diagrams
+   covering: orderer-place, orderer-track, swiper-accept-complete,
+   guest-track, auth-signup-new, auth-signin-existing (with
+   onboarding-resume sub-branch), swiper-register, stripe-connect-onboard,
+   realtime-message-receive (chat lifecycle: open → in_progress →
+   completed). Each diagram is followed by a coverage table; the file ends
+   with an authoritative `## ID → flow matrix` listing every catalog ID and
+   the flow / non-flow bucket that covers it. A "Non-flow capabilities"
+   section sweeps shell chrome, account-as-settings, helpers, and
+   primitives. Coverage gate: **107 / 107 unique IDs** in `00-features.md`
+   appear in at least one flow table or non-flow row (verified by
+   programmatic grep at session close).
+
+2. **`docs/redesign/02-routes.md`** — route-tree ADR. Six sections:
+   - §1 Decision register: 16 user-facing entries. 13 keep, 1
+     keep-restructure (`app/layout.tsx` — drops `banner` prop in S07), 2
+     delete (`app/@banner/page.tsx`, `app/@banner/default.tsx`). No
+     renames, merges, or splits. Every entry's rationale cites feature
+     IDs from `00-features.md`.
+   - §2 Canonical post-redesign route tree (adapted from master plan §Phase 2).
+   - §3 Per-route matrix: feature IDs owned, backend endpoints called,
+     data-fetch strategy, state-branch → testid mapping. Twelve kept
+     routes covered.
+   - §4 Error-boundary placements: distinct `error.tsx` at `/checkout`,
+     `/checkout/return`, `/current-orders`, `/swiper/orders`,
+     `/stripe/onboard/complete` (per master plan §Phase 2).
+   - §5 Frozen API surface: 18 explicit `app/api/**` endpoints + the
+     `app/auth/callback/route.ts` callback. Every endpoint is mapped to
+     its consuming feature ID(s).
+   - §6 ADR record: six decisions captured (parallel-route deletion timing,
+     account-modal-as-route, onboarding-resume staying internal, error.tsx
+     placement, swiper-layout gate stays server-side, no URL-level
+     renames).
+
+### Discrepancies flagged (NOT amended)
+
+- **Catalog summary count is stale.** SESSION_LOG (Session 01) and the
+  summary table at the bottom of `00-features.md` both report 91 IDs across
+  the 5 namespaces. Actual unique IDs in the file: **107** (ORD=25,
+  SWIP=26, GUEST=4, AUTH=13, GLOBAL=39). The catalog content itself is
+  correct and complete — the only stale data is the per-namespace count
+  cells and the total in the bottom summary table. Treated as **not** a
+  catalog gap (no IDs are missing or duplicated). Catalog file deliberately
+  not amended this session (would invalidate the locked SHA without adding
+  new information). 01-flows.md uses the actual 107-ID count for coverage
+  gating. Future-cleanup note: a Session-N author may patch the summary
+  numbers under a `FEATURES_CHANGELOG.md` entry — strictly cosmetic.
+- **`app/@banner/` parallel slot still on disk.** Master plan §Decisions
+  locked says "no parallel routes." The `@banner/page.tsx` +
+  `@banner/default.tsx` files plus `app/layout.tsx`'s `banner: React.ReactNode`
+  prop are scheduled for deletion in Session 07 (shell rewrite). Session
+  02 captured the decision in 02-routes.md §1 + §6 ADR-1 only; no code
+  changes. Replacement (`components/banner.tsx`) is the Session 01
+  untracked file already on disk.
+- **Diagram syntax.** Cold-start instructions suggested
+  `stateDiagram-v2`; master plan §Phase 1 says `flowchart TD`. Per the
+  cold-start prompt's own override clause ("master plan wins"), used
+  `flowchart TD` throughout 01-flows.md.
+
+### Verification gauntlet
+
+```
+$ npm run lint:features-hash         # green; SHA matches Session 01 record
+$ git diff HEAD -- 'app/api/**' 'lib/supabase/**' 'lib/stripe/**' \
+    'lib/orders/state-machine.ts' 'lib/types/**' \
+    'lib/api/guest-auth.ts' 'lib/api/helpers.ts' \
+    'supabase/**' 'scripts/**' | wc -l
+0
+$ git status --short                  # only docs/redesign/ + this log changed
+```
+
+Coverage cross-checks (run before commit):
+
+```
+$ for id in $(grep -E "^- id:" docs/redesign/00-features.md | sed 's/^- id: //' | sort -u); do
+    grep -qE "\b$id\b" docs/redesign/01-flows.md || echo "MISSING: $id"
+  done
+(no output — 0 missing IDs)
+
+$ for f in $(find app -name page.tsx -not -path 'app/api/*' | sort); do
+    grep -qF "$f" docs/redesign/02-routes.md || echo "MISSING: $f"
+  done
+(no output — 0 missing pages)
+
+$ for f in $(find app/api -name route.ts | sort); do
+    e=$(echo "$f" | sed 's|^app/api||;s|/route.ts$||')
+    grep -qF "/api$e" docs/redesign/02-routes.md || echo "MISSING: /api$e"
+  done
+(no output — 0 missing API endpoints)
+```
+
+### Files added/changed (editable surface only)
+
+```
+docs/redesign/01-flows.md          (new)
+docs/redesign/02-routes.md         (new)
+docs/redesign/SESSION_LOG.md       (this entry appended)
+```
+
+Frozen surface (`app/api/**`, `lib/supabase/**`, `lib/stripe/**`,
+`lib/orders/state-machine.ts`, `lib/types/**`, `lib/api/{guest-auth,helpers}.ts`,
+`supabase/**`, `scripts/**`) — UNTOUCHED. All editable code paths
+(`components/**`, `app/**` markup, `hooks/**`) — UNTOUCHED. `00-features.md`
+— UNTOUCHED (locked SHA preserved). No new dependencies, no test changes.
+
+### Primitives added/extended
+
+None (Session 02 is docs-only).
+
+### Backend-contract sentinel
+
+GREEN | exceptions: none.
+
+### Open questions
+
+- The catalog summary discrepancy (91 reported, 107 actual). Cosmetic; not
+  worth a SHA bump on its own. → Deferred indefinitely; flagged for any
+  future session that has another reason to amend the catalog.
+- `app/@banner/` deletion path-of-execution. → Deferred to Session 07
+  shell rewrite as planned.
+
+### Blockers resolved
+
+None this session.
+
+### Next entry point
+
+**Session 03 — Design tokens + primitives.** Tailwind theme swap to OKLCH
+hue 126; fonts switch to Bricolage Grotesque + Figtree via `app/fonts.ts`
+(new); `components/ui/` primitives audited and extended (Sheet, Modal,
+Skeleton, Toast, Surface added; Button restyled with new variants;
+Combobox / Input restyled). Existing pages must still render — Session 03
+introduces the design system without rewriting pages. Master plan §Phase 3
+spec is authoritative.
+
+### Commits
+
+- (Session 02 commit pending — `docs(redesign): session 02 — flows + route tree ADR`)
+
+### Tags added
+
+None this session.
