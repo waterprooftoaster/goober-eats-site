@@ -220,6 +220,25 @@ describe('unchanged schemas — regression guard', () => {
     expect(r.success).toBe(false)
   })
 
+  it('sendMessageSchema accepts an optional UUID temp_id', () => {
+    const r = sendMessageSchema.safeParse({
+      order_id: VALID_UUID,
+      body: 'hi',
+      temp_id: VALID_UUID,
+    })
+    expect(r.success).toBe(true)
+    if (r.success) expect(r.data.temp_id).toBe(VALID_UUID)
+  })
+
+  it('sendMessageSchema rejects a non-UUID temp_id', () => {
+    const r = sendMessageSchema.safeParse({
+      order_id: VALID_UUID,
+      body: 'hi',
+      temp_id: 'not-a-uuid',
+    })
+    expect(r.success).toBe(false)
+  })
+
   it('updateProfileSchema requires at least one field', () => {
     expect(updateProfileSchema.safeParse({}).success).toBe(false)
     expect(updateProfileSchema.safeParse({ is_swiper: true }).success).toBe(true)

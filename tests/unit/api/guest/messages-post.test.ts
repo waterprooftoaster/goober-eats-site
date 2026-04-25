@@ -166,4 +166,27 @@ describe('POST /api/guest/messages', () => {
     const json = await res.json()
     expect(json.message_type).toBe('text')
   })
+
+  it('passes a client-supplied temp_id into the insert payload (guest path)', async () => {
+    setupValidAuth()
+    const TEMP_ID = '44444444-0000-4000-8000-000000000001'
+
+    const conv = { id: CONV_ID }
+    const mockMsg = {
+      id: 'msg-new', conversation_id: CONV_ID, sender_id: null, body: 'hi',
+      message_type: 'text', sent_at: new Date().toISOString(),
+      expires_at: new Date().toISOString(), image_url: null, temp_id: TEMP_ID,
+    }
+    const convChain = dbResult(conv)
+    const msgChain = dbResult(mockMsg)
+    mockServiceFrom
+      .mockReturnValueOnce(convChain)
+      .mockReturnValueOnce(msgChain)
+
+    const res = await POST(makeRequest({ order_id: VALID_ORDER_ID, body: 'hi', temp_id: TEMP_ID }))
+    expect(res.status).toBe(201)
+    expect(msgChain.insert).toHaveBeenCalledWith(expect.objectContaining({ temp_id: TEMP_ID }))
+    const json = await res.json()
+    expect(json.temp_id).toBe(TEMP_ID)
+  })
 })

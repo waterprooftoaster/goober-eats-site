@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) {
     return apiError(parsed.error.issues[0].message, 400)
   }
-  const { order_id, body: messageBody, message_type } = parsed.data
+  const { order_id, body: messageBody, message_type, temp_id } = parsed.data
 
   // Look up conversation by order_id (RLS filters to participant)
   const { data: conversation } = await supabase
@@ -37,7 +37,9 @@ export async function POST(request: NextRequest) {
     return apiError('Conversation not found', 404)
   }
 
-  // Insert message (RLS verifies participant + sender)
+  // Insert message (RLS verifies participant + sender). temp_id is echoed
+  // through the insert + select so the realtime INSERT payload carries it
+  // back to the originating client for optimistic-UI dedupe.
   const { data: message, error } = await supabase
     .from('messages')
     .insert({
@@ -45,6 +47,7 @@ export async function POST(request: NextRequest) {
       sender_id: user.id,
       body: messageBody,
       message_type,
+      temp_id: temp_id ?? null,
     })
     .select()
     .single()

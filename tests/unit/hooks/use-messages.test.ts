@@ -51,6 +51,7 @@ function makeMessage(overrides: Partial<Message> = {}): Message {
     expires_at: '2026-03-25T10:00:00Z',
     image_url: null,
     sent_at: '2026-03-23T10:01:00Z',
+    temp_id: null,
     ...overrides,
   }
 }

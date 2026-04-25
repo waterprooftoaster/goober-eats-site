@@ -48,6 +48,9 @@ export const sendMessageSchema = z.object({
   body: z.string().min(1).max(1000),
   // completion_photo messages are created via the upload endpoint, not here.
   message_type: z.enum(['text', 'system']).default('text'),
+  // Client-supplied id for optimistic-UI dedupe; server echoes it back so the
+  // realtime INSERT payload carries it. UUID-bounded to prevent arbitrary input.
+  temp_id: z.string().uuid().optional(),
 })
 
 export type SendMessageInput = z.infer<typeof sendMessageSchema>

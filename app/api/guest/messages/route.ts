@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) {
     return apiError(parsed.error.issues[0].message, 400)
   }
-  const { order_id, body: messageBody, message_type } = parsed.data
+  const { order_id, body: messageBody, message_type, temp_id } = parsed.data
 
   const auth = await validateGuestOrder(order_id)
   if (auth.error) return auth.error
@@ -39,6 +39,8 @@ export async function POST(request: NextRequest) {
     return apiError('Conversation not found', 404)
   }
 
+  // temp_id is echoed through insert + select so the realtime INSERT payload
+  // carries it back to the originating client for optimistic-UI dedupe.
   const { data: message, error } = await supabase
     .from('messages')
     .insert({
@@ -46,6 +48,7 @@ export async function POST(request: NextRequest) {
       sender_id: null, // guest messages have no auth profile
       body: messageBody,
       message_type,
+      temp_id: temp_id ?? null,
     })
     .select()
     .single()

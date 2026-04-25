@@ -22,4 +22,5 @@ export interface Message {
   expires_at: string
   image_url: string | null
   sent_at: string
+  temp_id: string | null
 }
