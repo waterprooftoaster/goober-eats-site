@@ -1,9 +1,13 @@
 /**
  * @file page.tsx
- * @description Stripe Embedded Checkout return handler. Receives the Checkout
- *   session_id from Stripe, retrieves the session to get the PaymentIntent ID,
- *   then routes guests to /api/guest/verify-order and authenticated users to /orders.
- *   Called by: Stripe return_url redirect after payment
+ * @description Stripe Embedded Checkout return handler. Receives the
+ *   Checkout `session_id` from Stripe, retrieves the session to read the
+ *   PaymentIntent ID + guest metadata, then `redirect()`s downstream:
+ *   guests → /api/guest/verify-order (cookie + redirect home);
+ *   authed users → /current-orders.
+ *
+ *   Pure server redirect — never renders DOM in the happy path.
+ *   Called by: Stripe `return_url` redirect after successful payment
  * @dependencies lib/stripe/client.ts
  */
 
@@ -15,8 +19,11 @@ interface Props {
 }
 
 /**
- * Server component that resolves the Stripe Checkout session and routes the user post-payment.
- * @param searchParams - URL search params containing session_id from Stripe
+ * Resolves the Stripe Checkout session and routes the user to the right
+ * downstream surface. Authed users land on /current-orders so the realtime
+ * order they just paid for is visible immediately (catalog
+ * ORD-CHECKOUT-RETURN-AUTHED).
+ * @param searchParams - URL search params containing `session_id` from Stripe
  * @called-by Stripe return_url redirect
  */
 export default async function CheckoutReturnPage({ searchParams }: Props) {
@@ -41,5 +48,5 @@ export default async function CheckoutReturnPage({ searchParams }: Props) {
     redirect(`/api/guest/verify-order?pi_id=${piId}`)
   }
 
-  redirect('/orders')
+  redirect('/current-orders')
 }
