@@ -2,15 +2,23 @@
 
 /**
  * @file pending-orders-list.tsx
- * @description Client component displaying the swiper's open order queue with a detail modal and accept action.
+ * @description Swiper queue: open-order list + detail modal + accept action.
+ *   Accept state machine is "soft-disable, not optimistic" (master plan §10):
+ *   200 → openPanel + green banner + remove row; 409 → red banner + remove
+ *   row; 403/5xx → inline modal error, modal stays open. Detail surface uses
+ *   the S03 <Modal> primitive (focus-trap + Escape + return-focus).
  *   Called by: app/swiper/orders/page.tsx
- * @dependencies components/chat-panel.tsx, components/order/order-card.tsx, components/order/screenshot-gallery.tsx
+ * @dependencies components/chat-panel, components/order/order-card,
+ *   components/order/screenshot-gallery, components/ui/{modal,button,surface}
  */
 
 import { useState } from 'react'
 import { useChatPanel } from '@/components/chat-panel'
 import { OrderCard, formatDollars } from '@/components/order/order-card'
 import { ScreenshotGallery } from '@/components/order/screenshot-gallery'
+import { Modal, ModalContent, ModalTitle } from '@/components/ui/modal'
+import { Button } from '@/components/ui/button'
+import { Surface } from '@/components/ui/surface'
 
 export type PendingOrder = {
   id: string
@@ -20,14 +28,15 @@ export type PendingOrder = {
   created_at: string
 }
 
-type Props = {
+interface Props {
   orders: PendingOrder[]
 }
 
 /**
- * Renders the list of open orders with per-order detail modal and accept button for swipers.
- * @param orders - Initial list of open unclaimed orders from the server
- * @returns Order list with expandable detail modal; updates in place on accept or race-condition failure
+ * Swiper queue with detail modal + accept action. Soft-disable state machine
+ * (no optimistic transitions; money-moving — see master plan §10).
+ * @param orders - Open unclaimed orders for the swiper's school, oldest first
+ * @returns Queue list, with the detail modal mounted alongside
  * @called-by app/swiper/orders/page.tsx
  */
 export function PendingOrdersList({ orders: initialOrders }: Props) {
@@ -46,13 +55,14 @@ export function PendingOrdersList({ orders: initialOrders }: Props) {
       const res = await fetch(`/api/orders/${selectedOrder.id}/accept`, { method: 'PATCH' })
       if (res.ok) {
         const acceptedId = selectedOrder.id
+        const acceptedRestaurant = selectedOrder.restaurant_name
         setOrders((prev) => prev.filter((o) => o.id !== acceptedId))
         setSelectedOrder(null)
         openPanel(acceptedId, 'in_progress')
-        setSuccessMsg(`Order accepted! Head to ${selectedOrder.restaurant_name} to start filling it.`)
+        setSuccessMsg(`Order accepted! Head to ${acceptedRestaurant} to start filling it.`)
         setTimeout(() => { setSuccessMsg(null) }, 5000)
       } else if (res.status === 409) {
-        // Race condition — another swiper got there first
+        // Race: another swiper claimed it first. Drop the row + close the modal.
         setOrders((prev) => prev.filter((o) => o.id !== selectedOrder.id))
         setSelectedOrder(null)
         setError('That order was just accepted by another swiper.')
@@ -67,80 +77,100 @@ export function PendingOrdersList({ orders: initialOrders }: Props) {
     }
   }
 
+  function handleOpen(order: PendingOrder) {
+    setSelectedOrder(order)
+    setError(null)
+  }
+
+  function handleClose(open: boolean) {
+    if (open) return
+    setSelectedOrder(null)
+    setError(null)
+  }
+
   return (
     <div data-testid="pending-orders-list">
       {successMsg && (
-        <div data-testid="swiper-accept-success-banner" className="mb-4 rounded-md bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-800">
+        <Surface
+          tone="subtle"
+          padding="sm"
+          data-testid="swiper-accept-success-banner"
+          role="status"
+          className="mb-6 border border-primary/40 bg-primary/10 text-sm"
+        >
           {successMsg}
-        </div>
+        </Surface>
       )}
+
       {error && !selectedOrder && (
-        <div className="mb-4 rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+        <p
+          role="alert"
+          className="mb-6 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+        >
           {error}
-        </div>
+        </p>
       )}
 
       {orders.length === 0 ? (
-        <p data-testid="swiper-orders-empty-state" className="text-sm text-gray-500 py-8 text-center">
+        <p
+          data-testid="swiper-orders-empty-state"
+          className="py-12 text-sm text-muted-foreground"
+        >
           No open orders at your school right now. Check back soon.
         </p>
       ) : (
-        <ul className="divide-y divide-gray-100">
+        <ul className="divide-y divide-border">
           {orders.map((order) => (
             <li key={order.id}>
-              <OrderCard
-                order={order}
-                onClick={() => { setSelectedOrder(order); setError(null) }}
-              />
+              <OrderCard order={order} onClick={() => handleOpen(order)} />
             </li>
           ))}
         </ul>
       )}
 
-      {/* Order Detail Dialog */}
-      {selectedOrder && (
-        <div className="fixed inset-0 bg-black/40 z-40 flex items-end md:items-center justify-center">
-          <div data-testid="swiper-order-detail-modal" className="bg-white rounded-t-lg md:rounded-lg w-full md:max-w-md md:mx-4 p-6 z-50 relative">
-            <button
-              onClick={() => { setSelectedOrder(null); setError(null) }}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-lg leading-none"
-              aria-label="Close"
-            >
-              ✕
-            </button>
-
-            <h2 className="text-lg font-bold mb-4 pr-8">
+      <Modal open={selectedOrder !== null} onOpenChange={handleClose}>
+        {selectedOrder && (
+          <ModalContent
+            data-testid="swiper-order-detail-modal"
+            className="max-w-lg gap-5"
+          >
+            <ModalTitle className="pr-6 text-xl">
               {selectedOrder.restaurant_name}
-            </h2>
+            </ModalTitle>
 
-            <div className="mb-4">
-              <ScreenshotGallery urls={selectedOrder.cart_screenshot_urls} />
+            <ScreenshotGallery urls={selectedOrder.cart_screenshot_urls} />
+
+            <div className="flex items-baseline justify-between border-t border-border pt-4">
+              <span className="text-sm text-muted-foreground">Total</span>
+              <span className="text-base font-semibold tabular-nums">
+                {formatDollars(selectedOrder.total_cents)}
+              </span>
             </div>
 
-            <div className="flex justify-between text-sm font-semibold border-t border-gray-100 pt-3 mb-3">
-              <span>Total</span>
-              <span className="text-base">{formatDollars(selectedOrder.total_cents)}</span>
-            </div>
-
-            <div className="mb-5 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
+            <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
               Double-check the subtotals in the screenshots match the total before accepting.
-            </div>
+            </p>
 
             {error && (
-              <p className="text-sm text-red-600 mb-3">{error}</p>
+              <p role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
             )}
 
-            <button
+            <Button
+              type="button"
+              variant="primary"
+              size="lg"
               onClick={handleAccept}
               disabled={accepting}
               data-testid="swiper-accept-button"
-              className="w-full rounded-md bg-black px-4 py-3 text-white font-medium hover:bg-gray-800 disabled:opacity-50"
+              className="w-full"
             >
-              {accepting ? 'Accepting…' : 'Accept Order'}
-            </button>
-          </div>
-        </div>
-      )}
+              {accepting ? 'Accepting…' : 'Accept order'}
+            </Button>
+          </ModalContent>
+        )}
+      </Modal>
     </div>
   )
 }

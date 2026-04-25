@@ -1,10 +1,12 @@
+'use client'
+
 /**
  * @file screenshot-gallery.tsx
- * @description Thumbnail strip with a full-screen lightbox for cart screenshots.
+ * @description Cart-screenshot thumbnail strip + lightbox. Tokens cascade
+ *   to OKLCH-126; lightbox closes on Escape, prev/next nav and click-outside.
  *   Called by: app/swiper/orders/pending-orders-list.tsx
+ * @dependencies next/image
  */
-
-'use client'
 
 import { useState } from 'react'
 import Image from 'next/image'
@@ -14,7 +16,8 @@ interface ScreenshotGalleryProps {
 }
 
 /**
- * Renders a horizontal thumbnail strip; clicking a thumbnail opens a lightbox with prev/next navigation.
+ * Renders a horizontal thumbnail strip; clicking a thumbnail opens a
+ * lightbox with prev/next navigation and Escape-to-close.
  * @param urls - Array of public screenshot URLs
  * @called-by app/swiper/orders/pending-orders-list.tsx
  */
@@ -33,13 +36,17 @@ export function ScreenshotGallery({ urls }: ScreenshotGalleryProps) {
 
   return (
     <>
-      <div data-testid="swiper-screenshot-gallery" className="flex overflow-x-auto gap-2 pb-1">
+      <div
+        data-testid="swiper-screenshot-gallery"
+        className="flex gap-2 overflow-x-auto pb-1"
+      >
         {urls.map((url, i) => (
           <button
             key={i}
             type="button"
             onClick={() => setSelectedIndex(i)}
-            className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-gray-200 bg-gray-50 hover:opacity-90"
+            aria-label={`Open screenshot ${i + 1}`}
+            className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-border bg-muted/40 transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
           >
             <Image src={url} alt={`Screenshot ${i + 1}`} fill className="object-cover" />
           </button>
@@ -50,37 +57,36 @@ export function ScreenshotGallery({ urls }: ScreenshotGalleryProps) {
         <div
           role="dialog"
           aria-modal="true"
+          aria-label="Cart screenshot"
           tabIndex={-1}
           autoFocus
           onKeyDown={(e) => { if (e.key === 'Escape') setSelectedIndex(null) }}
-          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center outline-none"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/90 outline-none"
         >
           <button
             type="button"
             aria-label="Close gallery"
             onClick={() => setSelectedIndex(null)}
-            className="absolute inset-0 w-full h-full"
+            className="absolute inset-0 h-full w-full"
           />
-
-          <div className="relative z-10 max-w-screen-sm w-full flex items-center justify-center px-12">
-            <div className="relative w-full h-[80vh]">
+          <div className="relative z-10 flex w-full max-w-screen-sm items-center justify-center px-12">
+            <div className="relative h-[80vh] w-full">
               <Image
                 src={urls[selectedIndex]}
                 alt={`Screenshot ${selectedIndex + 1}`}
                 fill
                 sizes="100vw"
-                className="object-contain rounded-lg"
+                className="rounded-lg object-contain"
               />
             </div>
           </div>
-
           {urls.length > 1 && (
             <>
               <button
                 type="button"
                 aria-label="Previous screenshot"
                 onClick={(e) => { e.stopPropagation(); prev() }}
-                className="absolute left-4 z-20 rounded-full bg-white/20 p-2 text-white hover:bg-white/30"
+                className="absolute left-4 z-20 rounded-full bg-background/20 p-2 text-background hover:bg-background/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-background/40"
               >
                 ‹
               </button>
@@ -88,7 +94,7 @@ export function ScreenshotGallery({ urls }: ScreenshotGalleryProps) {
                 type="button"
                 aria-label="Next screenshot"
                 onClick={(e) => { e.stopPropagation(); next() }}
-                className="absolute right-4 z-20 rounded-full bg-white/20 p-2 text-white hover:bg-white/30"
+                className="absolute right-4 z-20 rounded-full bg-background/20 p-2 text-background hover:bg-background/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-background/40"
               >
                 ›
               </button>
