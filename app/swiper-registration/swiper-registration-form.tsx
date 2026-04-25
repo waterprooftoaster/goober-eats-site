@@ -125,9 +125,7 @@ export function SwiperRegistrationForm({ schoolId, schoolName, schools }: Props)
             <div data-testid="swiper-reg-school-selector" className="flex-1">
               <Combobox
                 value={selectedSchool}
-                onValueChange={(value) =>
-                  setSelectedSchool(value as { value: string; label: string } | null)
-                }
+                onValueChange={(value) => setSelectedSchool(asSchoolItem(value))}
                 onInputValueChange={(inputValue) => setSchoolSearchQuery(inputValue)}
                 isItemEqualToValue={(a, b) => a.value === b.value}
                 autoHighlight
@@ -181,4 +179,28 @@ export function SwiperRegistrationForm({ schoolId, schoolName, schools }: Props)
       </Button>
     </div>
   )
+}
+
+// --- Helpers ---
+
+/**
+ * Narrows the unknown value emitted by Combobox.onValueChange into the
+ * `{ value, label }` shape this form consumes. Returns null on any other
+ * shape so a primitive API drift cannot silently corrupt selectedSchool.
+ * @param raw - The value emitted by Combobox onValueChange
+ * @returns The narrowed school item, or null
+ * @called-by SwiperRegistrationForm
+ */
+function asSchoolItem(raw: unknown): { value: string; label: string } | null {
+  if (
+    raw !== null &&
+    typeof raw === 'object' &&
+    'value' in raw &&
+    'label' in raw &&
+    typeof (raw as { value: unknown }).value === 'string' &&
+    typeof (raw as { label: unknown }).label === 'string'
+  ) {
+    return raw as { value: string; label: string }
+  }
+  return null
 }

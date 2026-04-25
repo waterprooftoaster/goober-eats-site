@@ -15,11 +15,14 @@
 
 import { Button } from '@/components/ui/button'
 import { Surface } from '@/components/ui/surface'
+import { sanitizeErrorMessage } from '@/lib/ui/sanitize-error-message'
 
 interface ErrorBoundaryProps {
   error: Error & { digest?: string }
   reset: () => void
 }
+
+const FALLBACK = 'Something went wrong finalizing your account. Try again in a moment.'
 
 /**
  * Renders a recovery surface when the onboard-complete page crashes.
@@ -36,7 +39,7 @@ export default function StripeOnboardCompleteError({ error, reset }: ErrorBounda
             We couldn&rsquo;t finish your setup.
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            {sanitize(error.message)}
+            {sanitizeErrorMessage(error.message, FALLBACK)}
           </p>
           {error.digest && (
             <p className="mt-2 text-xs text-muted-foreground">
@@ -55,17 +58,4 @@ export default function StripeOnboardCompleteError({ error, reset }: ErrorBounda
       </Surface>
     </main>
   )
-}
-
-// --- Helpers ---
-
-/**
- * Strips file paths, line numbers, and stack-trace fragments from an error
- * message so internal details don't leak to the user.
- */
-function sanitize(message: string): string {
-  if (!message) return 'Something went wrong finalizing your account. Try again in a moment.'
-  const firstLine = message.split('\n')[0] ?? ''
-  return firstLine.replace(/\s*at\s.*$/g, '').replace(/\s*\(.*?:\d+:\d+\).*$/g, '').trim()
-    || 'Something went wrong finalizing your account. Try again in a moment.'
 }

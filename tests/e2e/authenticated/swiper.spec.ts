@@ -131,23 +131,23 @@ test.describe('Account page — swiper section', () => {
 
   test('school select and save updates profile', async ({ page }) => {
     await page.goto('/swiper-registration')
-    // Select the first school option (not the placeholder)
-    const select = page.getByTestId('swiper-reg-school-selector')
-    await expect(select).toBeVisible()
-    const options = await select.locator('option').all()
-    // Find a non-empty option value
-    let targetValue = ''
-    for (const opt of options) {
-      const val = await opt.getAttribute('value')
-      if (val && val !== '') {
-        targetValue = val
-        break
-      }
-    }
-    expect(targetValue).toBeTruthy()
-    await select.selectOption(targetValue)
+    // S06 migrated the school selector from native <select> to the
+    // S03 <Combobox> primitive (Base UI). Base UI renders BOTH an
+    // `<input role="combobox">` and a trigger `<button role="combobox">`
+    // inside the testid wrapper, so we narrow by the accessible name
+    // (the placeholder) to target the typeable input specifically.
+    const schoolInput = page
+      .getByTestId('swiper-reg-school-selector')
+      .getByRole('combobox', { name: 'Search schools…' })
+    await expect(schoolInput).toBeVisible()
+    // Type to filter, arrow-down to highlight first match, Enter to select.
+    // Using a single character keeps the test independent of the
+    // particular schools list — any environment with ≥1 school passes.
+    await schoolInput.fill('a')
+    await schoolInput.press('ArrowDown')
+    await schoolInput.press('Enter')
     await page.getByTestId('swiper-reg-save-button').click()
-    // After saving, the school name should be displayed and the Continue button enabled
+    // After saving, the Continue button should be enabled.
     await expect(page.getByTestId('swiper-reg-continue-button')).toBeEnabled()
   })
 })

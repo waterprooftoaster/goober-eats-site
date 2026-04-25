@@ -77,11 +77,24 @@ export function PendingOrdersList({ orders: initialOrders }: Props) {
     }
   }
 
+  /**
+   * Opens the order detail modal for a given queue row; clears any
+   * stale list-level error in the process.
+   * @param order - The PendingOrder to display in the modal
+   * @called-by PendingOrdersList (order-card click handler)
+   */
   function handleOpen(order: PendingOrder) {
     setSelectedOrder(order)
     setError(null)
   }
 
+  /**
+   * Modal close handler: ignores `open=true` events (Radix Dialog can
+   * fire onOpenChange in either direction) and clears both the
+   * selected order and any in-modal error on close.
+   * @param open - Radix Dialog's new open state
+   * @called-by PendingOrdersList (Modal onOpenChange)
+   */
   function handleClose(open: boolean) {
     if (open) return
     setSelectedOrder(null)

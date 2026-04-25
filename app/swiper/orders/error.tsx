@@ -14,11 +14,14 @@
 
 import { Button } from '@/components/ui/button'
 import { Surface } from '@/components/ui/surface'
+import { sanitizeErrorMessage } from '@/lib/ui/sanitize-error-message'
 
 interface ErrorBoundaryProps {
   error: Error & { digest?: string }
   reset: () => void
 }
+
+const FALLBACK = 'Something went wrong loading the queue. Try again in a moment.'
 
 /**
  * Renders a recovery surface when /swiper/orders crashes during render or
@@ -36,7 +39,7 @@ export default function SwiperOrdersError({ error, reset }: ErrorBoundaryProps) 
             Couldn&rsquo;t load the queue.
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            {sanitize(error.message)}
+            {sanitizeErrorMessage(error.message, FALLBACK)}
           </p>
           {error.digest && (
             <p className="mt-2 text-xs text-muted-foreground">
@@ -55,19 +58,4 @@ export default function SwiperOrdersError({ error, reset }: ErrorBoundaryProps) 
       </Surface>
     </main>
   )
-}
-
-// --- Helpers ---
-
-/**
- * Strips file paths, line numbers, and stack-trace fragments from an error
- * message so internal details don't leak to the user.
- * @param message - The raw error message
- * @returns A sanitized one-liner safe to display
- */
-function sanitize(message: string): string {
-  if (!message) return 'Something went wrong loading the queue. Try again in a moment.'
-  const firstLine = message.split('\n')[0] ?? ''
-  return firstLine.replace(/\s*at\s.*$/g, '').replace(/\s*\(.*?:\d+:\d+\).*$/g, '').trim()
-    || 'Something went wrong loading the queue. Try again in a moment.'
 }

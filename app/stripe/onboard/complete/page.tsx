@@ -62,11 +62,19 @@ export default async function StripeOnboardCompletePage() {
   // Atomic compare-and-set on is_swiper=false avoids double-activation if
   // this page is loaded twice in quick succession.
   if (onboardingComplete) {
-    const { data: profile } = await supabase
+    const { data: profile, error: profileFetchError } = await supabase
       .from('profiles')
       .select('school_id, is_swiper')
       .eq('id', user.id)
       .single()
+
+    if (profileFetchError) {
+      // Surface in server logs so production incidents are visible. The
+      // school-missing guard below correctly falls through to the
+      // 'almost there' UI for the user; we still want operators to see
+      // the underlying DB error in Vercel logs.
+      console.error('[stripe/onboard/complete] profile fetch failed', profileFetchError)
+    }
 
     if (profile?.school_id && !profile.is_swiper) {
       await serviceClient
