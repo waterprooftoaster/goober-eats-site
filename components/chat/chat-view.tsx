@@ -75,7 +75,11 @@ function ChatViewCore({
   if (isLoading) {
     return (
       <div data-testid="chat-view" className="flex flex-1 items-center justify-center py-16">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-gray-900" />
+        <div
+          aria-label="Loading messages"
+          role="status"
+          className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-foreground motion-reduce:animate-none"
+        />
       </div>
     )
   }
@@ -83,7 +87,7 @@ function ChatViewCore({
   if (error) {
     return (
       <div data-testid="chat-view" className="flex flex-1 items-center justify-center py-16">
-        <p className="text-sm text-gray-500">{error}</p>
+        <p role="alert" className="text-sm text-destructive">{error}</p>
       </div>
     )
   }

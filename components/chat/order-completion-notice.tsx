@@ -1,6 +1,6 @@
 /**
  * @file order-completion-notice.tsx
- * @description Completion view showing the delivery photo (if any) and a completion label.
+ * @description Completion view showing the completion photo (if any) and a completion label.
  *   Called by: components/chat/chat-view.tsx (when order status is 'completed')
  */
 
@@ -13,8 +13,8 @@ interface Props {
 }
 
 /**
- * Renders the delivery photo (if present) and a completion label inside the chat panel.
- * @param deliveryPhoto - The delivery photo message, or null if no photo was attached
+ * Renders the completion photo (if present) and a completion label inside the chat panel.
+ * @param deliveryPhoto - The completion photo message, or null if no photo was attached
  * @param label - Text shown below the photo; defaults to 'Your order is ready!'
  * @called-by components/chat/chat-view.tsx
  */
@@ -26,17 +26,17 @@ export function OrderCompletedView({ deliveryPhoto, label = 'Your order is ready
           href={deliveryPhoto.image_url}
           target="_blank"
           rel="noopener noreferrer"
-          className="relative block w-full h-48"
+          className="relative block h-48 w-full"
         >
           <Image
             fill
             src={deliveryPhoto.image_url}
-            alt="Delivery photo"
-            className="rounded-lg object-cover border border-gray-100 cursor-pointer hover:opacity-90 transition-opacity"
+            alt="Completion photo from your swiper"
+            className="cursor-pointer rounded-lg border border-border object-cover transition-opacity hover:opacity-90 motion-reduce:transition-none"
           />
         </a>
       )}
-      <p className="text-lg font-semibold text-gray-900">{label}</p>
+      <p className="text-lg font-semibold text-foreground">{label}</p>
     </div>
   )
 }

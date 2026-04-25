@@ -37,6 +37,11 @@ export function Header({ principal }: Props) {
       </Link>
 
       {isAnon ? (
+        // Both links point to /auth/login intentionally — login-form.tsx is a
+        // unified multi-step form (email → password → name → school) that
+        // auto-detects sign-in vs sign-up by checking whether the email exists
+        // (see auth-signin-button vs auth-signup-button testids in
+        // app/auth/login/login-form.tsx). No mode= query param is needed.
         <div className="flex items-center gap-1" data-testid="header-auth-buttons">
           <Link
             href="/auth/login"

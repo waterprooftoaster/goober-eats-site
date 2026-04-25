@@ -147,7 +147,7 @@ export function CompletionBanner({ orderId, onStatusChange }: Props) {
           )}
         </Button>
       </div>
-      {error && <p className="mt-1 text-right text-xs text-red-600">{error}</p>}
+      {error && <p role="alert" className="mt-1 text-right text-xs text-destructive">{error}</p>}
     </div>
   )
 }
