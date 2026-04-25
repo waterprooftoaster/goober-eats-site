@@ -117,8 +117,9 @@ export function ChatInput({ orderId, onSend, disabled }: Props) {
           size="icon"
           disabled={isDisabled}
           onClick={() => fileInputRef.current?.click()}
-          aria-label="Upload delivery photo"
+          aria-label="Upload completion photo"
           data-testid="chat-photo-upload"
+          className="size-11"
         >
           <Camera className="h-4 w-4" />
         </Button>
@@ -129,6 +130,7 @@ export function ChatInput({ orderId, onSend, disabled }: Props) {
           onClick={handleSend}
           aria-label="Send message"
           data-testid="chat-send-button"
+          className="size-11"
         >
           {sending ? (
             <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent motion-reduce:animate-none" />
