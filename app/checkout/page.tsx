@@ -23,7 +23,11 @@ import { BackButton } from '@/components/back-button'
 import { createClient } from '@/lib/supabase/client'
 import { PENDING_SCREENSHOTS_KEY } from '@/lib/constants'
 
-const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!)
+// Guarded so a missing env var (CI / preview environment / fresh clone)
+// surfaces as the colocated error.tsx boundary instead of an unhandled
+// loadStripe(undefined) crash inside EmbeddedCheckoutProvider.
+const STRIPE_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? null
+const stripePromise = STRIPE_PUBLISHABLE_KEY ? loadStripe(STRIPE_PUBLISHABLE_KEY) : null
 
 type Stage = 'form' | 'submitting' | 'checkout'
 type ViewerKind = 'loading' | 'guest' | 'authed'
@@ -146,6 +150,12 @@ export default function CheckoutPage() {
   }
 
   if (clientSecret) {
+    if (!stripePromise) {
+      // Should never happen — the POST that returned the clientSecret would
+      // have failed first — but a missing publishable key would still leave
+      // the iframe unmounted. Surface the error inline rather than crash.
+      throw new Error('Stripe publishable key is not configured')
+    }
     return (
       <main
         data-testid="checkout-page"
