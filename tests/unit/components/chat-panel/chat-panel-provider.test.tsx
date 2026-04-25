@@ -191,4 +191,64 @@ describe('ChatPanelProvider (S07 — registry + conversations JOIN + visibility)
     expect(mockSupabase.channel).not.toHaveBeenCalled()
     expect(mockOrdersQuery).not.toHaveBeenCalled()
   })
+
+  // --- Dismissed-panel re-open regression (S07 code-review MEDIUM #2) ---
+  //
+  // The S07 cumulative code-reviewer flagged: "loadActiveOrders re-opens
+  // panels that the user dismissed via closePanel on visibility refetch."
+  //
+  // Scenario: user closes a panel → orderId removed from state. Tab is
+  // backgrounded; useVisibilityRefetch triggers loadActiveOrders on return.
+  // Without the fix, openPanel sees orderId is no longer in state and
+  // re-creates the panel. With the fix, a dismissedOrderIdsRef set tracks
+  // user-dismissed orders and excludes them from re-opening.
+  it('does not re-open a user-dismissed panel on visibility-refetch loadActiveOrders', async () => {
+    setupOrdersJoinReturn([
+      {
+        id: ORDER_ID,
+        status: 'in_progress',
+        restaurant_name: 'Chipotle',
+        conversations: [{ id: CONV_ID }],
+      },
+    ])
+
+    const captured: { value: ReturnType<typeof useChatPanel> | null } = { value: null }
+    render(
+      <ChatPanelProvider userId={USER_ID}>
+        <StateProbe onState={(s) => { captured.value = s }} />
+      </ChatPanelProvider>
+    )
+
+    // Initial auto-open
+    await waitFor(() => {
+      expect(captured.value?.orders[ORDER_ID]).toBeDefined()
+    })
+
+    // User dismisses the panel
+    captured.value!.closePanel(ORDER_ID)
+    await waitFor(() => {
+      expect(captured.value?.orders[ORDER_ID]).toBeUndefined()
+    })
+
+    // Re-arm the orders query — loadActiveOrders will see the same row again
+    setupOrdersJoinReturn([
+      {
+        id: ORDER_ID,
+        status: 'in_progress',
+        restaurant_name: 'Chipotle',
+        conversations: [{ id: CONV_ID }],
+      },
+    ])
+
+    // Simulate a visibility refetch — visibilitychange→visible triggers
+    // loadActiveOrders via useVisibilityRefetch.
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', writable: true, configurable: true })
+    document.dispatchEvent(new Event('visibilitychange'))
+
+    // Give the async refetch chain a chance to settle.
+    await new Promise((r) => setTimeout(r, 50))
+
+    // The dismissed order MUST NOT reappear in state.
+    expect(captured.value?.orders[ORDER_ID]).toBeUndefined()
+  })
 })

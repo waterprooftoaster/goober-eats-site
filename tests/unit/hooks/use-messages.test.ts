@@ -372,6 +372,85 @@ describe('useMessages (S07 registry + subscribe-before-fetch + temp_id)', () => 
     })
   })
 
+  // --- Effect-lifecycle race regression (S07 code-review MEDIUM #1) ---
+  //
+  // S07 cumulative code-review flagged: "StrictMode race in use-messages
+  // Effect 2/3 ordering (initialFetchDoneRef reset placement)". The fix
+  // moves the reset from Effect 2 (subscription-setup) to Effect 3 cleanup
+  // (fetch-lifecycle), tying the flag's lifetime to the fetch it gates.
+  //
+  // The bug manifests when Effect 3 re-runs WITHOUT Effect 2 re-running
+  // (e.g. orderId changes while resolvedConvId stays — possible via the
+  // providedConvId path that the chat-panel-provider's B2 JOIN takes).
+  // With the reset on Effect 2, the stale done=true survives, so a realtime
+  // INSERT arriving during the new fetch is merged DIRECTLY into state and
+  // then OVERWRITTEN by the new fetch's response. With the fix, Effect 3
+  // cleanup resets done=false; the new INSERT is buffered and survives.
+
+  it('preserves a realtime INSERT delivered during a stable-conversationId orderId change', async () => {
+    const ORDER_A = ORDER_ID
+    const ORDER_B = '00000000-0000-4000-8000-00000000000B'
+    const FETCH_A_DATA = INITIAL_DATA
+    const FETCH_B_DATA = {
+      conversation: MOCK_CONVERSATION,
+      messages: [makeMessage({ id: 'msg-b1', body: 'order B initial' })],
+    }
+
+    // First fetch (orderId=A) resolves immediately.
+    mockFetch.mockResolvedValueOnce(mockJsonOk(FETCH_A_DATA))
+
+    const { result, rerender } = renderHook(
+      ({ orderId }) => useMessages({ orderId, conversationId: CONV_ID }),
+      { initialProps: { orderId: ORDER_A } }
+    )
+
+    await waitFor(() => {
+      expect(result.current.messages).toEqual(FETCH_A_DATA.messages)
+    })
+
+    // Now make the second fetch (orderId=B) slow so we can interleave a
+    // realtime INSERT during the new fetch.
+    let resolveFetchB!: (value: unknown) => void
+    const slowFetchB = new Promise((resolve) => {
+      resolveFetchB = resolve
+    })
+    mockFetch.mockReturnValueOnce(slowFetchB)
+
+    rerender({ orderId: ORDER_B })
+
+    // Trigger the Effect 3 re-run with the new orderId while resolvedConvId
+    // (and thus Effect 2) stays stable — no new subscription is set up.
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenLastCalledWith(`/api/messages/${ORDER_B}`)
+    })
+
+    // A realtime INSERT arrives during the new fetch's flight.
+    const lateMsg = makeMessage({ id: 'msg-late', body: 'arrived during orderB fetch' })
+    const realtimeCallback = mockChannel.on.mock.calls[0][2] as (p: { new: Message }) => void
+    act(() => {
+      realtimeCallback({ new: lateMsg })
+    })
+
+    // Resolve the new fetch with B's initial data (which does NOT include lateMsg).
+    await act(async () => {
+      resolveFetchB({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(FETCH_B_DATA),
+      })
+      await slowFetchB
+    })
+
+    // The lateMsg MUST survive the orderId change. With the bug, it would be
+    // overwritten because done=true caused it to be merged directly into the
+    // pre-fetch state, then replaced by the post-fetch state.
+    await waitFor(() => {
+      const ids = result.current.messages.map((m) => m.id)
+      expect(ids).toContain('msg-late')
+      expect(ids).toContain('msg-b1')
+    })
+  })
+
   // --- Visibility refetch ---
 
   it('refetches messages on visibilitychange→visible and dedupes into existing state', async () => {

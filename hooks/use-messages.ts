@@ -115,10 +115,12 @@ export function useMessages(opts: UseMessagesOptions): UseMessagesResult {
   }, [orderId, providedConvId])
 
   // --- Effect 2: subscribe via the registry BEFORE the initial fetch (master plan §11) ---
+  // The initialFetchDoneRef + bufferRef lifetime is owned by Effect 3 (the
+  // fetch lifecycle), not by this effect (the subscription lifecycle). When
+  // resolvedConvId changes, Effect 3 cleanup also fires and resets both refs
+  // before the new subscription's callbacks reference them.
   useEffect(() => {
     if (!resolvedConvId) return
-    initialFetchDoneRef.current = false
-    bufferRef.current = []
 
     let handle: RegistryHandle | null = null
     try {
@@ -156,6 +158,11 @@ export function useMessages(opts: UseMessagesOptions): UseMessagesResult {
   }, [resolvedConvId])
 
   // --- Effect 3: initial fetch + buffer flush ---
+  // Owns the lifetime of initialFetchDoneRef + bufferRef so the flag's truthiness
+  // is tied to the fetch it gates, not to the subscription setup. Effect-cleanup
+  // resets BOTH refs so a re-run (orderId change, resolvedConvId change, or
+  // StrictMode double-invoke) starts the buffering window cleanly — INSERTs
+  // arriving during the new fetch are buffered, not merged into stale state.
   useEffect(() => {
     if (!orderId || !resolvedConvId) return
     let cancelled = false
@@ -196,6 +203,11 @@ export function useMessages(opts: UseMessagesOptions): UseMessagesResult {
     load()
     return () => {
       cancelled = true
+      // Tie the flag's lifetime to this fetch — every re-run gets a clean
+      // buffering window so realtime INSERTs landing during the new fetch
+      // are queued (not merged into the about-to-be-replaced state).
+      initialFetchDoneRef.current = false
+      bufferRef.current = []
     }
   }, [orderId, resolvedConvId])
 

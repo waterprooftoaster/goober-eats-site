@@ -31,26 +31,27 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
   const thumbnail = order.cart_screenshot_urls[0] ?? null
 
   return (
-    <div
+    <button
+      type="button"
       data-testid="order-card"
       onClick={onClick}
-      className="flex items-center gap-3 py-4 px-2 cursor-pointer hover:bg-gray-50 rounded-lg"
+      className="flex w-full items-center gap-3 rounded-lg px-2 py-4 text-left transition-colors hover:bg-secondary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 motion-reduce:transition-none"
     >
       {thumbnail && (
-        <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-md border border-gray-200 bg-gray-50">
+        <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-md border border-border bg-muted/40">
           <Image src={thumbnail} alt={order.restaurant_name} fill className="object-cover" />
         </div>
       )}
 
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium truncate">{order.restaurant_name}</p>
+        <p className="truncate text-sm font-medium">{order.restaurant_name}</p>
       </div>
 
-      <div className="text-right shrink-0">
-        <p className="text-sm font-semibold">{formatDollars(order.total_cents)}</p>
-        <p className="text-xs text-gray-400">{timeAgo(order.created_at)}</p>
+      <div className="shrink-0 text-right">
+        <p className="text-sm font-semibold tabular-nums">{formatDollars(order.total_cents)}</p>
+        <p className="text-xs text-muted-foreground">{timeAgo(order.created_at)}</p>
       </div>
-    </div>
+    </button>
   )
 }
 

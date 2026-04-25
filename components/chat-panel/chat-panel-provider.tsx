@@ -42,6 +42,11 @@ export function ChatPanelProvider({ userId, children }: Props) {
   const [orders, setOrders] = useState<Record<string, OrderEntry>>({})
   const ordersRef = useRef<Record<string, OrderEntry>>({})
 
+  // User-dismissed panel ids — excluded from re-opening on visibility refetch
+  // and realtime status updates. Persists for the session (intentional: a
+  // dismissed panel stays dismissed until the user navigates or reloads).
+  const dismissedOrderIdsRef = useRef<Set<string>>(new Set())
+
   // Keep ref in sync so the realtime callback always sees the latest state
   useEffect(() => {
     ordersRef.current = orders
@@ -54,6 +59,10 @@ export function ChatPanelProvider({ userId, children }: Props) {
       eateryName = '',
       conversationId: string | null = null
     ) => {
+      // Skip user-dismissed panels — loadActiveOrders + visibility refetch can
+      // re-discover the same order; the dismissed-set is what keeps the panel
+      // closed across those re-runs (S07 code-review MEDIUM #2).
+      if (dismissedOrderIdsRef.current.has(orderId)) return
       setOrders((prev) => {
         if (prev[orderId]) {
           // Backfill eateryName / conversationId if either was unknown when first opened
@@ -79,6 +88,9 @@ export function ChatPanelProvider({ userId, children }: Props) {
   )
 
   const closePanel = useCallback((orderId: string) => {
+    // Record the dismissal BEFORE removing from state so a racing
+    // loadActiveOrders that fires concurrently can't beat us to a re-open.
+    dismissedOrderIdsRef.current.add(orderId)
     setOrders((prev) => {
       if (!prev[orderId]) return prev
       const next = { ...prev }
