@@ -37,6 +37,9 @@ const CONVERSATION: Conversation = {
 }
 
 const SEND_MESSAGE = vi.fn().mockResolvedValue(undefined)
+const APPEND_OPTIMISTIC = vi.fn()
+const MARK_FAILED = vi.fn()
+const MARK_PENDING = vi.fn()
 
 function mockMessages(overrides: Partial<ReturnType<typeof useMessages>> = {}) {
   vi.mocked(useMessages).mockReturnValue({
@@ -45,6 +48,9 @@ function mockMessages(overrides: Partial<ReturnType<typeof useMessages>> = {}) {
     isLoading: false,
     error: null,
     sendMessage: SEND_MESSAGE,
+    appendOptimistic: APPEND_OPTIMISTIC,
+    markFailed: MARK_FAILED,
+    markPending: MARK_PENDING,
     ...overrides,
   })
 }
@@ -170,5 +176,48 @@ describe('ChatView', () => {
     mockMessages({ conversation: CONVERSATION, messages: [] })
     const { container } = renderView({ currentUserId: ORDERER_ID, orderStatus: 'in_progress' })
     expect(container.querySelector('[data-testid="date-separator"]')).not.toBeInTheDocument()
+  })
+
+  // --- Optimistic-UI flow (S07 C2) ---
+
+  describe('optimistic send flow', () => {
+    it('appendOptimistic is called with a UUID temp_id, then sendMessage with the same temp_id', async () => {
+      const { userEvent } = await import('@testing-library/user-event')
+      const user = userEvent.setup()
+      mockMessages({ conversation: CONVERSATION })
+      renderView({ currentUserId: ORDERER_ID, orderStatus: 'in_progress' })
+
+      const input = screen.getByTestId('chat-input-active')
+      await user.type(input, 'hello world')
+      await user.click(screen.getByTestId('chat-send-button'))
+
+      expect(APPEND_OPTIMISTIC).toHaveBeenCalledTimes(1)
+      const [tempId, body, senderId] = APPEND_OPTIMISTIC.mock.calls[0]
+      expect(typeof tempId).toBe('string')
+      expect(tempId.length).toBeGreaterThanOrEqual(8)
+      expect(body).toBe('hello world')
+      expect(senderId).toBe(ORDERER_ID)
+
+      expect(SEND_MESSAGE).toHaveBeenCalledTimes(1)
+      expect(SEND_MESSAGE).toHaveBeenCalledWith('hello world', tempId)
+    })
+
+    it('markFailed is called with the same temp_id when sendMessage rejects', async () => {
+      const { userEvent } = await import('@testing-library/user-event')
+      const user = userEvent.setup()
+      SEND_MESSAGE.mockRejectedValueOnce(new Error('boom'))
+      mockMessages({ conversation: CONVERSATION })
+      renderView({ currentUserId: ORDERER_ID, orderStatus: 'in_progress' })
+
+      const input = screen.getByTestId('chat-input-active')
+      await user.type(input, 'will fail')
+      await user.click(screen.getByTestId('chat-send-button'))
+
+      // Wait microtask drain for the rejection
+      await new Promise((r) => setTimeout(r, 10))
+
+      const [tempId] = APPEND_OPTIMISTIC.mock.calls[0]
+      expect(MARK_FAILED).toHaveBeenCalledWith(tempId)
+    })
   })
 })

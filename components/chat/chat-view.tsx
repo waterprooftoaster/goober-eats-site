@@ -8,13 +8,13 @@
  * @dependencies hooks/use-messages.ts, components/chat/chat-thread.tsx, components/chat/chat-input.tsx
  */
 
-import { useEffect, useRef } from 'react'
-import { useMessages } from '@/hooks/use-messages'
+import { useCallback, useEffect, useRef } from 'react'
+import { useMessages, type OptimisticMessage } from '@/hooks/use-messages'
 import { ChatThread } from '@/components/chat/chat-thread'
 import { ChatInput } from '@/components/chat/chat-input'
 import { CompletionBanner } from '@/components/chat/completion-banner'
 import { OrderCompletedView } from '@/components/chat/order-completion-notice'
-import type { Conversation, Message } from '@/lib/types/messaging'
+import type { Conversation } from '@/lib/types/messaging'
 import type { OrderStatus } from '@/lib/types/database'
 
 const CLOSED_STATUSES: OrderStatus[] = ['completed', 'cancelled']
@@ -27,13 +27,14 @@ export interface PseudoMessage {
 interface CoreProps {
   orderId: string
   eateryName: string
-  messages: Message[]
+  messages: OptimisticMessage[]
   conversation: Conversation | null
   currentUserId: string | null
   orderStatus: OrderStatus
   isLoading: boolean
   error: string | null
   sendMessage: (body: string) => Promise<void>
+  onRetry?: (temp_id: string, body: string) => void
   onStatusChange?: (status: OrderStatus) => void
 }
 
@@ -61,6 +62,7 @@ function ChatViewCore({
   isLoading,
   error,
   sendMessage,
+  onRetry,
   onStatusChange,
 }: CoreProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -107,6 +109,7 @@ function ChatViewCore({
         messages={messages}
         currentUserId={currentUserId}
         messagesEndRef={messagesEndRef}
+        onRetry={onRetry}
       />
       {currentUserId !== null &&
         currentUserId === conversation?.swiper_id &&
@@ -144,7 +147,38 @@ interface Props {
  * @called-by components/chat-panel/chat-panel.tsx, app/current-orders/current-orders-list.tsx
  */
 export function ChatView({ orderId, eateryName, currentUserId, orderStatus, conversationId, onStatusChange }: Props) {
-  const { messages, conversation, isLoading, error, sendMessage } = useMessages({ orderId, conversationId })
+  const { messages, conversation, isLoading, error, sendMessage, appendOptimistic, markFailed, markPending } =
+    useMessages({ orderId, conversationId })
+
+  // Wrap sendMessage in the C2 optimistic flow: generate a temp_id, append the
+  // optimistic entry, fire the POST. Realtime / POST response will dedupe by
+  // temp_id and clear the pending status. On failure, mark failed (renders the
+  // retry affordance in chat-thread).
+  const handleSend = useCallback(
+    async (body: string) => {
+      const temp_id =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+      appendOptimistic(temp_id, body, currentUserId)
+      try {
+        await sendMessage(body, temp_id)
+      } catch (e) {
+        markFailed(temp_id)
+        throw e
+      }
+    },
+    [appendOptimistic, sendMessage, markFailed, currentUserId]
+  )
+
+  const handleRetry = useCallback(
+    (temp_id: string, body: string) => {
+      markPending(temp_id)
+      void sendMessage(body, temp_id).catch(() => markFailed(temp_id))
+    },
+    [markPending, sendMessage, markFailed]
+  )
+
   return (
     <ChatViewCore
       orderId={orderId}
@@ -155,7 +189,8 @@ export function ChatView({ orderId, eateryName, currentUserId, orderStatus, conv
       orderStatus={orderStatus}
       isLoading={isLoading}
       error={error}
-      sendMessage={sendMessage}
+      sendMessage={handleSend}
+      onRetry={handleRetry}
       onStatusChange={onStatusChange}
     />
   )

@@ -48,6 +48,8 @@ export interface UseMessagesResult {
   appendOptimistic: (temp_id: string, body: string, sender_id: string | null) => void
   /** Flag a previously-appended optimistic message as failed (renders retry affordance). */
   markFailed: (temp_id: string) => void
+  /** Flip a previously-failed entry back to `pending` (used by the retry flow). */
+  markPending: (temp_id: string) => void
 }
 
 /**
@@ -260,7 +262,13 @@ export function useMessages(opts: UseMessagesOptions): UseMessagesResult {
     )
   }, [])
 
-  return { messages, conversation, isLoading, error, sendMessage, appendOptimistic, markFailed }
+  const markPending = useCallback((temp_id: string) => {
+    setMessages((prev) =>
+      prev.map((m) => (m.temp_id === temp_id ? { ...m, status: 'pending' as const } : m))
+    )
+  }, [])
+
+  return { messages, conversation, isLoading, error, sendMessage, appendOptimistic, markFailed, markPending }
 }
 
 // --- Helpers ---

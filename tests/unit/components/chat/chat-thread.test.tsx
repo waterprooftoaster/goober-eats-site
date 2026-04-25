@@ -4,12 +4,13 @@
  *   Called by: Vitest
  */
 
-import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { createRef } from 'react'
 import { ChatThread } from '@/components/chat/chat-thread'
 import type { PseudoMessage } from '@/components/chat/chat-view'
 import type { Message } from '@/lib/types/messaging'
+import type { OptimisticMessage } from '@/hooks/use-messages'
 
 const CONV_ID = 'conv-111'
 const CURRENT_USER_ID = 'user-orderer'
@@ -24,6 +25,7 @@ function makeMessage(overrides: Partial<Message> = {}): Message {
     expires_at: '2026-03-25T10:00:00Z',
     image_url: null,
     sent_at: '2026-03-23T10:01:00Z',
+    temp_id: null,
     ...overrides,
   }
 }
@@ -93,5 +95,51 @@ describe('ChatThread', () => {
     const link = img.closest('a')
     expect(link).toHaveAttribute('href', 'https://example.com/photo.jpg')
     expect(link).toHaveAttribute('target', '_blank')
+  })
+
+  // --- Optimistic UI treatments (S07 C2) ---
+
+  it('renders the pending treatment ("Sending…") for an optimistic entry', () => {
+    const pending: OptimisticMessage = {
+      ...makeMessage({ id: '__optimistic_x', body: 'just typed', temp_id: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee' }),
+      status: 'pending',
+    }
+    const messagesEndRef = createRef<HTMLDivElement>()
+    render(
+      <ChatThread
+        pseudoMessages={[]}
+        messages={[pending]}
+        currentUserId={CURRENT_USER_ID}
+        messagesEndRef={messagesEndRef}
+      />
+    )
+    expect(screen.getByTestId('chat-message-pending')).toBeInTheDocument()
+    expect(screen.getByText('Sending…')).toBeInTheDocument()
+  })
+
+  it('renders the failed treatment with a Retry button that fires onRetry(temp_id, body)', () => {
+    const TEMP = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeef'
+    const failed: OptimisticMessage = {
+      ...makeMessage({ id: '__optimistic_y', body: 'failed body', temp_id: TEMP }),
+      status: 'failed',
+    }
+    const onRetry = vi.fn()
+    const messagesEndRef = createRef<HTMLDivElement>()
+    render(
+      <ChatThread
+        pseudoMessages={[]}
+        messages={[failed]}
+        currentUserId={CURRENT_USER_ID}
+        messagesEndRef={messagesEndRef}
+        onRetry={onRetry}
+      />
+    )
+
+    expect(screen.getByTestId('chat-message-failed')).toBeInTheDocument()
+    expect(screen.getByText(/failed to send/i)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('chat-message-retry'))
+
+    expect(onRetry).toHaveBeenCalledWith(TEMP, 'failed body')
   })
 })
