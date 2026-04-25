@@ -6,8 +6,10 @@
 
 import { test, expect } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
+import { randomUUID } from 'node:crypto'
 
 const TEST_EMAIL = 'test@goobereats.test'
+const ORDER_TOTAL_CENTS = 1500
 // 1×1 white JPEG (107 bytes)
 const TINY_JPEG = Buffer.from(
   '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8U' +
@@ -27,31 +29,12 @@ test.describe('Chat Flow', () => {
       process.env.SUPABASE_SECRET_KEY!
     )
 
-    await supabase.rpc('seed_dev_eateries')
-
     const { data: school } = await supabase
       .from('schools')
       .select('id')
       .limit(1)
       .single()
     if (!school) throw new Error('No schools found')
-
-    const { data: menuItem } = await supabase
-      .from('menu_items')
-      .select('id, name, original_price_cents, eatery_id')
-      .eq('is_available', true)
-      .limit(1)
-      .single()
-    if (!menuItem) throw new Error('No menu items found')
-
-    const { data: eatery } = await supabase
-      .from('eateries')
-      .select('id')
-      .eq('id', menuItem.eatery_id)
-      .eq('school_id', school.id)
-      .eq('is_active', true)
-      .single()
-    if (!eatery) throw new Error('No eateries found for school with menu items')
 
     const { data: { users } } = await supabase.auth.admin.listUsers()
     const user = users.find((u) => u.email === TEST_EMAIL)
@@ -73,19 +56,13 @@ test.describe('Chat Flow', () => {
     const { data: order } = await supabase
       .from('orders')
       .insert({
-        eatery_id: eatery.id,
         orderer_id: null,
         swiper_id: null,
+        school_id: school.id,
+        restaurant_name: 'Chipotle',
+        cart_screenshot_urls: [`pre-checkout/chat-e2e/${randomUUID()}.png`],
+        total_cents: ORDER_TOTAL_CENTS,
         status: 'open',
-        items: [
-          {
-            menu_item_id: menuItem.id,
-            name: menuItem.name,
-            price_cents: menuItem.original_price_cents,
-            quantity: 1,
-          },
-        ],
-        total_cents: menuItem.original_price_cents,
         guest_name: 'Chat Test',
       })
       .select('id')
@@ -109,18 +86,21 @@ test.describe('Chat Flow', () => {
       .eq('id', userId)
   })
 
-  test('accept → conversation created → system message appears', async ({ request }) => {
+  test('accept → conversation created (no DB system message; pseudo-message is client-side)', async ({ request }) => {
     const acceptRes = await request.fetch(`/api/orders/${orderId}/accept`, { method: 'PATCH' })
     expect(acceptRes.status()).toBe(200)
     const acceptBody = await acceptRes.json()
     expect(acceptBody.status).toBe('in_progress')
 
+    // Conversation is created server-side; messages start empty because the
+    // "in_progress" notification is rendered as a client-side pseudo-message
+    // (chat-thread.tsx derives it from order.status), not a DB row.
     const msgRes = await request.get(`/api/messages/${orderId}`)
     expect(msgRes.status()).toBe(200)
     const msgBody = await msgRes.json()
+    expect(msgBody.conversation).toBeTruthy()
     expect(Array.isArray(msgBody.messages)).toBe(true)
-    expect(msgBody.messages.length).toBeGreaterThan(0)
-    expect(msgBody.messages[0].message_type).toBe('system')
+    expect(msgBody.messages).toHaveLength(0)
   })
 
   test('send text message', async ({ request }) => {
@@ -138,25 +118,22 @@ test.describe('Chat Flow', () => {
     expect(textMessages[0].body).toBe('Hello from swiper')
   })
 
-  test('cannot complete without delivery photo', async ({ request }) => {
+  test('cannot complete without completion photo', async ({ request }) => {
     const res = await request.fetch(`/api/orders/${orderId}/status`, {
       method: 'PATCH',
       data: { status: 'completed' },
     })
     expect(res.status()).toBe(400)
     const body = await res.json()
-    expect(body.error).toMatch(/delivery photo/i)
+    expect(body.error).toMatch(/completion photo/i)
   })
 
-  test('upload delivery photo → photo message appears', async ({ request }) => {
-    const formData = new FormData()
-    formData.append('file', new Blob([TINY_JPEG], { type: 'image/jpeg' }), 'delivery.jpg')
-
+  test('upload completion photo → photo message appears', async ({ request }) => {
     const uploadRes = await request.fetch(`/api/messages/${orderId}/upload`, {
       method: 'POST',
       multipart: {
         file: {
-          name: 'delivery.jpg',
+          name: 'completion.jpg',
           mimeType: 'image/jpeg',
           buffer: TINY_JPEG,
         },
@@ -164,13 +141,13 @@ test.describe('Chat Flow', () => {
     })
     expect(uploadRes.status()).toBe(201)
     const uploadBody = await uploadRes.json()
-    expect(uploadBody.message_type).toBe('delivery_photo')
+    expect(uploadBody.message_type).toBe('completion_photo')
     expect(uploadBody.image_url).toBeTruthy()
 
     const msgRes = await request.get(`/api/messages/${orderId}`)
     const msgBody = await msgRes.json()
     const photoMessages = msgBody.messages.filter(
-      (m: { message_type: string }) => m.message_type === 'delivery_photo'
+      (m: { message_type: string }) => m.message_type === 'completion_photo'
     )
     expect(photoMessages.length).toBeGreaterThan(0)
   })

@@ -6,9 +6,11 @@
 
 import { test, expect } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
+import { randomUUID } from 'node:crypto'
 
 const TEST_EMAIL = 'test@goobereats.test'
 const GUEST_TOKEN = '00000000-0000-4000-8000-000000000042'
+const ORDER_TOTAL_CENTS = 1500
 
 let userId: string
 let orderId: string
@@ -22,31 +24,12 @@ test.describe('CompletionBanner', () => {
       process.env.SUPABASE_SECRET_KEY!
     )
 
-    await supabase.rpc('seed_dev_eateries')
-
     const { data: school } = await supabase
       .from('schools')
       .select('id')
       .limit(1)
       .single()
     if (!school) throw new Error('No schools found')
-
-    const { data: menuItem } = await supabase
-      .from('menu_items')
-      .select('id, name, original_price_cents, eatery_id')
-      .eq('is_available', true)
-      .limit(1)
-      .single()
-    if (!menuItem) throw new Error('No menu items found')
-
-    const { data: eatery } = await supabase
-      .from('eateries')
-      .select('id')
-      .eq('id', menuItem.eatery_id)
-      .eq('school_id', school.id)
-      .eq('is_active', true)
-      .single()
-    if (!eatery) throw new Error('No eatery found for school with menu items')
 
     const { data: { users } } = await supabase.auth.admin.listUsers()
     const user = users.find((u) => u.email === TEST_EMAIL)
@@ -68,19 +51,13 @@ test.describe('CompletionBanner', () => {
     const { data: order } = await supabase
       .from('orders')
       .insert({
-        eatery_id: eatery.id,
         orderer_id: null,
         swiper_id: null,
+        school_id: school.id,
+        restaurant_name: 'Chipotle',
+        cart_screenshot_urls: [`pre-checkout/banner-e2e/${randomUUID()}.png`],
+        total_cents: ORDER_TOTAL_CENTS,
         status: 'open',
-        items: [
-          {
-            menu_item_id: menuItem.id,
-            name: menuItem.name,
-            price_cents: menuItem.original_price_cents,
-            quantity: 1,
-          },
-        ],
-        total_cents: menuItem.original_price_cents,
         guest_name: 'Banner Test',
         guest_access_token: GUEST_TOKEN,
       })

@@ -15,7 +15,6 @@ test.describe('Pending Orders', () => {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SECRET_KEY!
     )
-    await supabase.rpc('seed_dev_eateries')
     const { data: schools } = await supabase
       .from('schools')
       .select('id')

@@ -17,8 +17,6 @@ test.describe('PATCH /api/profile — authenticated', () => {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SECRET_KEY!
     )
-    // Ensure seed eateries exist (creates the NYU school if not present)
-    await supabase.rpc('seed_dev_eateries')
     const { data: schools } = await supabase
       .from('schools')
       .select('id')

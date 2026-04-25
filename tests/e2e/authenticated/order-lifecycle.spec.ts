@@ -6,9 +6,11 @@
 
 import { test, expect } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
+import { randomUUID } from 'node:crypto'
 
 const TEST_EMAIL = 'test@goobereats.test'
 const FAKE_UUID = '00000000-0000-4000-8000-000000000099'
+const ORDER_TOTAL_CENTS = 1500
 
 let userId: string
 let orderId: string
@@ -21,32 +23,12 @@ test.describe('Order Lifecycle', () => {
       process.env.SUPABASE_SECRET_KEY!
     )
 
-    await supabase.rpc('seed_dev_eateries')
-
     const { data: school } = await supabase
       .from('schools')
       .select('id')
       .limit(1)
       .single()
     if (!school) throw new Error('No schools found')
-
-    // Find an eatery that has at least one available menu item
-    const { data: menuItem } = await supabase
-      .from('menu_items')
-      .select('id, name, original_price_cents, eatery_id')
-      .eq('is_available', true)
-      .limit(1)
-      .single()
-    if (!menuItem) throw new Error('No menu items found')
-
-    const { data: eatery } = await supabase
-      .from('eateries')
-      .select('id')
-      .eq('id', menuItem.eatery_id)
-      .eq('school_id', school.id)
-      .eq('is_active', true)
-      .single()
-    if (!eatery) throw new Error('No eateries found for school with menu items')
 
     const { data: { users } } = await supabase.auth.admin.listUsers()
     const user = users.find((u) => u.email === TEST_EMAIL)
@@ -69,19 +51,13 @@ test.describe('Order Lifecycle', () => {
     const { data: order } = await supabase
       .from('orders')
       .insert({
-        eatery_id: eatery.id,
         orderer_id: null,
         swiper_id: null,
+        school_id: school.id,
+        restaurant_name: 'Chipotle',
+        cart_screenshot_urls: [`pre-checkout/lifecycle-e2e/${randomUUID()}.png`],
+        total_cents: ORDER_TOTAL_CENTS,
         status: 'open',
-        items: [
-          {
-            menu_item_id: menuItem.id,
-            name: menuItem.name,
-            price_cents: menuItem.original_price_cents,
-            quantity: 1,
-          },
-        ],
-        total_cents: menuItem.original_price_cents,
         guest_name: 'Lifecycle Test',
       })
       .select('id')
@@ -94,8 +70,8 @@ test.describe('Order Lifecycle', () => {
     await supabase.from('payments').insert({
       order_id: orderId,
       stripe_payment_intent_id: 'pi_lifecycle_test',
-      amount_cents: menuItem.original_price_cents,
-      platform_fee_cents: Math.floor(menuItem.original_price_cents * 0.1),
+      amount_cents: ORDER_TOTAL_CENTS,
+      platform_fee_cents: Math.floor(ORDER_TOTAL_CENTS * 0.1),
       status: 'succeeded',
       payer_id: null,
       payee_id: null,
@@ -151,7 +127,7 @@ test.describe('Order Lifecycle', () => {
     await supabase.from('messages').insert({
       conversation_id: conversationId,
       sender_id: userId,
-      message_type: 'delivery_photo',
+      message_type: 'completion_photo',
       image_url: 'https://example.com/test.jpg',
       body: null,
     })
@@ -179,23 +155,24 @@ test.describe('Order Lifecycle', () => {
       process.env.SUPABASE_SECRET_KEY!
     )
 
-    const { data: menuItem } = await supabase
-      .from('menu_items')
-      .select('id, name, original_price_cents, eatery_id')
-      .eq('is_available', true)
+    // School lookup mirrors the beforeAll seed (post-grubhub orders carry school_id directly)
+    const { data: school } = await supabase
+      .from('schools')
+      .select('id')
       .limit(1)
       .single()
-    if (!menuItem) throw new Error('No menu items found')
+    if (!school) throw new Error('No schools found')
 
     const { data: unacceptOrder } = await supabase
       .from('orders')
       .insert({
-        eatery_id: menuItem.eatery_id,
         orderer_id: null,
         swiper_id: null,
+        school_id: school.id,
+        restaurant_name: 'Chipotle',
+        cart_screenshot_urls: [`pre-checkout/unaccept-e2e/${randomUUID()}.png`],
+        total_cents: ORDER_TOTAL_CENTS,
         status: 'open',
-        items: [{ menu_item_id: menuItem.id, name: menuItem.name, price_cents: menuItem.original_price_cents, quantity: 1 }],
-        total_cents: menuItem.original_price_cents,
         guest_name: 'Un-accept Test',
         guest_phone: '+15005550006',
       })
@@ -206,8 +183,8 @@ test.describe('Order Lifecycle', () => {
     await supabase.from('payments').insert({
       order_id: unacceptOrder.id,
       stripe_payment_intent_id: 'pi_unaccept_test',
-      amount_cents: menuItem.original_price_cents,
-      platform_fee_cents: Math.floor(menuItem.original_price_cents * 0.1),
+      amount_cents: ORDER_TOTAL_CENTS,
+      platform_fee_cents: Math.floor(ORDER_TOTAL_CENTS * 0.1),
       status: 'succeeded',
       payer_id: null,
       payee_id: null,
@@ -243,7 +220,7 @@ test.describe('Order Lifecycle', () => {
       await supabase.from('messages').insert({
         conversation_id: conv.id,
         sender_id: userId,
-        message_type: 'delivery_photo',
+        message_type: 'completion_photo',
         image_url: 'https://example.com/test.jpg',
         body: null,
       })

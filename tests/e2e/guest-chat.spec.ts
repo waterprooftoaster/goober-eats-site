@@ -8,16 +8,14 @@
 
 import { test, expect } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
+import { randomUUID } from 'node:crypto'
 
 const TEST_EMAIL = 'test@goobereats.test'
 // Fixed tokens so tests are deterministic and easy to clean up
 const GUEST_TOKEN = '10000000-0000-4000-8000-000000000001'
+const ORDER_TOTAL_CENTS = 1500
 
 let swiperUserId: string
-let eateryId: string
-let menuItemId: string
-let menuItemName: string
-let menuItemPriceCents: number
 let orderId: string
 
 // ---------------------------------------------------------------------------
@@ -149,7 +147,6 @@ test.describe('Guest Anon Auth + Realtime Chat', () => {
 
   test.beforeAll(async () => {
     const supabase = makeSupabase()
-    await supabase.rpc('seed_dev_eateries')
 
     const { data: school } = await supabase
       .from('schools')
@@ -157,27 +154,6 @@ test.describe('Guest Anon Auth + Realtime Chat', () => {
       .limit(1)
       .single()
     if (!school) throw new Error('No schools found')
-
-    const { data: item } = await supabase
-      .from('menu_items')
-      .select('id, name, original_price_cents, eatery_id')
-      .eq('is_available', true)
-      .limit(1)
-      .single()
-    if (!item) throw new Error('No menu items found')
-    menuItemId = item.id
-    menuItemName = item.name
-    menuItemPriceCents = item.original_price_cents
-
-    const { data: eatery } = await supabase
-      .from('eateries')
-      .select('id')
-      .eq('id', item.eatery_id)
-      .eq('school_id', school.id)
-      .eq('is_active', true)
-      .single()
-    if (!eatery) throw new Error('No active eatery found for menu item')
-    eateryId = eatery.id
 
     // Set up the test user as a swiper.
     // Use perPage=200 to handle many anon users created in prior test runs
@@ -197,23 +173,17 @@ test.describe('Guest Anon Auth + Realtime Chat', () => {
       { onConflict: 'user_id' }
     )
 
-    // Create the guest order
+    // Create the guest order (post-grubhub schema: restaurant_name + cart_screenshot_urls)
     const { data: order } = await supabase
       .from('orders')
       .insert({
-        eatery_id: eateryId,
         orderer_id: null,
         swiper_id: null,
+        school_id: school.id,
+        restaurant_name: 'Chipotle',
+        cart_screenshot_urls: [`pre-checkout/guest-chat-e2e/${randomUUID()}.png`],
+        total_cents: ORDER_TOTAL_CENTS,
         status: 'open',
-        items: [
-          {
-            menu_item_id: menuItemId,
-            name: menuItemName,
-            price_cents: menuItemPriceCents,
-            quantity: 1,
-          },
-        ],
-        total_cents: menuItemPriceCents,
         guest_name: 'Guest Chat E2E',
         guest_access_token: GUEST_TOKEN,
       })
@@ -226,8 +196,8 @@ test.describe('Guest Anon Auth + Realtime Chat', () => {
     await supabase.from('payments').insert({
       order_id: orderId,
       stripe_payment_intent_id: 'pi_guest_chat_e2e',
-      amount_cents: menuItemPriceCents,
-      platform_fee_cents: Math.floor(menuItemPriceCents * 0.1),
+      amount_cents: ORDER_TOTAL_CENTS,
+      platform_fee_cents: Math.floor(ORDER_TOTAL_CENTS * 0.1),
       status: 'succeeded',
       payer_id: null,
       payee_id: null,
@@ -488,12 +458,12 @@ test.describe('Guest Anon Auth + Realtime Chat', () => {
     // Wait for conversation to appear
     await expect(page.getByTestId('chat-pseudo-in-progress')).toBeVisible({ timeout: 10000 })
 
-    // Insert a delivery photo message (required for completion guard)
+    // Insert a completion photo message (required for completion guard)
     await supabase.from('messages').insert({
       conversation_id: conversationId,
       sender_id: swiperUserId,
       body: null,
-      message_type: 'delivery_photo',
+      message_type: 'completion_photo',
       image_url: 'https://placehold.co/200x200',
     })
 

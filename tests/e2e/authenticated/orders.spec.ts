@@ -6,8 +6,10 @@
 
 import { test, expect } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
+import { randomUUID } from 'node:crypto'
 
 const TEST_EMAIL = 'test@goobereats.test'
+const ORDER_TOTAL_CENTS = 1500
 
 let supabase: ReturnType<typeof createClient>
 let userId: string
@@ -20,7 +22,12 @@ test.describe('Authenticated orders', () => {
       process.env.SUPABASE_SECRET_KEY!
     )
 
-    await supabase.rpc('seed_dev_eateries')
+    const { data: school } = await supabase
+      .from('schools')
+      .select('id')
+      .limit(1)
+      .single()
+    if (!school) throw new Error('No schools found')
 
     const {
       data: { users },
@@ -29,38 +36,22 @@ test.describe('Authenticated orders', () => {
     if (!user) throw new Error('Test user not found')
     userId = user.id
 
+    // Ensure the orderer's profile has the same school as the order so RLS scoping holds
+    await supabase
+      .from('profiles')
+      .update({ school_id: school.id })
+      .eq('id', userId)
+
     // Seed an order via direct DB insert (orders are only created via webhook in production)
-    const { data: eatery } = await supabase
-      .from('eateries')
-      .select('id')
-      .eq('is_active', true)
-      .limit(1)
-      .single()
-    if (!eatery) throw new Error('No eateries found')
-
-    const { data: menuItem } = await supabase
-      .from('menu_items')
-      .select('id, name, original_price_cents')
-      .eq('is_available', true)
-      .limit(1)
-      .single()
-    if (!menuItem) throw new Error('No menu items found')
-
-    const priceCents = Math.round(menuItem.original_price_cents * 0.5)
     const { data: order } = await supabase
       .from('orders')
       .insert({
         orderer_id: userId,
-        eatery_id: eatery.id,
-        items: [
-          {
-            menu_item_id: menuItem.id,
-            name: menuItem.name,
-            price_cents: priceCents,
-            quantity: 1,
-          },
-        ],
-        total_cents: priceCents,
+        school_id: school.id,
+        restaurant_name: 'Chipotle',
+        cart_screenshot_urls: [`pre-checkout/orders-e2e/${randomUUID()}.png`],
+        total_cents: ORDER_TOTAL_CENTS,
+        status: 'open',
       })
       .select('id')
       .single()
