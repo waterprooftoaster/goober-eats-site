@@ -1,9 +1,14 @@
 /**
  * @file page.tsx
- * @description Stripe Connect onboarding completion page; syncs Stripe account status directly,
- *   auto-activates the swiper, and redirects to home. Shows a fallback if setup is incomplete.
- *   Called by: Stripe Connect returnUrl after onboarding
- * @dependencies lib/supabase/server.ts, lib/supabase/service.ts, lib/stripe/client.ts
+ * @description Stripe Connect onboarding return page (success branch). Syncs
+ *   Stripe account state directly via the SDK to absorb webhook race, then
+ *   uses the service client to flip is_swiper=true with an atomic
+ *   compare-and-set, then redirects to /?notice=swiper_activated. Falls
+ *   through to the "almost there" branch when onboarding is incomplete or
+ *   school_id is missing.
+ *   Called by: Stripe Connect returnUrl after onboarding completion.
+ * @dependencies lib/supabase/{server,service}, lib/stripe/client,
+ *   components/ui/{button,surface}
  */
 
 import Link from 'next/link'
@@ -11,17 +16,18 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getStripe } from '@/lib/stripe/client'
+import { Button } from '@/components/ui/button'
+import { Surface } from '@/components/ui/surface'
 
 /**
- * Syncs the Stripe Connect account status, activates the swiper profile if complete, and redirects.
- * @returns Fallback "Almost there" page if onboarding or school setup is incomplete
- * @called-by Stripe Connect returnUrl
+ * Resolves Stripe Connect onboarding status and either activates the swiper
+ * (redirect home with notice) or renders the "almost there" fallback.
+ * @returns Either a redirect or the almost-there fallback element
+ * @called-by Stripe Connect onboarding returnUrl
  */
 export default async function StripeOnboardCompletePage() {
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
 
   const { data: stripeRow } = await supabase
@@ -30,16 +36,16 @@ export default async function StripeOnboardCompletePage() {
     .eq('user_id', user.id)
     .maybeSingle()
 
-  // Sync Stripe status directly to avoid webhook race condition:
-  // the account.updated webhook may not have arrived yet when the user
-  // is redirected back here, so we check Stripe directly and update the DB.
   const serviceClient = createServiceClient()
   let onboardingComplete = stripeRow?.onboarding_complete ?? false
+
+  // Sync Stripe directly to absorb the account.updated webhook race: the
+  // user is often redirected back here before the webhook lands, so check
+  // Stripe and write the DB ourselves when the SDK confirms onboarding.
   if (stripeRow && !onboardingComplete) {
     try {
       const account = await getStripe().accounts.retrieve(stripeRow.stripe_account_id)
       if (account.details_submitted && account.charges_enabled) {
-        console.log(`[fallback-api] stripe sync: ${stripeRow.stripe_account_id}`)
         await serviceClient
           .from('stripe_accounts')
           .update({ onboarding_complete: true })
@@ -47,21 +53,20 @@ export default async function StripeOnboardCompletePage() {
         onboardingComplete = true
       }
     } catch {
-      // non-fatal: the webhook will update the DB if this call fails
+      // non-fatal: the account.updated webhook will reconcile the DB
+      // independently if this SDK call fails.
     }
   }
 
-  // Auto-activate swiper if school is set and onboarding is complete
+  // Auto-activate swiper if school is set and onboarding is complete.
+  // Atomic compare-and-set on is_swiper=false avoids double-activation if
+  // this page is loaded twice in quick succession.
   if (onboardingComplete) {
-    const { data: profile, error: profileError } = await supabase
+    const { data: profile } = await supabase
       .from('profiles')
       .select('school_id, is_swiper')
       .eq('id', user.id)
       .single()
-
-    if (profileError) {
-      console.error('onboard/complete: failed to fetch profile', profileError)
-    }
 
     if (profile?.school_id && !profile.is_swiper) {
       await serviceClient
@@ -71,25 +76,31 @@ export default async function StripeOnboardCompletePage() {
         .eq('is_swiper', false)
     }
 
-    redirect('/?notice=swiper_activated')
+    if (profile?.school_id) {
+      redirect('/?notice=swiper_activated')
+    }
   }
 
-  // Fallback: onboarding not yet complete or school not set
+  // Fallback: onboarding incomplete OR school not set.
   return (
-    <main data-testid="onboard-almost-there-page" className="min-h-screen bg-white">
-      <div className="mx-auto max-w-md p-8">
-        <h1 className="text-2xl font-bold mb-4">Almost there!</h1>
-        <p className="text-gray-600 mb-8">
-          Your payment account setup is still being processed. Please complete
-          your school selection to finish registration.
-        </p>
-        <Link
-          href="/swiper-registration"
-          className="inline-block rounded-md border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50"
-        >
-          Return to swiper registration
-        </Link>
-      </div>
+    <main
+      data-testid="onboard-almost-there-page"
+      className="mx-auto max-w-md py-16 px-6 sm:py-24"
+    >
+      <Surface tone="subtle" padding="lg" className="flex flex-col gap-4">
+        <header>
+          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+            Almost there.
+          </h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Your payment setup is still being processed. Finish picking your
+            school to wrap up registration.
+          </p>
+        </header>
+        <Button variant="primary" asChild>
+          <Link href="/swiper-registration">Back to swiper registration</Link>
+        </Button>
+      </Surface>
     </main>
   )
 }
