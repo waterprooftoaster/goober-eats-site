@@ -136,7 +136,7 @@ interface Props {
  * @called-by components/chat-panel/chat-panel.tsx, app/current-orders/current-orders-list.tsx
  */
 export function ChatView({ orderId, eateryName, currentUserId, orderStatus, onStatusChange }: Props) {
-  const { messages, conversation, isLoading, error, sendMessage } = useMessages(orderId)
+  const { messages, conversation, isLoading, error, sendMessage } = useMessages({ orderId })
   return (
     <ChatViewCore
       orderId={orderId}
