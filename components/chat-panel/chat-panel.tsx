@@ -17,6 +17,7 @@ import type { OrderEntry } from './chat-panel-context'
 import { ChatView } from '@/components/chat/chat-view'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { Surface } from '@/components/ui/surface'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { ChevronUp, ChevronDown, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { OrderStatus } from '@/lib/types/database'
@@ -33,7 +34,9 @@ interface DesktopPanelProps {
 
 /**
  * Desktop variant — stacked bottom-right card. Brand-aligned via Surface tokens.
- * Hidden on max-sm so the mobile Sheet path takes over.
+ * Only mounted when useIsMobile === false (avoids the duplicate-testid issue
+ * the catalog testid `chat-panel-header` would otherwise create alongside the
+ * mobile Sheet variant).
  */
 function DesktopPanelItem({ entry, currentUserId, onToggle, onClose, onStatusChange }: DesktopPanelProps) {
   const { orderId, status, isExpanded } = entry
@@ -44,7 +47,7 @@ function DesktopPanelItem({ entry, currentUserId, onToggle, onClose, onStatusCha
       <button
         onClick={() => onToggle(orderId)}
         data-testid="chat-panel-header"
-        className="hidden sm:flex items-center gap-2 rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-background shadow-lg hover:bg-foreground/90"
+        className="flex items-center gap-2 rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-background shadow-lg hover:bg-foreground/90"
       >
         <span>Order #{shortId}</span>
         <ChevronUp className="h-4 w-4" />
@@ -55,7 +58,7 @@ function DesktopPanelItem({ entry, currentUserId, onToggle, onClose, onStatusCha
   return (
     <Surface
       className={cn(
-        'hidden sm:flex flex-col rounded-lg border border-border shadow-xl',
+        'flex flex-col rounded-lg border border-border shadow-xl',
         'w-[360px] h-[28rem]'
       )}
     >
@@ -123,7 +126,7 @@ function MobileNewestPanel({ entry, currentUserId, onToggle, onClose, onStatusCh
 
   if (!isExpanded) {
     return (
-      <div className="sm:hidden fixed inset-x-0 bottom-0 z-40 flex justify-center">
+      <div className="fixed inset-x-0 bottom-0 z-40 flex justify-center">
         <button
           onClick={() => onToggle(orderId)}
           data-testid="chat-panel-header"
@@ -138,7 +141,7 @@ function MobileNewestPanel({ entry, currentUserId, onToggle, onClose, onStatusCh
 
   return (
     <Sheet open={isExpanded} onOpenChange={handleOpenChange}>
-      <SheetContent className="sm:hidden h-[85vh] gap-2 p-0">
+      <SheetContent className="h-[85vh] gap-2 p-0">
         <SheetTitle className="sr-only">Order #{shortId} chat</SheetTitle>
         <div data-testid="chat-panel-header" className="flex items-center justify-between border-b border-border px-4 py-2.5">
           <span className="text-sm font-semibold">Order #{shortId}</span>
@@ -163,13 +166,17 @@ interface Props {
 }
 
 /**
- * Renders all open chat panels: desktop stack on sm+, mobile Sheet on max-sm.
+ * Renders all open chat panels: desktop stack on md+, mobile Sheet on max-sm.
+ * Viewport detection via useIsMobile so only ONE variant is mounted at a time
+ * (the catalog testid `chat-panel-header` would otherwise duplicate across
+ * desktop + mobile DOM nodes and trip Playwright strict mode).
  * @param currentUserId - Authenticated user id for ChatView message alignment
- * @returns null when no panels are open
+ * @returns null when no panels are open; otherwise the appropriate variant.
  * @called-by app/layout.tsx
  */
 export function ChatPanel({ currentUserId }: Props) {
   const { orders, toggleMinimize, closePanel, updateOrderStatus } = useChatPanel()
+  const isMobile = useIsMobile()
 
   const panelList = Object.values(orders)
   if (panelList.length === 0) return null
@@ -179,8 +186,22 @@ export function ChatPanel({ currentUserId }: Props) {
   const reversed = [...panelList].reverse()
   const newest = reversed[0]
 
+  if (isMobile) {
+    return (
+      <div data-testid="chat-panel-stack" className="fixed inset-x-0 bottom-0 z-50">
+        <MobileNewestPanel
+          entry={newest}
+          currentUserId={currentUserId}
+          onToggle={toggleMinimize}
+          onClose={() => closePanel(newest.orderId)}
+          onStatusChange={updateOrderStatus}
+        />
+      </div>
+    )
+  }
+
   return (
-    <div data-testid="chat-panel-stack" className="fixed bottom-4 right-4 z-50 flex flex-col-reverse gap-4 max-sm:inset-x-0 max-sm:bottom-0 max-sm:right-0">
+    <div data-testid="chat-panel-stack" className="fixed bottom-4 right-4 z-50 flex flex-col-reverse gap-4">
       {reversed.map((entry) => (
         <DesktopPanelItem
           key={entry.orderId}
@@ -191,13 +212,6 @@ export function ChatPanel({ currentUserId }: Props) {
           onStatusChange={updateOrderStatus}
         />
       ))}
-      <MobileNewestPanel
-        entry={newest}
-        currentUserId={currentUserId}
-        onToggle={toggleMinimize}
-        onClose={() => closePanel(newest.orderId)}
-        onStatusChange={updateOrderStatus}
-      />
     </div>
   )
 }

@@ -156,10 +156,12 @@ export function ChatView({ orderId, eateryName, currentUserId, orderStatus, conv
   // retry affordance in chat-thread).
   const handleSend = useCallback(
     async (body: string) => {
-      const temp_id =
-        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-          ? crypto.randomUUID()
-          : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+      // crypto.randomUUID is available in every browser the app supports (Safari
+      // 15.4+, Chrome 92+, Firefox 95+) and in every Node runtime Next.js 16
+      // targets. No fallback — a non-UUID temp_id would fail the API's
+      // sendMessageSchema (z.string().uuid().optional()) and silently break the
+      // optimistic flow.
+      const temp_id = crypto.randomUUID()
       appendOptimistic(temp_id, body, currentUserId)
       try {
         await sendMessage(body, temp_id)

@@ -53,10 +53,12 @@ export function Header({ principal }: Props) {
         </div>
       ) : (
         <nav className="flex items-center gap-1">
+          {/* Home icon — the wordmark above already carries the catalog
+              `header-home-link` testid; this duplicate would trip Playwright
+              strict mode. Keep aria-label so screen readers still see it. */}
           <Link
             href="/"
             aria-label="Home"
-            data-testid="header-home-link"
             className={iconLinkClass}
           >
             <Home className="h-5 w-5" />

@@ -31,6 +31,17 @@ test.describe('Pending Orders', () => {
       .from('profiles')
       .update({ is_swiper: true, school_id: schools.id })
       .eq('id', user.id)
+    // S07: layout.tsx now resolves swiper status via the §10 Principal helper,
+    // which requires a stripe_accounts row with onboarding_complete=true to
+    // classify the user as authed_swiper (and therefore render the swiper
+    // queue affordances). Seed it here so the test fixture matches the new
+    // contract.
+    await supabase
+      .from('stripe_accounts')
+      .upsert(
+        { user_id: user.id, stripe_account_id: 'acct_swiper_pending_e2e', onboarding_complete: true },
+        { onConflict: 'user_id' }
+      )
   })
 
   test.afterAll(async () => {
@@ -41,6 +52,7 @@ test.describe('Pending Orders', () => {
     const { data: existing } = await supabase.auth.admin.listUsers()
     const user = existing?.users?.find((u) => u.email === TEST_EMAIL)
     if (user) {
+      await supabase.from('stripe_accounts').delete().eq('user_id', user.id)
       await supabase
         .from('profiles')
         .update({ is_swiper: false })

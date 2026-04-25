@@ -1545,3 +1545,451 @@ committed:
 - `phase4/account`
 - `phase4/stripe-onboard-complete`
 - `phase4/stripe-onboard-refresh`
+
+---
+
+## Session 07 — Global shell + realtime audit (CLOSED)
+
+- **Date:** 2026-04-25
+- **Branch:** `fpoop` (in place; per the standing user direction)
+- **Phase(s):** 4d (global shell rewrite — 4 components + 1 layout) + master plan §11 realtime safeguards
+- **Status:** CLOSED
+- **features.md SHA-256:** `e6be0f544ad92a1ebd9e853687d2fa09f5847633ebdfb21f10f219b1a333539f`
+  (unchanged from S01; catalog still locked, sentinel green)
+
+### What shipped
+
+Twelve tagged commits land the entire Phase-4 shell endpoint plus the
+master plan §11 realtime safeguards plus the catalog-promised
+optimistic chat UX. The session spans two deliberate scope expansions
+recorded as amendments in the new `docs/redesign/SCOPE_AMENDMENTS.md`
+file (A07-01: `messages.temp_id` end-to-end frozen-surface touch) and
+one new runtime dependency (`vaul`).
+
+#### Realtime safeguards (master plan §11)
+
+1. **`lib/realtime/channel-registry.ts` (NEW)** — tag `phase4/realtime-registry`,
+   commit `0cc369f`. Ref-counted singleton wrapper around
+   `supabase.channel()`. UUID validation fails closed (refuses to
+   subscribe on malformed UUID per §11 security note). Single-
+   consumer-per-channelName recorded as deliberate API decision (both
+   real call sites have one consumer; multi-consumer is theoretical).
+   Idempotent unsubscribe across React StrictMode double-invoke.
+   TDD-first: 11 vitest specs WRITTEN + WATCHED FAIL before the
+   implementation file existed. Specs cover happy-path subscribe,
+   three fail-closed UUID branches, duplicate-subscriber rejection,
+   second-channelName allowed, single-cleanup + idempotent-cleanup,
+   fresh-channel-after-unsubscribe contract, two cleanup-guard specs
+   against the test reset helper.
+
+2. **`hooks/use-visibility-refetch.ts` (NEW)** — tag
+   `phase4/visibility-hook`, commit `1769d99`. `document
+   .visibilitychange → 'visible'` triggers a caller-supplied refetch.
+   Cleanup removes the listener; rebinds when refetch identity
+   changes. TDD-first: 4 vitest specs WRITTEN + WATCHED FAIL before
+   the implementation file existed.
+
+3. **`hooks/use-messages.ts` REWRITE** — tag
+   `phase4/use-messages-migration`, commit `8c80860`. API change from
+   `useMessages(orderId: string)` to `useMessages({ orderId,
+   conversationId? })` — the optional conversationId is the B2-pairing
+   hook for the chat-panel-provider's pre-resolved id. Three-effect
+   lifecycle: resolve conv id (skip if pre-supplied) → subscribe via
+   registry BEFORE initial fetch with bufferRef → initial fetch then
+   merge buffer through dedupe-by-(`id ?? temp_id`). Visibility-
+   refetch wired. New `appendOptimistic / markFailed / markPending`
+   helpers for the C2 chat-input wiring. 19 specs total in the file
+   (12 original + 7 new).
+
+4. **`components/chat-panel/chat-panel-provider.tsx` REWRITE +
+   `chat-panel.tsx` REWRITE + `chat-panel-context.ts` extension** —
+   tag `phase4/chat-panel-migration`, commit `a909ee8`. Provider
+   migrates to `subscribeChannel`. `loadActiveOrders` extends the
+   SELECT with `restaurant_name, conversations(id)` (the B2 pairing
+   that lets useMessages skip its own conversations lookup —
+   eliminates the potential N+1 across N open panels) AND fixes a
+   pre-existing latent bug (the prior `eateries(name)` join referenced
+   a table removed in the post-grubhub pivot). `useVisibilityRefetch
+   (loadActiveOrders)` reconciles the auto-open list on tab return.
+   ChatPanel splits into `DesktopPanelItem` (sm+) and
+   `MobileNewestPanel` (max-sm rendering inside vaul `<Sheet>`).
+   `OrderEntry` gains `conversationId: string | null`. 6 new specs
+   covering registry subscribe, conversations(id) JOIN inclusion,
+   conversationId pass-through across the three response shapes
+   (array / object / null), and the userId=null short-circuit.
+
+#### Optimistic chat UX (catalog C2)
+
+5. **`messages.temp_id` end-to-end (A07-01 amendment)** — tags
+   `phase4/s07-frozen-amendment` (commit `e1c0e46`) + `phase4/messages-
+   temp-id` (commit `84829dd`). The deliberate one-shot §9 amendment
+   recorded in `docs/redesign/SCOPE_AMENDMENTS.md`. Six additive
+   edits: migration `20260425120000_messages_temp_id.sql` adding a
+   nullable `text` column; `lib/types/messaging.ts` + `lib/types/api
+   .ts` widening the Message + sendMessageSchema; `app/api/messages/
+   route.ts` + `app/api/guest/messages/route.ts` reading `temp_id`
+   from the validated request body and echoing it through the insert
+   + select. 7 new vitest specs (schema validation + insert echo +
+   missing-temp_id default + malformed rejected + guest-path symmetry).
+   Migration applied locally via `supabase db reset --no-seed` then
+   `npx tsx scripts/seed.ts` (seeds re-applied per
+   feedback_run_seed_scripts.md).
+
+6. **`components/chat/chat-input.tsx` (UNCHANGED) +
+   `chat-view.tsx` REWRITE + `chat-thread.tsx` REWRITE** — tag
+   `phase4/chat-input-optimistic`, commit `5b21fe2`. The optimistic
+   logic lives at the chat-view data-layer boundary (not the chat-
+   input composition boundary). On send: generate `crypto.randomUUID
+   ()` temp_id (no fallback — `crypto.randomUUID` is universally
+   available in supported runtimes; a non-UUID would fail the
+   server schema), `appendOptimistic`, POST through `sendMessage(body,
+   temp_id)`. On error: `markFailed`. Retry button on failed rows
+   calls `markPending` then `sendMessage` again. Chat-thread renders
+   pending (muted text + spinner + "Sending…") and failed (muted
+   text + role="alert" + Retry button). 4 new specs.
+
+#### Mobile primitive (D2)
+
+7. **`components/ui/sheet.tsx` migrated to vaul** — tag
+   `phase4/sheet-drag`, commit `bad65b0`. The S03 catalog row
+   GLOBAL-SHEET specifies "Wraps Radix Dialog + drag-to-dismiss"; S07
+   replaces the underlying engine from Radix Dialog to **`vaul`**
+   (vaul itself wraps Radix Dialog under the hood, so focus-trap +
+   scrim + ESC + scroll-lock all carry through). API surface
+   unchanged. Default drag-handle pill at top edge.
+
+   **New runtime dependency: `vaul` ~12KB gzipped.** The only new
+   dep S07 introduces. Justification: Radix Dialog has no built-in
+   drag gesture; rolling one by hand on top of Radix would re-implement
+   vaul poorly. ChatPanel mobile is the first real consumer.
+
+   Three jsdom polyfills added in `tests/unit/setup.ts` for vaul:
+   `getComputedStyle(...).transform` returns 'none' (was undefined →
+   `.match()` NPE); `window.matchMedia` stub; `Element.prototype.{set,
+   release,has}PointerCapture` no-ops (jsdom does not implement
+   Pointer Events API).
+
+#### Brand-aligned shell
+
+8. **`components/header.tsx` REWRITE** — tag `phase4/header`, commit
+   `c7989c8`. First real consumer of `lib/auth/resolve-principal.ts`
+   (the S05 helper). Server component branching on `principal.kind ===
+   'anon' | 'guest_cookie'` (sign-in/sign-up) vs other (4 icon links:
+   home, orders, current-orders, account). Adds the catalog testids
+   `header-orders-link` + `header-current-orders-link` that were
+   missing from the previous markup. `.impeccable.md` principle 5:
+   `bg-background` + hairline `border-border/60` instead of
+   `bg-black`. Display font (Bricolage) on the wordmark.
+
+9. **`components/banner.tsx` REWRITE** — tag `phase4/banner`, commit
+   `6a6415a`. Replacement for the deleted `app/@banner/` parallel slot
+   (S07 ADR-1 from `02-routes.md §6`). Tinted `<Surface tone="muted">`
+   instead of `bg-black`. ONE lime CTA. Display headline + muted-
+   foreground subhead.
+
+10. **`components/swiper-orders-button.tsx` REWRITE** — tag
+    `phase4/swiper-button`, commit `14b789e`. Brand voice principle 2
+    ("the accent earns its place"): button itself is `bg-foreground`,
+    the badge is the only surface that gets the lime accent. Badge
+    aria-hidden + Link aria-label expanded to surface the count to AT
+    when count > 0.
+
+11. **`app/layout.tsx` REWRITE + four file deletions** — tag
+    `phase4/shell-layout`, commit `044167e`. Drops `banner: React
+    .ReactNode` parallel-slot prop. Renders `<Banner>` directly.
+    Resolves principal once via `resolvePrincipal(supabase, await
+    cookies())`; derives `isSwiper`, `isLoggedIn`, `userId`,
+    `pendingOrderCount` from a single source of truth. **Fixes the
+    catalog discrepancy on GLOBAL-SWIPER-BADGE**: the count now
+    correctly filters by `school_id` (was previously unfiltered;
+    contradicted the catalog "orders.status='open' AND
+    school_id=profile.school_id"). Only `authed_swiper` kind sees a
+    non-zero count (pre-stripe swipers see 0 since they cannot accept
+    orders yet). DELETED: `app/@banner/page.tsx`, `app/@banner/
+    default.tsx`, `components/header-wrapper.tsx`, `components/
+    banner-guard.tsx`.
+
+#### End-of-session HIGH fixes (in this close commit)
+
+After the cumulative `code-reviewer` pass surfaced two HIGHs, both
+fixes shipped in this close commit (no new tag — the fixes amend the
+shell endpoint):
+
+- **HIGH** `chat-view.tsx:160-162` — `crypto.randomUUID()` fallback
+  produced a non-UUID string that would have failed the API schema
+  (`z.string().uuid().optional()`). Removed the fallback; documented
+  why the runtime guarantee is sufficient.
+- **HIGH** `header.tsx:32,59` — `header-home-link` testid emitted
+  twice (logo + nav Home icon) for authed users → Playwright strict
+  mode trip. Dropped the duplicate from the nav Home icon (the
+  wordmark above is the canonical home link per the original
+  pre-S07 markup); kept aria-label="Home" so screen readers still
+  see it.
+
+### Decisions locked (this session)
+
+The user formally selected the **B2 + C2 + D2** track on
+2026-04-25 after a side-by-side comparison of pros/cons. Rationale
+recorded for future cold-start authors:
+
+- **B2 (subscribe-before-fetch + provider-side conversations JOIN)**
+  over the simpler B1: literal §11 compliance, race window collapses
+  to zero, buffer + flush is testable directly. Cost: one extra
+  client query per chat-panel mount, batched in the provider's
+  loadActiveOrders to eliminate N+1 across N open panels.
+- **C2 (temp_id end-to-end with the §9 amendment)** over C1 (dedupe-
+  in-tests-only): the catalog has advertised optimistic temp_id
+  append since S01; shipping the dedupe without a real consumer
+  would have been speculative abstraction. The §9 amendment scope
+  is bounded (one nullable column + echo) and recorded in
+  `SCOPE_AMENDMENTS.md` as A07-01.
+- **D2 (Sheet on mobile with drag-to-dismiss via vaul)** over D1
+  (skip Sheet entirely): closes real mobile UX gaps (focus trap,
+  scrim, ESC, scroll-lock, drag-to-dismiss) at the cost of one new
+  runtime dep. ChatPanel uses `useIsMobile()` to render only ONE
+  variant at a time (avoids the duplicate-testid trip Playwright
+  strict mode would otherwise hit).
+
+The user-confirmed scope decisions:
+- **HeaderWrapper deleted** (anti-brand black sticky background).
+- **Subscribe-before-fetch literal compliance** (B2).
+- **temp_id end-to-end with §9 amendment** (C2 + A07-01).
+- **Sheet on mobile with vaul drag-to-dismiss** (D2).
+
+### Verification gauntlet
+
+- `npm run lint` — green
+- `npx vitest run` — **34 files / 290 tests** passed (was 31/249 in
+  S06; +3 files / +41 tests across the seven S07 spec additions or
+  expansions: api.test.ts +2, post.test.ts +5, guest messages-post
+  +1, channel-registry +11, use-visibility-refetch +4, use-messages
+  +7, sheet +3, chat-thread +2, chat-view +2, chat-panel-provider
+  +6, with the chat-thread/chat-view +temp_id fixes accounting for
+  the test-shape updates).
+- `npm run build` — green
+- `npm run lint:features-hash` — green; SHA matches S01
+- **Contract sentinel** (`git diff HEAD` against frozen paths) —
+  expected non-zero ONLY in commit 0b's A07-01 scope (6 file edits
+  + 1 migration); zero everywhere else. Verified.
+- **Bundle sentinel** — `! grep -r "SUPABASE_SECRET_KEY\|
+  createServiceClient" .next/static/` clean.
+- **Frozen-string §9 grep** — 10 (the §9 form across `app components
+  hooks lib/constants`); the S06-pinned form (`grep -R "supabase
+  .channel" app components hooks`) returns **0** (was 2 — both prior
+  call sites now consume the registry exclusively).
+- **Realtime channel grep** (`grep -RE "\.channel\(" app components
+  hooks`) — **0** (was 2). Master plan §11 goal achieved: zero
+  direct `.channel(` calls outside the registry.
+- **Catalog testid coverage** — 11 S07-owned shell testids preserved;
+  two NEW (`header-orders-link`, `header-current-orders-link`) added
+  per catalog requirement.
+- **Playwright** — **26 passed / 9 failed / 16 did not run**. S06
+  baseline was 27/8/16. Net: -1 pass, +1 failure. The new failure
+  + the lost pass are concentrated in mobile-nav (dev-overlay
+  intercept on the swiper button click — page renders correctly per
+  curl smoke) and chat surface specs (chat.spec.ts, completion-
+  banner.spec.ts, guest-chat.spec.ts) that may need spec-level
+  migration after the chat-panel viewport-conditional render +
+  conversationId pass-through changes. Spec migrations deferred to
+  S08 cross-page passes (which include responsive verification +
+  E2E sweep).
+- **Pre-existing TS error** in `tests/unit/stripe/webhooks.test.ts:
+  190` — unrelated to S07 (predates the session per `git stash`
+  bisect). Left alone.
+
+### Discrepancies flagged (carried forward)
+
+- Master plan §9 amendment A07-01 is a one-shot exception. Future
+  sessions return to the unamended invariant; do not generalize.
+- Test fixtures in `tests/e2e/authenticated/{mobile-nav,swiper-
+  pending}.spec.ts` updated to seed `stripe_accounts` rows — the
+  layout's principal-driven swiper detection requires
+  `onboarding_complete=true` to classify a user as `authed_swiper`.
+  Other E2E specs that rely on the old "is_swiper=true is enough"
+  assumption may need similar updates in S08.
+- One `mobile-nav` test (line 79 — pending orders icon click) hits
+  a Next.js dev overlay alert during the click action. Curl of the
+  same URL renders the page cleanly, so the dev overlay alert is
+  triggered by something specific to the test environment (likely
+  a hydration warning from `useIsMobile`'s undefined → false initial
+  state). Flagged for S08 audit pass.
+- The optional `markPending` + `appendOptimistic` callbacks on
+  `useMessages` are consumed in `chat-view`. No other consumer
+  surfaces today — if a future surface (e.g., the `/current-orders`
+  embedded chat) wants the same optimistic UX, it can wrap
+  `useMessages` similarly with no hook changes needed.
+
+### Files added/changed (editable surface + A07-01 scope)
+
+```
+NEW
+  docs/redesign/SCOPE_AMENDMENTS.md
+  supabase/migrations/20260425120000_messages_temp_id.sql            (A07-01)
+  lib/realtime/channel-registry.ts
+  hooks/use-visibility-refetch.ts
+  components/banner.tsx
+  tests/unit/lib/realtime/channel-registry.test.ts
+  tests/unit/hooks/use-visibility-refetch.test.ts
+  tests/unit/components/chat-panel/chat-panel-provider.test.tsx
+
+MODIFIED
+  app/layout.tsx                                                     (rewrite)
+  app/api/messages/route.ts                                          (A07-01 additive)
+  app/api/guest/messages/route.ts                                    (A07-01 additive)
+  components/chat-panel/chat-panel-context.ts                        (OrderEntry +conversationId)
+  components/chat-panel/chat-panel-provider.tsx                      (rewrite)
+  components/chat-panel/chat-panel.tsx                               (rewrite)
+  components/chat/chat-view.tsx                                      (optimistic flow)
+  components/chat/chat-thread.tsx                                    (pending/failed treatments)
+  components/header.tsx                                              (rewrite, Principal-driven)
+  components/swiper-orders-button.tsx                                (rewrite)
+  components/ui/sheet.tsx                                            (vaul migration)
+  hooks/use-messages.ts                                              (rewrite, registry+B2+temp_id)
+  lib/types/api.ts                                                   (A07-01 additive)
+  lib/types/messaging.ts                                             (A07-01 additive)
+  package.json                                                       (vaul dep)
+  package-lock.json
+  tests/unit/setup.ts                                                (jsdom polyfills for vaul)
+  tests/unit/api/guest/messages-post.test.ts                         (+1 spec)
+  tests/unit/components/chat/chat-thread.test.tsx                    (+2 specs)
+  tests/unit/components/chat/chat-view.test.tsx                      (+2 specs)
+  tests/unit/components/ui/sheet.test.tsx                            (+3 specs)
+  tests/unit/hooks/use-messages.test.ts                              (+7 specs)
+  tests/unit/messages/post.test.ts                                   (+5 specs)
+  tests/unit/types/api.test.ts                                       (+2 specs)
+  tests/e2e/authenticated/mobile-nav.spec.ts                         (stripe_accounts seed)
+  tests/e2e/authenticated/swiper-pending.spec.ts                     (stripe_accounts seed)
+
+DELETED
+  app/@banner/page.tsx
+  app/@banner/default.tsx
+  components/header-wrapper.tsx
+  components/banner-guard.tsx
+```
+
+`app/swiper/layout.tsx` — UNTOUCHED (master plan §10 security
+invariant). `lib/supabase/{server,client,service,middleware,admin}.ts`
+— UNTOUCHED. `lib/stripe/**` — UNTOUCHED.
+`lib/orders/state-machine.ts` — UNTOUCHED. `lib/types/database.ts`
+— UNTOUCHED (Message lives in messaging.ts; database.ts only
+carries Profile/Order/Payment/StripeAccount). `lib/api/{guest-auth,
+helpers}.ts` — UNTOUCHED. `scripts/**` — UNTOUCHED.
+`00-features.md` — UNTOUCHED (locked SHA preserved).
+
+### Primitives added/extended
+
+- **`<Sheet>` migrated to vaul** with optional drag-to-dismiss.
+  First real consumer: chat-panel mobile (max-sm).
+- **NEW: `lib/realtime/channel-registry.ts`** ref-counted singleton.
+  Two consumers (use-messages, chat-panel-provider).
+- **NEW: `hooks/use-visibility-refetch.ts`** generic hook.
+  Two consumers (use-messages thread reconciliation, chat-panel-
+  provider auto-open list reconciliation).
+
+### Backend-contract sentinel
+
+GREEN | exceptions: A07-01 scope (6 file additive edits + 1 migration
+in commit `84829dd`), recorded in `docs/redesign/SCOPE_AMENDMENTS.md`.
+
+### Open questions
+
+- Mobile-nav `pending orders icon` Playwright test hits dev overlay;
+  root cause not yet identified. S08 audit pass should investigate.
+- Three chat-surface E2E specs (chat.spec, completion-banner,
+  guest-chat) still failing; likely affected by chat-panel
+  viewport-conditional render or conversationId prop wiring. S08
+  cross-page E2E sweep owns the migration.
+- DB column `messages.temp_id` is `text` while the API validates as
+  `uuid` (security-reviewer LOW). A future session can tighten via
+  CHECK constraint or column-type change to `uuid`.
+
+### Blockers resolved
+
+- **Vaul jsdom incompatibility.** Three polyfills in
+  `tests/unit/setup.ts` allow vaul to render under vitest's jsdom
+  environment (matchMedia stub, getComputedStyle transform shim,
+  Pointer Events API no-ops). The pinned pattern for any future
+  vaul consumer.
+- **Dual-render-path testid collision.** Initially chat-panel.tsx
+  rendered both desktop stack AND mobile Sheet via CSS-based
+  `sm:hidden` / `max-sm:hidden` — both sides produced
+  `data-testid="chat-panel-header"` in the DOM, tripping Playwright
+  strict mode. Refactored to `useIsMobile()` viewport detection so
+  only ONE variant mounts at a time.
+
+### Next entry point
+
+**Session 08 — Cross-page passes + test sweep.** Run `adapt → harden
+→ audit → polish → critique` skills sequentially per master plan
+§Phase 5; produce reports in `docs/redesign/05-cross-page/`. Fix
+P0/P1 audit findings. Migrate the deferred E2E specs flagged above
+(chat.spec, completion-banner, guest-chat, mobile-nav). Investigate
+the `useIsMobile` hydration warning that triggers the dev overlay.
+Per master plan §Phase 6: full test + review pass. Branch ready to
+merge at S08 close.
+
+### Code review (cumulative diff)
+
+`code-reviewer` agent ran on the cumulative S07 diff (12 commits,
+36 files, +2133/-499 lines) before session close. Verdict:
+**WARNING** with **0 critical / 2 high / 3 medium / 3 low**. Both
+HIGHs addressed in this close commit (see "End-of-session HIGH
+fixes" above). 3 MEDIUMs deferred:
+- StrictMode race in `use-messages` Effect 2/3 ordering
+  (initialFetchDoneRef reset placement) — only manifests in dev
+  StrictMode + very fast fetches. S08.
+- `chat-panel-provider` `loadActiveOrders` re-opens completed
+  panels that the user dismissed via `closePanel`. UX regression on
+  visibility refetch. S08.
+- `sendMessage` `res.json()` lacks `.catch()` guard if a 201
+  response has a non-JSON body. The throw propagates correctly via
+  handleSend → markFailed; user sees retry. Belt-and-suspenders
+  improvement deferred.
+3 LOWs deferred (`useIsMobile` SSR flash; `Sign up` link routes to
+`/auth/login`; convention gap on `use-messages.ts` named-only export
+— which is idiomatic for hooks).
+
+### Security review (cumulative diff)
+
+`security-reviewer` agent ran in parallel. Verdict: **APPROVE** with
+**0 critical / 0 high / 0 medium / 1 low / 0 design choices**:
+- LOW: DB column `messages.temp_id` is `text` while API validates
+  `uuid` — gap that's not exploitable today (all client paths go
+  through validated API; no DB lookup uses temp_id) but worth
+  tightening with a CHECK constraint or column-type change in a
+  future session. Deferred.
+- All four focus areas (UUID validation in registry, visibility-
+  refetch payload safety, server-side principal resolution, temp_id
+  request-body validation) cleared. No service-client leak in the
+  client bundle. `vaul` supply-chain posture acceptable.
+
+### Commits
+
+- `e1c0e46` — `docs(s07): record §9 frozen-surface amendment A07-01 for messages.temp_id`
+- `84829dd` — `feat(s07): add messages.temp_id end-to-end (A07-01 amendment)`
+- `0cc369f` — `feat(realtime): add ref-counted channel registry (master plan §11)`
+- `1769d99` — `feat(hooks): add useVisibilityRefetch (master plan §11)`
+- `bad65b0` — `feat(sheet): migrate Sheet primitive to vaul for drag-to-dismiss`
+- `8c80860` — `feat(realtime): migrate useMessages to channel-registry + B2 + temp_id (master plan §11)`
+- `a909ee8` — `feat(chat-panel): migrate to channel registry + B2 JOIN + mobile Sheet`
+- `5b21fe2` — `feat(chat): wire optimistic UI end-to-end (C2)`
+- `c7989c8` — `feat(header): rewrite as Principal-driven server component`
+- `6a6415a` — `feat(banner): brand-aligned recruitment banner (replaces parallel slot)`
+- `14b789e` — `feat(swiper-button): brand-aligned floating queue affordance`
+- `044167e` — `feat(layout): drop @banner parallel slot + HeaderWrapper, render shell directly`
+- (SESSION_LOG close commit appended after this entry, plus the two HIGH fix-up edits in same commit)
+
+### Tags added
+
+- `phase4/s07-frozen-amendment`
+- `phase4/messages-temp-id`
+- `phase4/realtime-registry`
+- `phase4/visibility-hook`
+- `phase4/sheet-drag`
+- `phase4/use-messages-migration`
+- `phase4/chat-panel-migration`
+- `phase4/chat-input-optimistic`
+- `phase4/header`
+- `phase4/banner`
+- `phase4/swiper-button`
+- `phase4/shell-layout`
