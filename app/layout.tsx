@@ -6,25 +6,14 @@
  */
 
 import type { Metadata } from "next";
-import { Plus_Jakarta_Sans, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { bricolageGrotesque, figtree } from "./fonts";
 import { Header } from "@/components/header";
 import { HeaderWrapper } from "@/components/header-wrapper";
 import { SwiperOrdersButton } from "@/components/swiper-orders-button";
 import { ChatPanelProvider, ChatPanel } from "@/components/chat-panel";
 import { createClient } from "@/lib/supabase/server";
 import { getAuthenticatedUser } from "@/lib/api/helpers";
-
-const plusJakartaSans = Plus_Jakarta_Sans({
-  variable: "--font-sans",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "Goober Eats",
@@ -64,7 +53,7 @@ export default async function RootLayout({
   return (
     <html
       lang="en"
-      className={`${plusJakartaSans.variable} ${geistMono.variable} antialiased`}
+      className={`${bricolageGrotesque.variable} ${figtree.variable} antialiased`}
       data-testid="root-layout"
     >
       <body>

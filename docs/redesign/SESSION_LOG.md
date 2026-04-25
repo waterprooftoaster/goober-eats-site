@@ -368,7 +368,250 @@ spec is authoritative.
 
 ### Commits
 
-- (Session 02 commit pending — `docs(redesign): session 02 — flows + route tree ADR`)
+- `d826361` — `docs(redesign): session 02 — flows + route tree ADR`
+
+### Tags added
+
+None this session.
+
+---
+
+## Session 03 — Design tokens + primitives (CLOSED)
+
+- **Date:** 2026-04-24
+- **Branch:** `fpoop` (in place; no separate redesign branch)
+- **Phase(s):** 3 (design tokens + primitives)
+- **Status:** CLOSED
+- **features.md SHA-256:** `e6be0f544ad92a1ebd9e853687d2fa09f5847633ebdfb21f10f219b1a333539f` (unchanged from S01)
+
+### What shipped
+
+1. **OKLCH-hue-126 tokens (`app/globals.css`)** — full theme overhaul:
+   - Master-plan §Phase 3 token vocabulary added in a new `@theme` block
+     (`--color-bg`, `--color-fg`, `--color-surface`, `--color-muted`,
+     `--color-muted-bg`, `--color-border`, `--color-accent`,
+     `--color-accent-hover`, plus `--font-display` / `--font-body`).
+   - Existing shadcn `:root` tokens (`--background`, `--foreground`,
+     `--primary`, `--secondary`, `--muted`, `--accent`, `--border`,
+     `--input`, `--ring`, …) **remapped** onto the same OKLCH-126 source
+     values. Single source of truth: every primitive that reads
+     `bg-primary` / `text-muted-foreground` / `bg-card` now resolves to
+     the tinted-warm-off-white + lime palette automatically.
+   - `.dark { … }` block dropped (master plan refusal-list item 6).
+   - Unused chart + sidebar tokens dropped (zero consumers in editable
+     code; verified with grep).
+   - `@layer base`: `body { font-family: var(--font-body); }` and
+     `h1..h6 { font-family: var(--font-display); }` for global typography.
+   - **Verified compiled output:** production-build CSS bundle ships
+     `--primary:#99c73d` (lime) and `--background:#f9fbf6` (warm tinted
+     off-white) as the hex fallbacks, plus LAB conversions for backwards-
+     compatible color rendering.
+
+2. **Fonts swapped (`app/fonts.ts` new + `app/layout.tsx` font-only edit)** —
+   `Plus_Jakarta_Sans` + `Geist_Mono` → **Bricolage Grotesque** (display)
+   + **Figtree** (body) via `next/font/google`.
+   - Cold-start prompt mentioned `Manrope` + `Hanken Grotesk`; the actual
+     pre-S03 fonts on disk were `Plus_Jakarta_Sans` + `Geist_Mono`. Plan
+     intent (replace display + body) was unaffected.
+   - Layout edit was strictly font-wiring: removed the two old font
+     imports + their const declarations, added
+     `import { bricolageGrotesque, figtree } from './fonts'`, updated
+     `<html className>` to the two new variable names. **No** other
+     edits to `app/layout.tsx` (banner slot, providers, header, chat
+     panel — all S07).
+   - Verified rendered HTML emits
+     `bricolage_grotesque_*_variable figtree_*_variable antialiased`
+     on `<html>`.
+
+3. **Button rename + restyle (`components/ui/button.tsx`)** — clean
+   rename per master plan §Phase 3:
+   - `default` → **`primary`** (the lime CTA, `bg-primary
+     text-primary-foreground hover:bg-[--color-accent-hover]`).
+   - `secondary` → **`subtle`** (tinted-neutral, `bg-secondary
+     text-secondary-foreground hover:bg-secondary/70`).
+   - `outline / ghost / destructive / link` — kept variant names;
+     restyled against new tokens (border + hover only).
+   - Sizes preserved verbatim (master-plan list was a subset; full surface
+     `default, xs, sm, lg, icon, icon-xs, icon-sm, icon-lg` retained).
+   - `defaultVariants.variant = 'primary'`.
+   - Sweep: zero `variant="default"` / `variant="secondary"` call-sites
+     in editable surface after the one-line surgical edit to
+     `components/banner.tsx:25` (`variant="default"` → `variant="primary"`).
+     One bare `<Button>` at `app/checkout/page.tsx:160` remains, which is
+     the screen's primary CTA — brand-correct under the new default.
+
+4. **Existing primitives — token cascade only** —
+   `components/ui/{input,input-group,textarea,combobox,navigation-menu}.tsx`
+   were left structurally intact. They reference shadcn tokens (`bg-card`,
+   `bg-muted`, `border-input`, `ring-ring`, `text-muted-foreground`, …)
+   which now resolve to the OKLCH-126 palette via the token remap. Their
+   `dark:` modifier classes are now dead code at runtime (no `.dark`
+   class is applied) but harmless; cleanup deferred to S08.
+
+5. **Five new primitives (`components/ui/`):**
+   - **`surface.tsx`** — borderless tinted container with `tone` (subtle
+     | muted) and `padding` (none | sm | md | lg) cva variants.
+     `asChild` Slot polymorphism. testid `surface`.
+   - **`skeleton.tsx`** — shimmerless `animate-pulse motion-reduce:
+     animate-none` block. testid `skeleton`. `aria-hidden`.
+   - **`sheet.tsx`** — Radix Dialog wrapper for mobile bottom-sheet /
+     desktop side-panel; slide-in animations gated by `motion-reduce:`.
+     Exports `Sheet, SheetTrigger, SheetClose, SheetPortal, SheetOverlay,
+     SheetContent, SheetHeader, SheetFooter, SheetTitle, SheetDescription`.
+     `SheetContent` carries testid `sheet`.
+   - **`modal.tsx`** — centered Radix Dialog wrapper. Same export shape
+     as Sheet (`Modal*`). `ModalContent` carries testid `modal`. Built
+     for the account-modal route + delete-account confirm flows in S06.
+   - **`toast.tsx`** — hand-rolled `<ToastProvider />` + `useToast()` hook.
+     Auto-dismiss after `opts.duration ?? 4000`ms. Variants:
+     `default | success | error`. `motion-reduce:` gate. testid
+     `toast-container` on the viewport. Zero new dependencies (master
+     plan §No-additions rule honored — Radix-Toast / Sonner not adopted).
+     **Not mounted** in `app/layout.tsx` this session; first consumer
+     wires the provider in S04+.
+
+6. **Global error-shell pages:**
+   - `app/loading.tsx` — Skeleton grid (1 heading + 1 subline + 3 cards).
+   - `app/error.tsx` — `"use client"` boundary using `<Surface tone="muted">`
+     + `<Button variant="primary" onClick={reset}>Try again</Button>` +
+     `<Button variant="ghost" asChild>Go home</Button>`. Sanitizes the
+     error message (strips file paths + stack-trace fragments). Exposes
+     `error.digest` when present. **No toast invocation** (per
+     user-confirmed scope D for S03).
+   - `app/not-found.tsx` — server component with Surface + "Go home" CTA.
+
+7. **Cleanup** — `components/icons/burger.tsx` deleted (0-byte file, zero
+   references via `grep -RIn "burger" app components hooks lib tests`).
+   Empty `components/icons/` directory removed.
+
+8. **Tests** — five new render-test files at `tests/unit/components/ui/`
+   covering surface, skeleton, sheet, modal, and toast. Test count went
+   from 21 files / 209 tests (S01 baseline) to **26 files / 220 tests**,
+   all green.
+
+### User-confirmed decisions made during planning
+
+- **D2 (button variants):** clean rename per master plan; legacy
+  `default` / `secondary` not retained as aliases.
+- **D3 (token strategy):** keep one source of truth — remap shadcn
+  `:root` tokens onto OKLCH-126 alongside the new `--color-*` vocabulary.
+- **Error-shell scope:** primitives-only visuals; toast shipped + render-
+  tested but not invoked.
+- **`components/banner.tsx`:** the cold-start "do not touch" guard was
+  rescinded by user mid-session — UI files are fair game; only feature
+  behavior is frozen. The S03 banner edit was a one-line variant rename;
+  full visual rework remains S07 territory.
+
+### Verification gauntlet
+
+- `npm run lint` — green
+- `npm run test` (vitest) — **26 files / 220 tests** passed (was 21 / 209
+  in S01; +5 files / +11 tests)
+- `npm run build` (Next.js + tsc) — green; **26 routes** still build
+  (matches S01 count)
+- `npm run lint:features-hash` — green; SHA matches S01
+- **Contract sentinel** (`git diff HEAD` against frozen paths) — 0 lines
+- **Bundle sentinel** — `! grep -r "SUPABASE_SECRET_KEY\|createServiceClient"
+  .next/static/` returns clean
+- **Frozen-string grep** — counts unchanged from S01:
+  - `pending_screenshots|guest_order_token_|cart-screenshots|completion-photos`
+    in editable code: **10**
+  - `\.channel(` in editable code: **2**
+- **Dev-server smoke** — HTTP-200 on `/`, `/checkout`, `/current-orders`,
+  `/auth/login`, `/account`, `/swiper/orders`; HTTP-404 on an unknown
+  path (`not-found.tsx` wired). The user's pre-existing dev server (PID
+  3524) had cached stale CSS from before the S03 edits — production-build
+  CSS confirmed the new tokens (`--primary:#99c73d` lime,
+  `--background:#f9fbf6` tinted off-white) compiled correctly. User
+  should `kill 3524 && npm run dev` to see the visual swap locally.
+- **Playwright** — **27 passed / 8 failed / 16 skipped**, slightly better
+  than the S01 baseline (25 / 10 / 16). All 8 failures are pre-existing-
+  broken specs flagged in S01 SESSION_LOG (eateries / menu_items
+  `beforeAll` hooks against the removed legacy schema; the removed
+  `POST /api/orders/{id}/pay` endpoint; the non-existent
+  `/swiper/dashboard` route). Zero new regressions attributable to the
+  S03 token / primitive / font work. Two S01-flagged failures now pass —
+  not investigated further; deferred.
+
+### Discrepancies flagged (carried forward)
+
+- Catalog summary count is still stale (91 reported in S01 vs. 107
+  actual). Cosmetic; deferred indefinitely as in S02.
+- `app/@banner/` parallel slot still on disk; deferred to S07 shell rewrite.
+- Cold-start prompt named the pre-existing fonts as Manrope + Hanken
+  Grotesk; reality was Plus_Jakarta_Sans + Geist_Mono. Plan intent
+  preserved; flagged here for future cold-start authors.
+
+### Files added/changed (editable surface only)
+
+```
+app/globals.css                                   (overhauled)
+app/fonts.ts                                      (new)
+app/layout.tsx                                    (font wiring only)
+app/loading.tsx                                   (new)
+app/error.tsx                                     (new)
+app/not-found.tsx                                 (new)
+components/ui/button.tsx                          (variant rename + restyle)
+components/ui/surface.tsx                         (new)
+components/ui/sheet.tsx                           (new)
+components/ui/modal.tsx                           (new)
+components/ui/skeleton.tsx                        (new)
+components/ui/toast.tsx                           (new)
+components/banner.tsx                             (one-line variant rename)
+components/icons/burger.tsx                       (deleted)
+tests/unit/components/ui/surface.test.tsx         (new)
+tests/unit/components/ui/sheet.test.tsx           (new)
+tests/unit/components/ui/modal.test.tsx           (new)
+tests/unit/components/ui/skeleton.test.tsx        (new)
+tests/unit/components/ui/toast.test.tsx           (new)
+docs/redesign/SESSION_LOG.md                      (this entry appended)
+```
+
+Frozen surface (`app/api/**`, `lib/supabase/**`, `lib/stripe/**`,
+`lib/orders/state-machine.ts`, `lib/types/**`,
+`lib/api/{guest-auth,helpers}.ts`, `supabase/**`, `scripts/**`) —
+UNTOUCHED, sentinel verified. `00-features.md` — UNTOUCHED (locked SHA
+preserved).
+
+### Primitives added/extended
+
+- **Extended (existing):** `button.tsx` (rename + restyle).
+- **Token-cascade restyled (no class changes):** `input.tsx`,
+  `input-group.tsx`, `textarea.tsx`, `combobox.tsx`, `navigation-menu.tsx`.
+- **New:** `surface.tsx`, `sheet.tsx`, `modal.tsx`, `skeleton.tsx`,
+  `toast.tsx`.
+
+### Backend-contract sentinel
+
+GREEN | exceptions: none.
+
+### Open questions
+
+- The toast primitive is not yet wired into `app/layout.tsx`. First
+  optimistic-UI consumer in S04+ should mount `<ToastProvider />` near
+  the root and document the call-site in this log.
+- Stale dev-server cache: the user's existing dev process serves S02
+  CSS. Document explicit dev restart in the S04 cold-start so future
+  smoke tests aren't fooled by stale chunks.
+
+### Blockers resolved
+
+- Banner / variant-rename collision (cold-start "don't touch banner.tsx"
+  vs. master-plan rename) — resolved by user mid-session: UI files are
+  fair game; only feature behavior is frozen.
+
+### Next entry point
+
+**Session 04 — Orderer happy path.** Shape + craft for `/`, `/checkout`,
+`/checkout/return`, `/current-orders`, `/orders`. Each page gets a
+per-page commit (`phase4/<route-slug>`). The new primitives are now
+available; ToastProvider should be mounted at the layout root by the
+first optimistic-UI consumer (likely the swiper `accept` button, S06,
+or chat-input failures in `/current-orders`, S04).
+
+### Commits
+
+- `27094f3` — `feat(design): session 03 — OKLCH theme + Bricolage/Figtree fonts + ui primitives`
 
 ### Tags added
 
