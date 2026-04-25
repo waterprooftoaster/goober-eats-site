@@ -90,7 +90,7 @@ describe('ChatInput', () => {
     render(<ChatInput orderId={ORDER_ID} onSend={vi.fn()} disabled={true} />)
     expect(screen.getByRole('textbox')).toBeDisabled()
     expect(screen.getByRole('button', { name: /send message/i })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /upload delivery photo/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /upload completion photo/i })).toBeDisabled()
   })
 
   it('shows "Conversation closed" placeholder when disabled', () => {
@@ -100,7 +100,7 @@ describe('ChatInput', () => {
 
   it('renders a camera/upload button', () => {
     render(<ChatInput orderId={ORDER_ID} onSend={vi.fn()} disabled={false} />)
-    expect(screen.getByRole('button', { name: /upload delivery photo/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /upload completion photo/i })).toBeInTheDocument()
   })
 
   it('calls upload endpoint with FormData on file selection', async () => {

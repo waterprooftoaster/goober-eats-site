@@ -19,6 +19,7 @@ export function BackButton() {
     <button
       type="button"
       aria-label="Go back"
+      data-testid="checkout-back-button"
       onClick={() => router.back()}
       className="flex h-8 w-8 items-center justify-center rounded-full text-foreground transition-colors hover:bg-secondary motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
     >

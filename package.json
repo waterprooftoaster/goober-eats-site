@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "lint:features-hash": "node docs/redesign/check-features-hash.mjs",
+    "lint:features-coverage": "node docs/redesign/check-features-coverage.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },
