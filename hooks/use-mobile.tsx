@@ -28,16 +28,26 @@ export function useIsMobile(): boolean {
 
 // --- Helpers ---
 
+// Lazily initialized module-scope MediaQueryList so subscribe() and getSnapshot()
+// reference the SAME object. Without the cache, React reads .matches from one
+// MQL while listening for change events on another — spec-allowed but fragile.
+let cachedMql: MediaQueryList | null = null
+
+function getMql(): MediaQueryList | null {
+  if (typeof window === "undefined") return null
+  if (cachedMql === null) cachedMql = window.matchMedia(MOBILE_QUERY)
+  return cachedMql
+}
+
 function subscribe(onStoreChange: () => void): () => void {
-  if (typeof window === "undefined") return () => {}
-  const mql = window.matchMedia(MOBILE_QUERY)
+  const mql = getMql()
+  if (!mql) return () => {}
   mql.addEventListener("change", onStoreChange)
   return () => mql.removeEventListener("change", onStoreChange)
 }
 
 function getSnapshot(): boolean {
-  if (typeof window === "undefined") return false
-  return window.matchMedia(MOBILE_QUERY).matches
+  return getMql()?.matches ?? false
 }
 
 function getServerSnapshot(): boolean {

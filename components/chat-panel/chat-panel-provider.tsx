@@ -108,6 +108,12 @@ export function ChatPanelProvider({ userId, children }: Props) {
   }, [])
 
   const updateOrderStatus = useCallback((orderId: string, status: OrderStatus) => {
+    // A status change is a meaningful lifecycle event; clear any prior dismissal
+    // so the next loadActiveOrders / openPanel call can re-surface the panel.
+    // Concrete scenario: orderer dismisses their panel during in_progress, the
+    // swiper un-accepts (status returns to 'open'), the orderer should see the
+    // panel re-open since the order is no longer being filled.
+    dismissedOrderIdsRef.current.delete(orderId)
     setOrders((prev) => {
       if (!prev[orderId]) return prev
       if (TERMINAL_STATUSES.includes(status)) {
@@ -191,8 +197,21 @@ export function ChatPanelProvider({ userId, children }: Props) {
                 filter: `${filterField}=eq.${uid}`,
               },
               (payload) => {
-                if (ordersRef.current[payload.new.id]) {
-                  updateOrderStatus(payload.new.id, payload.new.status)
+                const id = payload.new.id
+                if (ordersRef.current[id]) {
+                  updateOrderStatus(id, payload.new.status)
+                  return
+                }
+                // Order is not currently in state — most likely user dismissed
+                // it. A status change is a meaningful lifecycle event that
+                // should re-engage the user (e.g. swiper un-accept reverts
+                // in_progress → open; orderer needs to see the panel again).
+                // Clear the dismissal and call openPanel; the visibility-
+                // refetch path will additionally backfill restaurantName + the
+                // joined conversationId on the next foreground.
+                if (dismissedOrderIdsRef.current.has(id)) {
+                  dismissedOrderIdsRef.current.delete(id)
+                  openPanel(id, payload.new.status)
                 }
               }
             ),
@@ -208,7 +227,7 @@ export function ChatPanelProvider({ userId, children }: Props) {
     return () => {
       handle?.unsubscribe()
     }
-  }, [userId, updateOrderStatus])
+  }, [userId, updateOrderStatus, openPanel])
 
   return (
     <ChatPanelContext.Provider
