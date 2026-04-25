@@ -1,8 +1,10 @@
 /**
  * @file page.tsx
- * @description Guest order entry page that validates the order token cookie and renders GuestPanelOpener.
- *   Only serves unauthenticated guests; authenticated users are redirected to home immediately.
- *   Called by: Stripe checkout return redirect (guest flow)
+ * @description Guest order entry page. Validates the order-token cookie server-side
+ *   and renders GuestPanelOpener for the ~1s bootstrap. Only serves genuinely
+ *   unauthenticated visitors; any existing session (anon or authed) is redirected
+ *   home so the global ChatPanelProvider takes over panel management.
+ *   Called by: Stripe checkout return redirect (guest flow, via /api/guest/verify-order)
  * @dependencies lib/supabase/server.ts, lib/supabase/service.ts, lib/api/guest-auth.ts
  */
 
@@ -47,21 +49,24 @@ export default async function OrderPage({
     redirect('/')
   }
 
+  // Schema rewrite: the legacy `eateries(name)` join is gone (CLAUDE.md domain model).
+  // `orders.restaurant_name` is the new source of truth.
   const serviceClient = createServiceClient()
   const { data: order } = await serviceClient
     .from('orders')
-    .select('id, status, guest_access_token, orderer_id, eateries(name)')
+    .select('id, status, guest_access_token, orderer_id, restaurant_name')
     .eq('id', orderId)
     .maybeSingle()
 
-  // Redirect if order not found, token mismatch, or this is an auth user's order
   if (!order || order.guest_access_token !== token || order.orderer_id !== null) {
     redirect('/')
   }
 
-  const eateryName = (order.eateries as unknown as { name: string } | null)?.name ?? ''
-
   return (
-    <GuestPanelOpener orderId={order.id} initialStatus={order.status as OrderStatus} eateryName={eateryName} />
+    <GuestPanelOpener
+      orderId={order.id}
+      initialStatus={order.status as OrderStatus}
+      eateryName={order.restaurant_name ?? ''}
+    />
   )
 }
