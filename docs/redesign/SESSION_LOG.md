@@ -611,7 +611,7 @@ or chat-input failures in `/current-orders`, S04).
 
 ### Commits
 
-- `27094f3` — `feat(design): session 03 — OKLCH theme + Bricolage/Figtree fonts + ui primitives`
+- `de7509d` — `feat(design): session 03 — OKLCH theme + Bricolage/Figtree fonts + ui primitives`
 
 ### Tags added
 
