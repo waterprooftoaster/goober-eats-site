@@ -2,17 +2,19 @@
 
 /**
  * @file page.tsx
- * @description Home page: a single upload square. The user picks a cart screenshot;
- *   on "Place Order" the file uploads to cart-screenshots via a signed URL, then
- *   the path is handed off via sessionStorage and the user is navigated to /checkout.
+ * @description Home page: an asymmetric left-aligned hero + a single tinted
+ *   upload square. The user picks a cart screenshot; on "Place order" the file
+ *   uploads to cart-screenshots via a signed URL, the path is handed off via
+ *   sessionStorage, and the user is navigated to /checkout.
  *   Called by: Next.js routing (/)
- * @dependencies lib/supabase/client.ts
+ * @dependencies lib/supabase/client.ts, components/ui/{button,surface}
  */
 
 import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ImagePlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Surface } from '@/components/ui/surface'
 import { createClient } from '@/lib/supabase/client'
 import { PENDING_SCREENSHOTS_KEY } from '@/lib/constants'
 
@@ -85,52 +87,90 @@ export default function HomePage() {
   }
 
   const isUploading = stage === 'uploading'
+  const showButton = stage !== 'idle'
 
   return (
-    <main data-testid="home-page" className="flex min-h-[80vh] flex-col items-center justify-center px-4 gap-6">
-      <div
-        className="relative w-80 h-80 rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 flex items-center justify-center cursor-pointer overflow-hidden hover:border-gray-400 transition-colors"
-        onClick={() => !isUploading && inputRef.current?.click()}
-      >
-        {preview ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={preview} alt="Cart screenshot" className="w-full h-full object-cover" />
-        ) : (
-          <div className="flex flex-col items-center gap-2 text-gray-400">
-            <ImagePlus className="w-12 h-12" />
-            <span className="text-sm">Tap to upload cart screenshot</span>
-          </div>
+    <main
+      data-testid="home-page"
+      className="mx-auto flex max-w-2xl flex-col gap-10 py-12 sm:py-16"
+    >
+      <header className="max-w-md">
+        <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
+          Order from anywhere on campus.
+        </h1>
+        <p className="mt-3 text-base text-muted-foreground">
+          Snap your GrubHub cart. We pair you with a student who&rsquo;s got
+          swipes &mdash; you pay less than retail, they pocket the rest.
+        </p>
+      </header>
+
+      <div className="flex flex-col gap-4">
+        <Surface
+          tone="subtle"
+          padding="none"
+          data-testid="home-dropzone"
+          onClick={() => !isUploading && inputRef.current?.click()}
+          className="relative aspect-square w-full max-w-md cursor-pointer overflow-hidden rounded-2xl border-2 border-dashed border-border transition-colors hover:border-foreground/30 motion-reduce:transition-none"
+        >
+          {preview ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={preview}
+              alt="Cart screenshot preview"
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <div className="flex h-full flex-col items-start justify-end gap-2 p-6 text-muted-foreground">
+              <ImagePlus className="h-8 w-8" aria-hidden />
+              <span className="text-sm">Tap to upload your cart screenshot.</span>
+            </div>
+          )}
+        </Surface>
+
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handleFileChange}
+          data-testid="home-file-input"
+        />
+
+        {showButton && (
+          <Button
+            type="button"
+            variant="primary"
+            size="lg"
+            onClick={handlePlaceOrder}
+            disabled={isUploading}
+            className="w-full max-w-md"
+            data-testid="home-place-order-button"
+          >
+            {isUploading ? 'Uploading…' : 'Place order'}
+          </Button>
+        )}
+
+        {error && (
+          <p
+            data-testid="home-error-message"
+            className="max-w-md text-sm text-destructive"
+          >
+            {error}
+          </p>
         )}
       </div>
-
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={handleFileChange}
-        data-testid="home-file-input"
-      />
-
-      {stage !== 'idle' && (
-        <Button
-          onClick={handlePlaceOrder}
-          disabled={isUploading}
-          size="lg"
-          className="w-80"
-          data-testid="home-place-order-button"
-        >
-          {isUploading ? 'Uploading…' : 'Place Order'}
-        </Button>
-      )}
-
-      {error && <p data-testid="home-error-message" className="text-sm text-red-600 text-center max-w-xs">{error}</p>}
     </main>
   )
 }
 
 // --- Helpers ---
 
+/**
+ * Validates and returns the lowercased extension if it is in the allowlist.
+ * @param filename - File name as provided by the file picker
+ * @returns A lowercased extension or null if unsupported
+ * @called-by HomePage (handlePlaceOrder)
+ */
 function extractExtension(filename: string): AllowedExtension | null {
   const idx = filename.lastIndexOf('.')
   if (idx < 0 || idx === filename.length - 1) return null
