@@ -904,3 +904,268 @@ Reviewer also confirmed PASS on:
 - `phase4/checkout-return`
 - `phase4/current-orders`
 - `phase4/orders`
+
+---
+
+## Session 05 — Auth + guest entry (CLOSED)
+
+- **Date:** 2026-04-24
+- **Branch:** `fpoop` (in place; per the standing user direction)
+- **Phase(s):** 4b (auth + guest-entry craft passes) + the §10 auth helper
+- **Status:** CLOSED
+- **features.md SHA-256:** `e6be0f544ad92a1ebd9e853687d2fa09f5847633ebdfb21f10f219b1a333539f`
+  (unchanged from S01; catalog locked, sentinel green)
+
+### What shipped
+
+Two per-page tagged commits rebuild the auth-login page and the
+guest-entry bootstrap page against the S03 OKLCH-126 primitive set.
+Session 05 also introduces the first reusable auth primitive —
+`lib/auth/resolve-principal.ts` — landing in the auth-login commit
+because the helper's existence and the page rebuild are part of the
+same "auth surface" mental unit.
+
+1. **`/auth/login` (`app/auth/login/login-form.tsx`)** — tag
+   `phase4/auth-login`, commit `a5c9346`. Replaces the centered-hero
+   `fixed inset-0 flex items-center justify-center` markup with an
+   asymmetric left-aligned `max-w-sm` column with `pt-16/24` top
+   padding. Every step shows exactly one `Button variant="primary"`
+   CTA (one lime accent per screen), `Button variant="ghost"` for
+   Back. Inputs route through the `Input` primitive (OKLCH border +
+   focus-visible ring) instead of inline Tailwind. Combobox dual-
+   input wrapper preserved for Playwright's
+   `getByTestId('auth-school-input').getByRole('combobox')`
+   disambiguation. Errors render inline as `<p role="alert">` with
+   `text-destructive` — no toasts. **State machine, every catalog
+   testid, the `effectiveStep` derivation, the onboarding-resume
+   sub-branch, and the `confirm_password` FormData
+   signup/signin distinguisher are preserved byte-for-byte from
+   S01.** No changes to `app/auth/login/page.tsx` (server prefetch
+   + resume detection is correct as-is). All 13 catalogued
+   AUTH-LOGIN-* testids ship; the password and signup buttons get
+   slightly more affirmative microcopy ("Welcome back" / "Create
+   your password"). Adds non-catalog `auth-login-page` testid on
+   `<main>` for visual smoke.
+
+   Bundled into the same commit: **`lib/auth/resolve-principal.ts`**
+   — frontend-only helper returning the master-plan §10 discriminated
+   union (`anon | authed_orderer | authed_swiper_pre_stripe |
+   authed_swiper | guest_cookie`). Resolution: `auth.getUser()` →
+   guest-cookie scan when `!user || is_anonymous` →
+   `profiles.maybeSingle()` → `stripe_accounts.maybeSingle()` →
+   variant assignment. Includes a data-inconsistency guard: if
+   stripe `onboarding_complete=true` but `profile.school_id=null`,
+   downgrades to `authed_swiper_pre_stripe` (the full-swiper variant
+   requires non-null schoolId per the §10 type shape). 12 unit
+   tests at `tests/unit/lib/auth/resolve-principal.test.ts` cover
+   every variant + every data-inconsistency edge. The helper takes
+   the `cookieStore` as an explicit param so tests don't have to
+   mock `next/headers`.
+
+2. **`/order/[orderId]` (`app/order/[orderId]/page.tsx` +
+   `guest-panel-opener.tsx`)** — tag `phase4/guest-entry`, commit
+   `1903c25`. **Schema fix**: the prior server query
+   `.select('id, status, guest_access_token, orderer_id,
+   eateries(name)')` referenced the deleted `eateries` table (per
+   CLAUDE.md domain model after the cart-screenshot rewrite) and
+   silently returned `null` for the join, leaving the chat panel
+   header empty. Replaced with `restaurant_name` directly. Spinner
+   now uses OKLCH tokens (`border-border` + `border-t-foreground`)
+   replacing `border-gray-300 / border-t-gray-900`. Promotes the
+   spinner container to `<main>` for landmark semantics during the
+   ~1s lifespan and adds `role="status"` + `aria-label="Opening
+   your order…"` for assistive tech. Server gate (UUID, `getUser`,
+   cookie read, service-client lookup, three-fold rejection) and
+   client bootstrap chain (`signInAnonymously` → PATCH → `openPanel`
+   → `router.replace('/')`) preserved verbatim. Both catalogued
+   testids (`guest-panel-opener`, `guest-bootstrap-spinner`) ship.
+
+### ToastProvider mount decision (carried over)
+
+**Toast still not mounted, not consumed, not imported in S05.** Per
+the user direction recorded in S04. All transient feedback in S05
+remains inline `text-destructive` `<p role="alert">` rows
+(`auth-callback-error`, `auth-form-error`). The S03 toast primitive
+stays on disk and unit-tested but inert. `app/layout.tsx` —
+UNTOUCHED this session (S07 owns the shell rewrite).
+
+### User-confirmed scope deviations
+
+None. Every catalogued testid for the two owned routes ships
+on the rendered DOM.
+
+### Optional helper migration (DEFERRED to S06)
+
+The plan allowed migrating two ad-hoc S04 auth-detection sites onto
+`resolvePrincipal`:
+
+- `app/checkout/page.tsx:74-92` — currently runs its own
+  `auth.getUser()` + `profiles.maybeSingle()` to derive
+  `viewerKind`.
+- `app/current-orders/page.tsx:30-35` — currently runs `getUser()`
+  only.
+
+Both deferred to S06 to keep the S05 page commits unblocked. The
+helper ships with full unit coverage so S06 (or any later session)
+can adopt it without redesigning it. Note: API routes never adopt
+this helper — it is frontend-only by design (server gates and API
+auth use `lib/api/guest-auth.ts` and direct service-client checks).
+
+### Verification gauntlet
+
+- `npm run lint` — green
+- `npm run test` (vitest) — **28 files / 237 tests** passed (was 27 / 225
+  in S04; +1 file / +12 tests, all in
+  `tests/unit/lib/auth/resolve-principal.test.ts`)
+- `npm run build` (Next.js + tsc) — green; **26 routes** still build
+- `npm run lint:features-hash` — green; SHA matches S01
+- **Contract sentinel** (`git diff HEAD` against frozen paths) — 0 lines
+- **Bundle sentinel** — `! grep -r "SUPABASE_SECRET_KEY\|createServiceClient"
+  .next/static/` returns clean
+- **Frozen-string grep** — `pending_screenshots|guest_order_token_|cart-screenshots|completion-photos`
+  in editable code: **5** (was 3 in the same grep at S04 close).
+  The +2 are both in the new `lib/auth/resolve-principal.ts` (the
+  `GUEST_COOKIE_PREFIX = 'guest_order_token_'` constant on line 22
+  + the explanatory comment on line 37). Centralising the guest-
+  cookie prefix in the helper is exactly what the helper exists for;
+  this is the intended outcome, not drift. `\.channel(` count: **2**,
+  unchanged.
+
+  Note: this grep counts a different baseline than S04 reported
+  (S04 close logged 11 with broader inclusions). The shape of the
+  grep matters; what matters this session is: (a) no new ad-hoc
+  bucket / cookie / channel literals appeared in editable code, and
+  (b) the two new hits are inside the helper that consolidates this
+  knowledge.
+- **Playwright** — **27 passed / 8 failed / 16 did not run** —
+  **exact match to S04 baseline**. Zero new regressions. The 8
+  failures and 16 skips are the same pre-existing
+  `eateries`/`menu_items`/`/swiper/dashboard`/removed-`pay`-route
+  fixtures S04 inherited.
+- **`tests/e2e/auth.spec.ts` targeted run** — **2/2 passed** (the
+  S01-baseline auth flow, including the onboarding-resume
+  sub-branch).
+
+### Discrepancies flagged (carried forward)
+
+- Catalog summary count is still stale (91 reported in S01 vs. 107
+  actual). Cosmetic; deferred indefinitely.
+- `app/@banner/` parallel slot still on disk; deferred to S07 shell
+  rewrite.
+- `lib/realtime/channel-registry.ts` (master plan §11) still not
+  introduced — S07 deliverable.
+- `app/auth/login/page.tsx` does its own `auth.getUser()` + profile
+  lookup rather than calling `resolvePrincipal`. Documented in
+  craft.md: the resume sub-branch needs both `user` and
+  `profile?.id` separately, while the helper collapses both into
+  `kind: 'anon'`. Intentional; not a candidate for S06 migration.
+- The S04 close logged frozen-string baseline of **11**; the post-
+  S05 grep with the same exclusions yields **5**. The discrepancy
+  reflects different exclusion patterns rather than a regression.
+  Future sessions should pin the exact grep command alongside the
+  number; we use:
+  ```bash
+  grep -rEn "pending_screenshots|guest_order_token_|cart-screenshots|completion-photos" \
+    --include="*.ts" --include="*.tsx" app components lib hooks 2>/dev/null \
+    | grep -v "/api/" | grep -v "lib/supabase/" | grep -v "lib/api/guest-auth" \
+    | grep -v "lib/stripe/" | grep -v ".test."
+  ```
+- **`resolvePrincipal` mid-onboarding latent trap** (code-reviewer
+  MEDIUM): a future caller of `resolvePrincipal` on a protected
+  page could incorrectly treat an authed-without-profile user as
+  fully anonymous (showing a guest CTA instead of resuming
+  onboarding). The `app/auth/login/page.tsx` caller side-steps this
+  by doing its own resume detection. No action required today; flag
+  for consideration when the helper sees broader adoption (S06+).
+  Possible follow-up: introduce a sixth variant
+  `authed_no_profile { userId; email }` if any future surface needs
+  to distinguish "not logged in at all" from "needs to finish
+  onboarding."
+
+### Files added/changed (editable surface only)
+
+```
+app/auth/login/login-form.tsx                                (rewrite)
+app/order/[orderId]/page.tsx                                 (schema fix + JSDoc tightening)
+app/order/[orderId]/guest-panel-opener.tsx                   (spinner restyle + a11y)
+lib/auth/resolve-principal.ts                                (new — §10 discriminated-union helper)
+tests/unit/lib/auth/resolve-principal.test.ts                (new — 12 specs)
+docs/redesign/04-pages/auth-login/{shape,craft}.md           (new)
+docs/redesign/04-pages/guest-entry/{shape,craft}.md          (new)
+docs/redesign/SESSION_LOG.md                                 (this entry appended)
+```
+
+`app/auth/login/page.tsx` — UNTOUCHED (server prefetch + resume
+detection is correct; `02-routes.md §4` says no per-route
+`error.tsx` for this route). `app/layout.tsx` — UNTOUCHED (S07
+owns the shell rewrite). `app/swiper/layout.tsx` — UNTOUCHED (S06
+owns swiper surface). Frozen surface (`app/api/**`, `lib/supabase/**`,
+`lib/stripe/**`, `lib/orders/state-machine.ts`, `lib/types/**`,
+`lib/api/{guest-auth,helpers}.ts`, `supabase/**`, `scripts/**`) —
+UNTOUCHED, sentinel verified. `00-features.md` — UNTOUCHED (locked
+SHA preserved). `components/ui/*` — UNTOUCHED (no S03 primitive
+needed extension this session).
+
+### Primitives added/extended
+
+None. S03's Button (primary + ghost variants), Input, and Combobox
+covered every S05 need without modification.
+
+### Backend-contract sentinel
+
+GREEN | exceptions: none.
+
+### Open questions
+
+- `resolvePrincipal` adoption for the two S04 ad-hoc sites
+  (`/checkout`, `/current-orders`) → deferred to S06.
+- Whether to introduce a sixth `authed_no_profile` variant for
+  future callers that need to distinguish anonymous from
+  mid-onboarding → defer until a real consumer needs it (avoid
+  speculative API surface). Flagged in §Discrepancies.
+- `app/layout.tsx` `ToastProvider` mount remains unwired (per S04
+  user decision). If S06's swiper surfaces want toast feedback, it
+  can be mounted in a one-line edit.
+
+### Blockers resolved
+
+- The `eateries(name)` join on `app/order/[orderId]/page.tsx` was
+  silently broken (deleted table, silent null return). Fixed in
+  the same commit as the redesign rebuild. Future cold-starts no
+  longer need to grep for similar stale joins on this route.
+
+### Next entry point
+
+**Session 06 — Swiper surface.** `/account` (modal overlay),
+`/swiper-registration` (school + Stripe link), `/swiper/orders`
+(queue), `/stripe/onboard/complete`, `/stripe/onboard/refresh`. The
+`app/swiper/layout.tsx` server gate must stay server-side (master
+plan §10 security invariant). S06 is the natural place to migrate
+the deferred `/checkout` and `/current-orders` callers onto
+`resolvePrincipal`.
+
+### Code review (cumulative diff)
+
+`code-reviewer` agent ran on the two-commit cumulative diff before
+session close. Verdict: **APPROVE — 0 critical / 0 high / 1 medium
+/ 0 low.** All ten S05 constraints pass: frozen paths, state
+machine preservation, Combobox dual-input pattern, hidden form
+fields, no client-side debounce, no toasts, frontend-only helper,
+correct discriminated-union shape, schema fix, no `console.log`.
+
+The single MEDIUM finding (the `resolvePrincipal` mid-onboarding
+latent trap) is a forward-looking design note, not a present bug —
+documented above in §Discrepancies and §Open questions. No
+pre-close fix-up commit was needed (S04 had two HIGH issues fixed
+in `6678065` before close; S05 has none).
+
+### Commits
+
+- `a5c9346` — `feat(auth): rebuild /auth/login against redesigned primitives`
+- `1903c25` — `feat(guest): rebuild /order/[orderId] against redesigned primitives`
+- (SESSION_LOG close commit appended after this entry)
+
+### Tags added
+
+- `phase4/auth-login`
+- `phase4/guest-entry`
