@@ -16,7 +16,7 @@ import { useState } from 'react'
 import { useChatPanel } from '@/components/chat-panel'
 import { OrderCard, formatDollars } from '@/components/order/order-card'
 import { ScreenshotGallery } from '@/components/order/screenshot-gallery'
-import { Modal, ModalContent, ModalTitle } from '@/components/ui/modal'
+import { Modal, ModalContent, ModalTitle, ModalDescription } from '@/components/ui/modal'
 import { Button } from '@/components/ui/button'
 import { Surface } from '@/components/ui/surface'
 
@@ -150,6 +150,9 @@ export function PendingOrdersList({ orders: initialOrders }: Props) {
             <ModalTitle className="pr-6 text-xl">
               {selectedOrder.restaurant_name}
             </ModalTitle>
+            <ModalDescription className="sr-only">
+              Review the cart screenshots and total for this order before accepting.
+            </ModalDescription>
 
             <ScreenshotGallery urls={selectedOrder.cart_screenshot_urls} />
 

@@ -15,7 +15,7 @@
 import { useRouter } from 'next/navigation'
 import { AccountActions } from '@/app/account/account-actions'
 import { SwiperSection } from '@/app/account/swiper-section'
-import { Modal, ModalContent, ModalTitle } from '@/components/ui/modal'
+import { Modal, ModalContent, ModalTitle, ModalDescription } from '@/components/ui/modal'
 
 interface School {
   id: string
@@ -54,6 +54,9 @@ export function AccountPanel({ email, profile, stripeAccount, schools }: Account
           className="max-w-sm gap-5"
         >
           <ModalTitle className="text-xl">Account</ModalTitle>
+          <ModalDescription className="sr-only">
+            Manage your account settings, including swiper status and Stripe payouts.
+          </ModalDescription>
           <p
             data-testid="account-email-display"
             className="text-sm text-muted-foreground"
