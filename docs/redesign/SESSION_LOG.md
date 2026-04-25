@@ -1169,3 +1169,379 @@ in `6678065` before close; S05 has none).
 
 - `phase4/auth-login`
 - `phase4/guest-entry`
+
+---
+
+## Session 06 — Swiper surface (CLOSED)
+
+- **Date:** 2026-04-25
+- **Branch:** `fpoop` (in place; per the standing user direction)
+- **Phase(s):** 4c (swiper-surface craft passes — 5 routes)
+- **Status:** CLOSED
+- **features.md SHA-256:** `e6be0f544ad92a1ebd9e853687d2fa09f5847633ebdfb21f10f219b1a333539f`
+  (unchanged from S01; catalog locked, sentinel green)
+
+### What shipped
+
+Five per-page tagged commits rebuild the entire swiper lifecycle
+(register → Stripe Connect → queue → accept) against the S03
+OKLCH-126 primitive set. Two S03 primitives (`<Modal>`, `<Combobox>`)
+get their first non-auth consumers. One pre-existing catalog drift
+fixed during the rebuild (`account-stripe-dashboard-button` endpoint).
+A code-review-driven fix-up commit closes two HIGH findings before
+session close.
+
+1. **`/swiper/orders` (`app/swiper/orders/page.tsx` + `pending-orders-list.tsx`
+   + `screenshot-gallery.tsx`)** — tag `phase4/swiper-queue`,
+   commit `5e0584b`. **Modal primitive's first real consumer.** The
+   detail surface migrated from a hand-rolled `fixed inset-0
+   bg-black/40` overlay to `<Modal>` + `<ModalContent>` (Radix
+   Dialog) — closes the focus-trap + Escape + return-focus a11y gaps
+   the custom overlay had. Accept state machine preserved
+   byte-for-byte inside `<ModalContent>`: 200 → `openPanel(orderId,
+   'in_progress')` + 5s success banner + remove row; 409 → race
+   banner + remove row; 403/5xx → inline modal error, modal stays
+   open. **TDD-first:** 4 vitest specs locked the state machine
+   BEFORE the Modal swap; all four pass green against the post-swap
+   implementation. `app/swiper/layout.tsx` server-side gate
+   UNTOUCHED (master plan §10 security invariant). New colocated
+   `app/swiper/orders/error.tsx` per `02-routes.md §4`.
+
+2. **`/swiper-registration` (`page.tsx` + `swiper-registration-form.tsx`)** —
+   tag `phase4/swiper-registration`, commit `742ac94`. **Combobox
+   primitive's first non-auth consumer.** School selector migrated
+   from native `<select>` to `<Combobox>` (Base UI) matching the
+   auth-login dual-input pattern (`<div data-testid="...-school-selector">`
+   wraps `<Combobox>` so Playwright's `getByTestId(...).getByRole('combobox')`
+   disambiguation continues working). Searchable + autoHighlight.
+   4 new vitest specs (TDD-first against pre-rebuild native-select
+   impl, then re-run green against post-rebuild Combobox impl).
+   Brand voice: one lime CTA per screen ("Continue to payment
+   setup" is `variant="primary"`; Save School is `variant="subtle"`),
+   inline `text-destructive role="alert"` errors.
+
+3. **`/account` (`page.tsx` + `account-panel.tsx` + `account-actions.tsx`
+   + `swiper-section.tsx`)** — tag `phase4/account`, commit `08dfad0`.
+   **Modal primitive's second consumer.** Account-overlay markup
+   (custom `fixed inset-0 bg-black/30`) migrated to
+   `<Modal open onOpenChange={(o) => !o && router.back()}>`.
+   `account-page` testid lives on a `sr-only <main>` sentinel since
+   the Modal portals out of the page tree. School selector also
+   migrated to Combobox. Brand voice: tinted status pills
+   (`bg-primary/15` lime tint instead of `bg-green-100`; `bg-muted`
+   instead of `bg-yellow-100`); destructive-tinted delete-confirm
+   panel with equal-weight Cancel.
+
+   **Pre-existing catalog drift fixed:** `account-stripe-dashboard-button`
+   was POSTing to `/api/stripe/connect` (relink endpoint) instead
+   of `/api/stripe/connect/dashboard` (Express dashboard one-time
+   login link, per locked catalog SWIP-ACCOUNT-STRIPE-DASHBOARD).
+   The redesign rebuild aligns the call site to the SHA-locked
+   source of truth — same shape as S04's fix of the broken
+   `eateries(name)` join. Vitest spec #2 in
+   `swiper-section.test.tsx` FAILED against pre-rebuild code (drift
+   detected by the catalog) and PASSES after rebuild (drift fixed)
+   — TDD-validated.
+
+   4 new vitest specs covering school PATCH soft-disable, dashboard
+   endpoint, link endpoint, and become-swiper CTA target.
+
+4. **`/stripe/onboard/complete` (`page.tsx` + new `error.tsx`)** —
+   tag `phase4/stripe-onboard-complete`, commit `a0bc695`. Page
+   state machine preserved verbatim: Stripe SDK `accounts.retrieve`
+   for webhook-race absorption; `createServiceClient()` (consuming
+   the frozen path) for the atomic
+   `update({ is_swiper: true }).eq('id', userId).eq('is_swiper', false)`
+   write; redirect to `/?notice=swiper_activated` on success.
+
+   **One subtle behavioral correction:** S01 had a path where
+   `onboarding_complete=true` AND `school_id=null` would still
+   reach `redirect('/?notice=swiper_activated')`. The redesign
+   guards `if (profile?.school_id) redirect(...)` so the
+   school-missing case correctly falls through to the "Almost
+   there" fallback. Matches catalog SWIP-ONBOARD-ALMOST-THERE
+   intent (`onboarding incomplete OR school not set`). User
+   without a school in S01 would land home with a "you're
+   activated" notice and then bounce out of /swiper/orders due to
+   the layout gate; the redesign sends them back to
+   /swiper-registration to finish.
+
+   **Logging cleanup:** dropped one `console.log` debug breadcrumb
+   per typescript/coding-style.md ("No console.log in production
+   code"). Initially also dropped a `console.error` for profile
+   fetch failure as "unused"; restored in the fix-up commit
+   (`ef291cf`) after code-review HIGH finding noted that
+   logging-only errors are still load-bearing for production
+   debugging on a money-moving path.
+
+   New colocated `error.tsx` per `02-routes.md §4`. **No vitest
+   specs** — server-only resolver; mocking Stripe + Supabase +
+   redirect is high-effort low-yield. Coverage via manual smoke
+   + E2E + the new error.tsx for crash safety. Documented in
+   shape.md and here.
+
+5. **`/stripe/onboard/refresh` (`page.tsx`)** — tag
+   `phase4/stripe-onboard-refresh`, commit `237dbfb`. Static page
+   restyled against `<Surface>` + `<Button asChild><Link/>` to
+   mirror the /stripe/onboard/complete Almost There fallback shape;
+   the two terminal Stripe-Connect surfaces now read as a sibling
+   pair. No `error.tsx` (no async work; not listed in `02-routes.md §4`).
+
+6. **Code-review fix-up commit `ef291cf`** — bundled the four
+   review-driven changes plus an e2e spec migration:
+   - **HIGH** Restored `console.error` for profile-fetch failure in
+     `/stripe/onboard/complete/page.tsx`.
+   - **HIGH** Extracted `lib/ui/sanitize-error-message.ts` (the two
+     new error.tsx files shipped byte-for-byte identical sanitize()
+     helpers). The shared helper also strips two extra patterns the
+     originals missed per security-reviewer MEDIUM: absolute file
+     paths (`/foo/bar.ts` → `[file]`) and IP:port fragments
+     (`127.0.0.1:54322` → `[internal]`).
+   - **MEDIUM** Replaced two `as` casts in Combobox `onValueChange`
+     handlers with a runtime type guard `asSchoolItem(raw: unknown)`.
+   - **LOW** Added JSDoc to `handleOpen` / `handleClose` in
+     `pending-orders-list.tsx`.
+   - **E2E** `tests/e2e/authenticated/swiper.spec.ts:132` migrated
+     from `.selectOption()` against native `<select>` to the
+     Combobox interaction pattern
+     (`getByTestId(...).getByRole('combobox', { name: 'Search schools…' })`
+     + fill + ArrowDown + Enter). Required because Base UI's
+     Combobox renders BOTH an `<input role="combobox">` AND a
+     trigger `<button role="combobox">` — `getByRole('combobox')`
+     alone trips Playwright strict mode. Named-role disambiguation
+     resolves it.
+
+### Helper migration close-out (S05 deferred task)
+
+Per the user-confirmed plan decision #4: **`resolvePrincipal`
+migration is deliberately not migrated.** The S05 SESSION_LOG entry
+"Optional helper migration (DEFERRED to S06)" closes here as
+**"deliberately not migrated; revisit when a consumer actually
+branches on principal kind."**
+
+Rationale recorded for future cold-start authors:
+- `app/checkout/page.tsx` is `'use client'`; it consumes
+  `supabase.auth.getUser()` via the BROWSER client in a `useEffect`.
+  `resolvePrincipal` requires `cookies()` from `next/headers` —
+  server-only. Migration would require splitting /checkout into a
+  server shell (resolves principal, passes `kind` as a prop) plus
+  a client form (sessionStorage + Stripe iframe + form state). That
+  is a Phase 4 page rebuild, not a follow-up refactor commit.
+- `app/current-orders/page.tsx` IS a server component and migration
+  is technically a 5-line drop-in. But /current-orders only branches
+  on logged-in/out — the helper's 5-way classification is wasted
+  there, AND the migration adds 2 redundant DB queries per render
+  (profile + stripe_accounts lookups not gated by branch). Cost-
+  benefit is negative.
+
+The helper continues to live with one consumer (`/auth/login` page
+server component) plus full unit coverage (12 specs). It will see
+real adoption in S07, when the shell rewrite (header server-side
+branch + layout gates) needs the 5-way classification for real.
+
+### ToastProvider mount decision (still carried forward)
+
+Toast still not mounted, not consumed, not imported in S06. Per
+S04/S05 user direction. All transient feedback in S06 renders
+inline as `<p role="alert" text-destructive>` rows or as
+`<Surface>` status banners. The S03 toast primitive stays on disk
+and unit-tested but inert. `app/layout.tsx` UNTOUCHED — S07 owns
+the shell rewrite.
+
+### User-confirmed scope decisions (recorded in plan)
+
+- Page execution order: **high-risk → low-risk** (`/swiper/orders`
+  first, `/stripe/onboard/refresh` last).
+- School selectors: **migrate to `<Combobox>`** on both
+  `/swiper-registration` and `/account` (matching auth-login).
+- `/swiper/orders` detail modal: **migrate to S03 `<Modal>`
+  primitive** (closes focus-trap + Escape + return-focus gaps).
+- Helper migration: **defer entirely.**
+
+All four locked in user-facing AskUserQuestion answers + plan file.
+
+### Verification gauntlet
+
+- `npm run lint` — green
+- `npm run test` (vitest) — **31 files / 249 tests** passed (was
+  28 / 237 in S05; +3 files / +12 tests across the four S06 spec
+  additions). The +12 breakdown:
+  - `tests/unit/app/swiper/orders/pending-orders-list.test.tsx`: 4 specs (state machine).
+  - `tests/unit/app/swiper-registration/swiper-registration-form.test.tsx`: 4 specs (step transition + Stripe redirect + error).
+  - `tests/unit/app/account/swiper-section.test.tsx`: 4 specs (school PATCH + dashboard endpoint + link endpoint + become CTA).
+- `npm run build` — green; **26 routes** still build
+- `npm run lint:features-hash` — green; SHA matches S01
+- **Contract sentinel** (`git diff HEAD` against frozen paths) — **0 lines**
+- **Bundle sentinel** — `! grep -r "SUPABASE_SECRET_KEY\|createServiceClient"
+  .next/static/` clean
+- **Frozen-string grep** (pinned S05 command) — counts unchanged at **5**
+- **Realtime channel grep** — unchanged at **2**
+- **Catalog testid coverage** — all 25 catalog testids for the 5
+  S06 pages present on the new markup (verified by grep against
+  `00-features.md`).
+- **Playwright** — **27 passed / 8 failed / 16 did not run** —
+  exact match to S05 baseline (27/8/16). The 8 failures and 16
+  skips are the same pre-existing `eateries`/`menu_items`/
+  `seed_dev_eateries`/`/swiper/dashboard`/removed-`pay`-route
+  fixtures; zero new regressions after the spec migration.
+- **Single-spec re-run** of `tests/e2e/authenticated/swiper.spec.ts`:
+  `2/2 passed` (post-Combobox-migration in fix-up commit).
+
+### Discrepancies flagged (carried forward)
+
+- Catalog summary count is still stale (91 reported in S01 vs. 107
+  actual). Cosmetic; deferred indefinitely.
+- `app/@banner/` parallel slot still on disk; deferred to S07
+  shell rewrite.
+- `lib/realtime/channel-registry.ts` (master plan §11) still not
+  introduced — S07 deliverable.
+- Modal-primitive close-animation timing in `pending-orders-list.tsx`:
+  the `{selectedOrder && <ModalContent>}` conditional render
+  unmounts content immediately when the Modal sets `open=false`,
+  potentially cutting Radix's exit animation. Cosmetic; flagged
+  by code-reviewer as MEDIUM. Deferred — fix would need a
+  "lastSelectedOrder" state shadow that survives the close animation.
+- Helper migration officially closed as "deliberately not migrated"
+  per user-confirmed plan decision #4. NOT carried forward as a
+  deferred task.
+
+### Files added/changed (editable surface only)
+
+```
+app/swiper/orders/page.tsx                         (rewrite)
+app/swiper/orders/pending-orders-list.tsx          (rewrite — Modal swap)
+app/swiper/orders/error.tsx                        (new)
+components/order/screenshot-gallery.tsx            (token cascade)
+app/swiper-registration/page.tsx                   (rewrite)
+app/swiper-registration/swiper-registration-form.tsx (rewrite — Combobox swap)
+app/account/page.tsx                               (rewrite)
+app/account/account-actions.tsx                    (rewrite)
+app/account/swiper-section.tsx                     (rewrite — Combobox swap + dashboard endpoint fix)
+components/account-panel.tsx                       (rewrite — Modal swap)
+app/stripe/onboard/complete/page.tsx               (rewrite + school-missing guard)
+app/stripe/onboard/complete/error.tsx              (new)
+app/stripe/onboard/refresh/page.tsx                (rewrite)
+lib/ui/sanitize-error-message.ts                   (new — extracted from 2 error.tsx files)
+tests/unit/app/swiper/orders/pending-orders-list.test.tsx (new — 4 specs)
+tests/unit/app/swiper-registration/swiper-registration-form.test.tsx (new — 4 specs)
+tests/unit/app/account/swiper-section.test.tsx      (new — 4 specs)
+tests/e2e/authenticated/swiper.spec.ts             (Combobox interaction migration)
+docs/redesign/04-pages/swiper-queue/{shape,craft}.md            (new)
+docs/redesign/04-pages/swiper-registration/{shape,craft}.md     (new)
+docs/redesign/04-pages/account/{shape,craft}.md                 (new)
+docs/redesign/04-pages/stripe-onboard-complete/{shape,craft}.md (new)
+docs/redesign/04-pages/stripe-onboard-refresh/{shape,craft}.md  (new)
+docs/redesign/SESSION_LOG.md                       (this entry appended)
+```
+
+`app/swiper/layout.tsx` — UNTOUCHED (master plan §10 security
+invariant). `app/layout.tsx` — UNTOUCHED (S07 owns the shell
+rewrite). Frozen surface (`app/api/**`, `lib/supabase/**`,
+`lib/stripe/**`, `lib/orders/state-machine.ts`, `lib/types/**`,
+`lib/api/{guest-auth,helpers}.ts`, `supabase/**`, `scripts/**`) —
+UNTOUCHED, sentinel verified. `00-features.md` — UNTOUCHED (locked
+SHA preserved). `components/ui/*` primitives — UNTOUCHED (no S03
+primitive needed extension this session).
+
+### Primitives added/extended
+
+- **First non-auth real consumers** (S03 shipped them; S06 made
+  them earn their place):
+  - `<Modal>` → `/swiper/orders` detail dialog + `/account` modal.
+  - `<Combobox>` → `/swiper-registration` school + `/account` school.
+- **New shared helper:** `lib/ui/sanitize-error-message.ts`
+  (consumed by both new error.tsx boundaries; extracted to satisfy
+  the consolidation rule when the second consumer landed).
+
+### Backend-contract sentinel
+
+GREEN | exceptions: none.
+
+### Open questions
+
+- Modal-primitive close-animation timing: deferred MEDIUM from
+  code-reviewer (pending-orders-list.tsx). Fix would require
+  shadowing the selected-order state so the modal child stays
+  mounted during the exit animation.
+- The `/account` LOW security finding (open-redirect on
+  `window.location.href = url` from Stripe-API-returned URLs):
+  not exploitable today (the frozen API derives URLs entirely
+  from Stripe SDK). Belt-and-suspenders origin-validation could
+  be added in S08 polish.
+
+### Blockers resolved
+
+- **E2E Combobox interaction strict-mode violation.** Base UI's
+  Combobox renders BOTH an `<input role="combobox">` and a
+  trigger `<button role="combobox">`. `getByRole('combobox')` by
+  itself trips Playwright strict mode. Named-role disambiguation
+  (`getByRole('combobox', { name: '...' })`) resolves it. Pattern
+  applies to any future Combobox interaction in tests; auth-login
+  uses simple `getByRole('combobox')` without strict-mode trip
+  because its tests apparently never asserted visibility before
+  interaction. The pinned pattern for future sessions:
+  `getByTestId('<wrapper>').getByRole('combobox', { name: '<placeholder>' })`.
+
+### Next entry point
+
+**Session 07 — Global shell + realtime audit.** `app/layout.tsx`
+rewrite (drop `banner` parallel slot per `02-routes.md §6 ADR-1`
++ §1 decision); `components/header.tsx`, `components/banner.tsx`,
+`components/swiper-orders-button.tsx`, `components/chat-panel/**`
+restyle; introduce `lib/realtime/channel-registry.ts` (ref-counted
+singleton subscription per master plan §11). The
+`resolvePrincipal` helper sees its real adoption here (header
+branches on principal kind). `app/@banner/` parallel slot deletion
+finally happens. Visibility-refetch hook
+(`hooks/use-visibility-refetch.ts`) added per master plan §11.
+
+### Code review (cumulative diff)
+
+`code-reviewer` agent ran on the five-commit cumulative diff
+before session close. Verdict: **WARNING** with **0 critical / 2
+high / 2 medium / 2 low** findings. Both HIGHs and one MEDIUM
+addressed in fix-up commit `ef291cf` before this log entry was
+committed:
+
+- HIGH: silent profile-fetch error swallow in
+  `/stripe/onboard/complete/page.tsx` → `console.error` restored.
+- HIGH: duplicate `sanitize()` byte-for-byte in two error.tsx
+  files → extracted to `lib/ui/sanitize-error-message.ts`.
+- MEDIUM: `as` cast on Combobox `onValueChange` (two sites) →
+  replaced with `asSchoolItem` runtime type guard.
+- LOW: missing JSDoc on `handleOpen` / `handleClose` in
+  `pending-orders-list.tsx` → JSDoc added.
+
+`security-reviewer` agent ran in parallel. Verdict: **APPROVE** with
+**0 critical / 0 high / 1 medium / 1 low / 1 design choice**:
+
+- MEDIUM: sanitize() regex didn't strip absolute paths or IP:port
+  fragments → fixed in `lib/ui/sanitize-error-message.ts`
+  extraction (security-reviewer's MEDIUM and code-reviewer's HIGH
+  resolved in the same commit).
+- LOW: open-redirect risk on `window.location.href = url` from
+  Stripe-API-returned URLs → not exploitable today (frozen API
+  derives URLs from Stripe SDK only); deferred.
+- Design choice (not a vulnerability): `router.back()` fires
+  before `await signOut()` / `await deleteAccount()` in
+  account-actions.tsx → preserved verbatim from S01 (snappy UX;
+  failed delete leaves account intact, which is the safe failure
+  mode).
+
+### Commits
+
+- `5e0584b` — `feat(swiper): rebuild /swiper/orders against redesigned primitives`
+- `742ac94` — `feat(swiper-registration): rebuild against redesigned primitives`
+- `08dfad0` — `feat(account): rebuild /account against redesigned primitives`
+- `a0bc695` — `feat(stripe-onboard): rebuild /stripe/onboard/complete against redesigned primitives`
+- `237dbfb` — `feat(stripe-onboard): rebuild /stripe/onboard/refresh against redesigned primitives`
+- `ef291cf` — `fix(s06): code-review fix-up + e2e spec Combobox migration`
+- (SESSION_LOG close commit appended after this entry)
+
+### Tags added
+
+- `phase4/swiper-queue`
+- `phase4/swiper-registration`
+- `phase4/account`
+- `phase4/stripe-onboard-complete`
+- `phase4/stripe-onboard-refresh`
