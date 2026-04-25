@@ -2,17 +2,25 @@
 
 /**
  * @file account-panel.tsx
- * @description Modal overlay panel showing the user's email, account actions, and swiper section.
- *   Called by: app/account/page.tsx, app/@modal/(.)account/page.tsx
- * @dependencies app/account/account-actions.tsx, app/account/swiper-section.tsx
+ * @description Account modal — second consumer of the S03 <Modal> primitive
+ *   after /swiper/orders. router.back() preserved on close so deep-link
+ *   semantics from any route survive (header avatar tap, swiper-button
+ *   redirect, OAuth landing). Hosts AccountActions + SwiperSection inside
+ *   <ModalContent>. The catalog testids `account-page` (root) and
+ *   `account-modal` (modal content) both ride along.
+ *   Called by: app/account/page.tsx
+ * @dependencies components/ui/modal, app/account/account-actions, app/account/swiper-section
  */
 
 import { useRouter } from 'next/navigation'
-import { X } from 'lucide-react'
 import { AccountActions } from '@/app/account/account-actions'
 import { SwiperSection } from '@/app/account/swiper-section'
+import { Modal, ModalContent, ModalTitle } from '@/components/ui/modal'
 
-type School = { id: string; name: string }
+interface School {
+  id: string
+  name: string
+}
 
 interface AccountPanelProps {
   email: string
@@ -22,52 +30,44 @@ interface AccountPanelProps {
 }
 
 /**
- * Renders the full account modal with email display, action buttons, and swiper management.
- * @param email - Authenticated user's email address
- * @param profile - User profile with is_swiper and school_id fields
- * @param stripeAccount - Stripe Connect onboarding status, or null if not connected
- * @param schools - Available schools for the swiper school selector
- * @called-by app/account/page.tsx, app/@modal/(.)account/page.tsx
+ * Renders the /account modal: email, account actions, swiper section.
+ * @param email - The authenticated user's email
+ * @param profile - Profile flags driving the swiper-section branch
+ * @param stripeAccount - Stripe Connect onboarding state, or null
+ * @param schools - Schools available for the swiper school selector
+ * @returns Modal-wrapped account panel; closes via router.back()
+ * @called-by app/account/page.tsx
  */
 export function AccountPanel({ email, profile, stripeAccount, schools }: AccountPanelProps) {
   const router = useRouter()
 
   return (
-    <div data-testid="account-page" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      {/* Backdrop */}
-      <button
-        type="button"
-        aria-label="Close account"
-        onClick={() => router.back()}
-        className="absolute inset-0 cursor-default"
-      />
-
-      {/* Card */}
-      <div data-testid="account-modal" className="relative z-10 w-full mx-4 max-w-sm bg-white rounded-xl shadow-xl overflow-y-auto max-h-[90vh]">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-100 px-4 py-4">
-          <h1 className="text-base font-semibold text-gray-900">Account</h1>
-          <button
-            type="button"
-            aria-label="Close"
-            onClick={() => router.back()}
-            className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-gray-100"
+    <main data-testid="account-page" className="sr-only">
+      <Modal
+        open
+        onOpenChange={(open) => {
+          if (!open) router.back()
+        }}
+      >
+        <ModalContent
+          data-testid="account-modal"
+          className="max-w-sm gap-5"
+        >
+          <ModalTitle className="text-xl">Account</ModalTitle>
+          <p
+            data-testid="account-email-display"
+            className="text-sm text-muted-foreground"
           >
-            <X className="h-4 w-4 text-gray-700" />
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="p-6">
-          <p data-testid="account-email-display" className="text-sm text-gray-500 mb-6">{email}</p>
+            {email}
+          </p>
           <AccountActions />
           <SwiperSection
             profile={profile}
             stripeAccount={stripeAccount}
             schools={schools}
           />
-        </div>
-      </div>
-    </div>
+        </ModalContent>
+      </Modal>
+    </main>
   )
 }

@@ -2,30 +2,47 @@
 
 /**
  * @file swiper-section.tsx
- * @description Client components for the swiper-specific section of the account page.
- *   Shows swiper status, school selector, and Stripe Connect link/relink controls.
+ * @description Account modal's swiper-aware section. Two branches:
+ *   non-swiper sees a "Become a swiper" CTA → /swiper-registration; active
+ *   swiper sees school management (Combobox) and Stripe Connect status +
+ *   dashboard/relink controls. PATCH /api/profile for school changes;
+ *   POST /api/stripe/connect for relink (pending state); POST
+ *   /api/stripe/connect/dashboard for the Express login link (active state).
  *   Called by: components/account-panel.tsx
- * @dependencies lib/supabase/server.ts (data passed via props)
+ * @dependencies components/ui/{button,combobox}
  */
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { Button } from '@/components/ui/button'
+import {
+  Combobox,
+  ComboboxInput,
+  ComboboxContent,
+  ComboboxList,
+  ComboboxItem,
+  ComboboxEmpty,
+} from '@/components/ui/combobox'
 
-type School = { id: string; name: string }
+interface School {
+  id: string
+  name: string
+}
 
-type Props = {
+interface SwiperSectionProps {
   profile: { is_swiper: boolean; school_id: string | null }
   stripeAccount: { onboarding_complete: boolean } | null
   schools: School[]
 }
 
 /**
- * Renders swiper recruitment CTA for non-swipers, or SwiperStatus panel for active swipers.
- * @returns SwiperStatus panel or "Become a Swiper" CTA
+ * Branches on `profile.is_swiper` to either show the "Become a swiper" CTA
+ * or the active-swiper management UI.
+ * @returns Either the CTA or `<SwiperStatus />`
  * @called-by components/account-panel.tsx
  */
-export function SwiperSection({ profile, stripeAccount, schools }: Props) {
+export function SwiperSection({ profile, stripeAccount, schools }: SwiperSectionProps) {
   if (profile.is_swiper) {
     return (
       <SwiperStatus
@@ -35,178 +52,228 @@ export function SwiperSection({ profile, stripeAccount, schools }: Props) {
       />
     )
   }
-
   return (
-    <div className="space-y-6">
-      <hr className="border-gray-200" />
-      <div>
-        <h2 className="text-lg font-semibold mb-1">Become a Swiper</h2>
-        <p className="text-sm text-gray-500 mb-4">
-          Fulfill orders using your meal plan and earn $6 per item.
-        </p>
-        <Link
-          href="/swiper-registration"
-          data-testid="account-become-swiper-cta"
-          className="inline-block rounded-md bg-black px-4 py-2 text-white hover:bg-gray-800"
-        >
-          Get Started
+    <div className="mt-6 border-t border-border pt-6">
+      <h2 className="text-lg font-semibold">Become a swiper</h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Fulfill orders using your meal plan and earn money per delivery.
+      </p>
+      <Button
+        variant="primary"
+        size="default"
+        asChild
+        className="mt-4"
+      >
+        <Link href="/swiper-registration" data-testid="account-become-swiper-cta">
+          Get started
         </Link>
-      </div>
+      </Button>
     </div>
   )
 }
 
-type SwiperStatusProps = {
+// --- Helpers ---
+
+interface SwiperStatusProps {
   profile: { school_id: string | null }
   stripeConnected: boolean
   schools: School[]
 }
 
 /**
- * Renders the active swiper's school selector and Stripe Connect account status.
- * @returns School and payment account management UI
+ * Active-swiper management: school Combobox and Stripe Connect controls.
+ * @returns The status + management surface for the active-swiper branch
  * @called-by SwiperSection
  */
 function SwiperStatus({ profile, stripeConnected, schools }: SwiperStatusProps) {
+  const router = useRouter()
+  const currentSchool = schools.find((s) => s.id === profile.school_id) ?? null
+
   const [changingSchool, setChangingSchool] = useState(false)
-  const [schoolId, setSchoolId] = useState(profile.school_id ?? '')
+  const [selectedSchool, setSelectedSchool] = useState<{ value: string; label: string } | null>(
+    currentSchool ? { value: currentSchool.id, label: currentSchool.name } : null,
+  )
+  const [schoolSearchQuery, setSchoolSearchQuery] = useState('')
   const [saving, setSaving] = useState(false)
   const [linking, setLinking] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [schoolSavedMsg, setSchoolSavedMsg] = useState(false)
-  const router = useRouter()
-
-  const currentSchool = schools.find((s) => s.id === profile.school_id)
 
   async function handleSaveSchool() {
-    if (!schoolId) return
+    if (!selectedSchool) return
     setSaving(true)
     setError(null)
-    const res = await fetch('/api/profile', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ school_id: schoolId }),
-    })
-    setSaving(false)
-    if (!res.ok) {
-      const body = await res.json()
-      setError(body.error ?? 'Failed to save school')
-      return
+    try {
+      const res = await fetch('/api/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ school_id: selectedSchool.value }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setError((body as { error?: string }).error ?? 'Failed to save school.')
+        return
+      }
+      setChangingSchool(false)
+      setSchoolSavedMsg(true)
+      setTimeout(() => setSchoolSavedMsg(false), 3000)
+      router.refresh()
+    } catch {
+      setError('Network error. Please try again.')
+    } finally {
+      setSaving(false)
     }
-    setChangingSchool(false)
-    setSchoolSavedMsg(true)
-    setTimeout(() => setSchoolSavedMsg(false), 3000)
-    router.refresh()
   }
 
-  async function handleRelinkPayment() {
+  async function handleStripeAction(endpoint: '/api/stripe/connect' | '/api/stripe/connect/dashboard') {
     setLinking(true)
     setError(null)
-    const res = await fetch('/api/stripe/connect', { method: 'POST' })
-    if (!res.ok) {
-      const body = await res.json()
-      setError(body.error ?? 'Failed to get onboarding link')
+    try {
+      const res = await fetch(endpoint, { method: 'POST' })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setError((body as { error?: string }).error ?? 'Failed to open Stripe.')
+        setLinking(false)
+        return
+      }
+      const { url } = (await res.json()) as { url: string }
+      window.location.href = url
+    } catch {
+      setError('Network error. Please try again.')
       setLinking(false)
-      return
     }
-    const { url } = await res.json()
-    window.location.href = url
   }
 
   return (
-    <div className="space-y-6">
-      <hr className="border-gray-200" />
-      <div>
-        <div className="flex items-center gap-2 mb-4">
-          <h2 className="text-lg font-semibold">Swiper</h2>
-          <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-            Active
-          </span>
-        </div>
+    <div className="mt-6 flex flex-col gap-5 border-t border-border pt-6">
+      <div className="flex items-center gap-2">
+        <h2 className="text-lg font-semibold">Swiper</h2>
+        <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-foreground">
+          Active
+        </span>
+      </div>
 
-        {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
-        {schoolSavedMsg && <p className="text-sm text-green-600 mb-3">School saved</p>}
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
+      {schoolSavedMsg && (
+        <p role="status" className="text-sm text-foreground/80">
+          School saved.
+        </p>
+      )}
 
-        {/* School */}
-        <div className="mb-4">
-          <p className="text-sm text-gray-500 mb-1">School</p>
-          {!changingSchool ? (
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-medium">{currentSchool?.name ?? '—'}</span>
-              <button
-                onClick={() => setChangingSchool(true)}
-                className="text-sm text-gray-500 underline hover:text-gray-700"
+      <div className="flex flex-col gap-2">
+        <p className="text-xs uppercase tracking-wide text-muted-foreground">School</p>
+        {!changingSchool ? (
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium">{currentSchool?.name ?? '—'}</span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setChangingSchool(true)}
+              className="-ml-2"
+            >
+              Change
+            </Button>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+            <div data-testid="account-school-selector" className="flex-1">
+              <Combobox
+                value={selectedSchool}
+                onValueChange={(value) =>
+                  setSelectedSchool(value as { value: string; label: string } | null)
+                }
+                onInputValueChange={(inputValue) => setSchoolSearchQuery(inputValue)}
+                isItemEqualToValue={(a, b) => a.value === b.value}
+                autoHighlight
               >
-                Change
-              </button>
+                <ComboboxInput placeholder="Search schools…" className="h-10 text-sm" />
+                <ComboboxContent>
+                  <ComboboxList>
+                    {schools.map((school) => (
+                      <ComboboxItem
+                        key={school.id}
+                        value={{ value: school.id, label: school.name }}
+                        className="py-2.5 text-sm"
+                      >
+                        {school.name}
+                      </ComboboxItem>
+                    ))}
+                    {schoolSearchQuery.trim().length > 0 && (
+                      <ComboboxEmpty>No schools found</ComboboxEmpty>
+                    )}
+                  </ComboboxList>
+                </ComboboxContent>
+              </Combobox>
             </div>
-          ) : (
-            <div className="flex flex-col sm:flex-row gap-2">
-              <select
-                name="school_id"
-                value={schoolId}
-                onChange={(e) => setSchoolId(e.target.value)}
-                data-testid="account-school-selector"
-                className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black"
-              >
-                <option value="">Select a school…</option>
-                {schools.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-              <button
-                onClick={handleSaveSchool}
-                disabled={saving || !schoolId}
-                data-testid="account-school-save-button"
-                className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              >
-                {saving ? 'Saving…' : 'Save School'}
-              </button>
-              <button
-                onClick={() => setChangingSchool(false)}
-                className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-            </div>
-          )}
-        </div>
+            <Button
+              type="button"
+              variant="subtle"
+              size="default"
+              onClick={handleSaveSchool}
+              disabled={saving || !selectedSchool}
+              data-testid="account-school-save-button"
+            >
+              {saving ? 'Saving…' : 'Save school'}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="default"
+              onClick={() => setChangingSchool(false)}
+            >
+              Cancel
+            </Button>
+          </div>
+        )}
+      </div>
 
-        {/* Stripe status */}
-        <div>
-          <p className="text-sm text-gray-500 mb-1">Payment account</p>
-          {stripeConnected ? (
-            <div className="flex items-center gap-3">
-              <span data-testid="account-stripe-status" className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-                Connected
-              </span>
-              <button
-                onClick={handleRelinkPayment}
-                disabled={linking}
-                data-testid="account-stripe-dashboard-button"
-                className="text-sm text-gray-500 underline hover:text-gray-700 disabled:opacity-50"
-              >
-                {linking ? 'Opening Stripe…' : 'Update payment info'}
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-3">
-              <span data-testid="account-stripe-status" className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700">
-                Pending
-              </span>
-              <button
-                onClick={handleRelinkPayment}
-                disabled={linking}
-                data-testid="account-stripe-link-button"
-                className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              >
-                {linking ? 'Opening Stripe…' : 'Complete Payment Setup'}
-              </button>
-            </div>
-          )}
-        </div>
+      <div className="flex flex-col gap-2">
+        <p className="text-xs uppercase tracking-wide text-muted-foreground">Payment account</p>
+        {stripeConnected ? (
+          <div className="flex items-center gap-3">
+            <span
+              data-testid="account-stripe-status"
+              className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-foreground"
+            >
+              Connected
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => handleStripeAction('/api/stripe/connect/dashboard')}
+              disabled={linking}
+              data-testid="account-stripe-dashboard-button"
+              className="-ml-2"
+            >
+              {linking ? 'Opening Stripe…' : 'Open dashboard'}
+            </Button>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <span
+              data-testid="account-stripe-status"
+              className="self-start rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
+            >
+              Pending
+            </span>
+            <Button
+              type="button"
+              variant="primary"
+              size="default"
+              onClick={() => handleStripeAction('/api/stripe/connect')}
+              disabled={linking}
+              data-testid="account-stripe-link-button"
+            >
+              {linking ? 'Opening Stripe…' : 'Complete payment setup'}
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   )

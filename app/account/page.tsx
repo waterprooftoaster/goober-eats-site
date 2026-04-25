@@ -1,8 +1,10 @@
 /**
  * @file page.tsx
- * @description Full-page account view; fetches profile, Stripe account, and schools, then renders AccountPanel.
- *   Called by: Next.js routing (direct navigation to /account)
- * @dependencies lib/supabase/server.ts, components/account-panel.tsx
+ * @description /account server component. Fetches profile + stripe_accounts
+ *   + schools in parallel, then hands off to <AccountPanel /> which renders
+ *   inside the S03 <Modal> primitive. Anonymous users redirect to login.
+ *   Called by: Next.js routing (/account); header avatar link.
+ * @dependencies lib/supabase/server.ts, components/account-panel
  */
 
 import { createClient } from '@/lib/supabase/server'
@@ -10,26 +12,23 @@ import { redirect } from 'next/navigation'
 import { AccountPanel } from '@/components/account-panel'
 
 /**
- * Fetches the authenticated user's profile, Stripe account status, and available schools.
- * @returns AccountPanel component; redirects to /auth/login if unauthenticated
- * @called-by Next.js routing (/account)
+ * Server-side data prefetch for the account modal. All three queries run
+ * in parallel; missing profile rows fall through to the orderer view (the
+ * "Become a swiper" CTA).
+ * @returns The AccountPanel element
+ * @called-by Next.js App Router (/account)
  */
 export default async function AccountPage() {
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect('/auth/login')
-  }
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/auth/login')
 
   const [profileResult, stripeResult, schoolsResult] = await Promise.all([
     supabase
       .from('profiles')
       .select('is_swiper, school_id')
       .eq('id', user.id)
-      .single(),
+      .maybeSingle(),
     supabase
       .from('stripe_accounts')
       .select('onboarding_complete')
