@@ -2,23 +2,29 @@
 
 /**
  * @file chat-panel.tsx
- * @description Fixed-position chat panel stack rendering one ChatPanelItem per open order.
- *   Mobile shows only the newest panel; desktop shows all stacked above the bottom-right.
+ * @description Renders the open chat panels with two layouts: a stacked
+ *   bottom-right column on desktop (sm+) and a vaul-powered Sheet for the
+ *   newest panel on mobile (max-sm). Both share the same ChatPanelContent.
+ *   The Sheet ships scrim + drag-to-dismiss + focus-trap + ESC + scroll-lock
+ *   per .impeccable.md principle 1 (mobile-first, time-pressured users).
  *   Called by: app/layout.tsx
- * @dependencies components/chat/chat-view.tsx, components/chat-panel/chat-panel-context.ts
+ * @dependencies @/components/chat/chat-view, @/components/ui/sheet,
+ *   @/components/ui/surface, @/components/chat-panel/chat-panel-context
  */
 
 import { useChatPanel } from './chat-panel-context'
 import type { OrderEntry } from './chat-panel-context'
 import { ChatView } from '@/components/chat/chat-view'
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
+import { Surface } from '@/components/ui/surface'
 import { ChevronUp, ChevronDown, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { OrderStatus } from '@/lib/types/database'
 
-interface PanelProps {
+const COMPLETED: OrderStatus = 'completed'
+
+interface DesktopPanelProps {
   entry: OrderEntry
-  /** 0 = newest (bottom of stack); shown on mobile */
-  index: number
   currentUserId: string | null
   onToggle: (orderId: string) => void
   onClose: () => void
@@ -26,55 +32,39 @@ interface PanelProps {
 }
 
 /**
- * Renders a single chat panel card (expanded) or a minimized tab (collapsed).
- * @param entry - Order entry with orderId, status, eateryName, and isExpanded state
- * @param index - Stack position (0 = newest); used to show/hide on mobile
- * @param currentUserId - Passed through to ChatView for message alignment
- * @param onToggle - Toggles the expand/collapse state of this panel
- * @param onClose - Removes this panel from the stack
- * @param onStatusChange - Propagates status updates from ChatView to the global state
- * @called-by ChatPanel
+ * Desktop variant — stacked bottom-right card. Brand-aligned via Surface tokens.
+ * Hidden on max-sm so the mobile Sheet path takes over.
  */
-function ChatPanelItem({ entry, index, currentUserId, onToggle, onClose, onStatusChange }: PanelProps) {
+function DesktopPanelItem({ entry, currentUserId, onToggle, onClose, onStatusChange }: DesktopPanelProps) {
   const { orderId, status, isExpanded } = entry
   const shortId = orderId.slice(0, 8)
-  // Only the first (newest) panel is visible on mobile; all others are hidden
-  const mobileClass = index === 0
-    ? 'max-sm:w-full max-sm:rounded-none max-sm:border-x-0 max-sm:border-b-0 max-sm:border-t'
-    : 'max-sm:hidden'
 
   if (!isExpanded) {
     return (
-      <div className={cn(mobileClass)}>
-        <button
-          onClick={() => onToggle(orderId)}
-          data-testid="chat-panel-header"
-          className={cn(
-            'flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-medium text-white shadow-lg hover:bg-gray-800',
-            index === 0 && 'max-sm:w-full max-sm:justify-between max-sm:rounded-none max-sm:shadow-none'
-          )}
-        >
-          <span>Order #{shortId}</span>
-          <ChevronUp className="h-4 w-4" />
-        </button>
-      </div>
+      <button
+        onClick={() => onToggle(orderId)}
+        data-testid="chat-panel-header"
+        className="hidden sm:flex items-center gap-2 rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-background shadow-lg hover:bg-foreground/90"
+      >
+        <span>Order #{shortId}</span>
+        <ChevronUp className="h-4 w-4" />
+      </button>
     )
   }
 
   return (
-    <div
+    <Surface
       className={cn(
-        'flex flex-col rounded-lg border border-gray-200 bg-white shadow-xl',
-        'w-[360px] h-[28rem]',
-        mobileClass
+        'hidden sm:flex flex-col rounded-lg border border-border shadow-xl',
+        'w-[360px] h-[28rem]'
       )}
     >
-      <div data-testid="chat-panel-header" className="flex items-center justify-between border-b border-gray-200 px-4 py-2.5">
+      <div data-testid="chat-panel-header" className="flex items-center justify-between border-b border-border px-4 py-2.5">
         <span className="text-sm font-semibold">Order #{shortId}</span>
-        {status === 'completed' ? (
+        {status === COMPLETED ? (
           <button
             onClick={onClose}
-            className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+            className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
             aria-label="Close chat"
           >
             <X className="h-4 w-4" />
@@ -82,7 +72,7 @@ function ChatPanelItem({ entry, index, currentUserId, onToggle, onClose, onStatu
         ) : (
           <button
             onClick={() => onToggle(orderId)}
-            className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+            className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
             aria-label="Minimize chat"
           >
             <ChevronDown className="h-4 w-4" />
@@ -92,13 +82,79 @@ function ChatPanelItem({ entry, index, currentUserId, onToggle, onClose, onStatu
       <div className="flex flex-1 flex-col overflow-hidden">
         <ChatView
           orderId={orderId}
+          conversationId={entry.conversationId}
           currentUserId={currentUserId}
           orderStatus={status}
           eateryName={entry.eateryName}
           onStatusChange={(s) => onStatusChange(orderId, s)}
         />
       </div>
-    </div>
+    </Surface>
+  )
+}
+
+interface MobilePanelProps {
+  entry: OrderEntry
+  currentUserId: string | null
+  onToggle: (orderId: string) => void
+  onClose: () => void
+  onStatusChange: (orderId: string, status: OrderStatus) => void
+}
+
+/**
+ * Mobile variant — newest panel rendered inside a vaul Sheet (drag-to-dismiss
+ * + scrim + focus trap). When status='completed', dismissing the Sheet closes
+ * the panel; otherwise it minimizes (preserves the panel for re-expansion).
+ * The collapsed-tab affordance is rendered as a floating bottom strip when
+ * the panel is minimized.
+ */
+function MobileNewestPanel({ entry, currentUserId, onToggle, onClose, onStatusChange }: MobilePanelProps) {
+  const { orderId, status, isExpanded } = entry
+  const shortId = orderId.slice(0, 8)
+
+  function handleOpenChange(open: boolean) {
+    if (open) return
+    if (status === COMPLETED) {
+      onClose()
+    } else {
+      onToggle(orderId)
+    }
+  }
+
+  if (!isExpanded) {
+    return (
+      <div className="sm:hidden fixed inset-x-0 bottom-0 z-40 flex justify-center">
+        <button
+          onClick={() => onToggle(orderId)}
+          data-testid="chat-panel-header"
+          className="flex w-full items-center justify-between gap-2 bg-foreground px-4 py-3 text-sm font-medium text-background shadow-lg"
+        >
+          <span>Order #{shortId}</span>
+          <ChevronUp className="h-4 w-4" />
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <Sheet open={isExpanded} onOpenChange={handleOpenChange}>
+      <SheetContent className="sm:hidden h-[85vh] gap-2 p-0">
+        <SheetTitle className="sr-only">Order #{shortId} chat</SheetTitle>
+        <div data-testid="chat-panel-header" className="flex items-center justify-between border-b border-border px-4 py-2.5">
+          <span className="text-sm font-semibold">Order #{shortId}</span>
+        </div>
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <ChatView
+            orderId={orderId}
+            conversationId={entry.conversationId}
+            currentUserId={currentUserId}
+            orderStatus={status}
+            eateryName={entry.eateryName}
+            onStatusChange={(s) => onStatusChange(orderId, s)}
+          />
+        </div>
+      </SheetContent>
+    </Sheet>
   )
 }
 
@@ -107,9 +163,9 @@ interface Props {
 }
 
 /**
- * Renders all open chat panels as a fixed stack, newest first, in the bottom-right corner.
- * @param currentUserId - The authenticated user's ID for message alignment inside ChatView
- * @returns null if there are no open panels
+ * Renders all open chat panels: desktop stack on sm+, mobile Sheet on max-sm.
+ * @param currentUserId - Authenticated user id for ChatView message alignment
+ * @returns null when no panels are open
  * @called-by app/layout.tsx
  */
 export function ChatPanel({ currentUserId }: Props) {
@@ -118,22 +174,30 @@ export function ChatPanel({ currentUserId }: Props) {
   const panelList = Object.values(orders)
   if (panelList.length === 0) return null
 
-  // Reverse so newest order is at index 0 (bottom of column on desktop, shown on mobile)
+  // Reverse so newest order is at index 0 (top of stack visually on desktop;
+  // the only panel surfaced on mobile)
   const reversed = [...panelList].reverse()
+  const newest = reversed[0]
 
   return (
     <div data-testid="chat-panel-stack" className="fixed bottom-4 right-4 z-50 flex flex-col-reverse gap-4 max-sm:inset-x-0 max-sm:bottom-0 max-sm:right-0">
-      {reversed.map((entry, index) => (
-        <ChatPanelItem
+      {reversed.map((entry) => (
+        <DesktopPanelItem
           key={entry.orderId}
           entry={entry}
-          index={index}
           currentUserId={currentUserId}
           onToggle={toggleMinimize}
           onClose={() => closePanel(entry.orderId)}
           onStatusChange={updateOrderStatus}
         />
       ))}
+      <MobileNewestPanel
+        entry={newest}
+        currentUserId={currentUserId}
+        onToggle={toggleMinimize}
+        onClose={() => closePanel(newest.orderId)}
+        onStatusChange={updateOrderStatus}
+      />
     </div>
   )
 }

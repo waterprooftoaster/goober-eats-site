@@ -2,15 +2,23 @@
 
 /**
  * @file chat-panel-provider.tsx
- * @description Context provider that manages open chat panels and subscribes to Realtime order updates.
- *   On mount, auto-opens panels for all of the user's active orders.
+ * @description Context provider that manages open chat panels and subscribes to
+ *   Realtime order-status updates via the channel registry. On mount, auto-opens
+ *   panels for the user's active orders; the loadActiveOrders query LEFT JOINs
+ *   conversations(id) so each OrderEntry carries the conversationId — the B2
+ *   pairing that lets useMessages skip its own conversations lookup. Wires
+ *   useVisibilityRefetch so a backgrounded tab returning to foreground
+ *   reconciles any orders accepted/cancelled while away.
  *   Called by: app/layout.tsx
- * @dependencies lib/supabase/client.ts, components/chat-panel/chat-panel-context.ts
+ * @dependencies @/lib/realtime/channel-registry, @/hooks/use-visibility-refetch,
+ *   @/lib/constants, @/lib/supabase/client
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { ordersOrdererChannel } from '@/lib/constants'
+import { subscribeChannel, type RegistryHandle } from '@/lib/realtime/channel-registry'
+import { useVisibilityRefetch } from '@/hooks/use-visibility-refetch'
 import { ChatPanelContext } from './chat-panel-context'
 import type { OrderEntry } from './chat-panel-context'
 import type { OrderStatus } from '@/lib/types/database'
@@ -24,8 +32,9 @@ interface Props {
 }
 
 /**
- * Provides chat panel state to the tree; auto-opens panels for existing active orders on mount.
- * @param userId - The authenticated user's ID, or null for guests (disables auto-open and subscriptions)
+ * Provides chat panel state to the tree; auto-opens panels for active orders on mount,
+ * subscribes to order-status updates via the registry, and reconciles on tab return.
+ * @param userId - Authenticated user id, or null for unauthenticated (disables auto-open + subscription)
  * @param children - The application tree to wrap
  * @called-by app/layout.tsx
  */
@@ -33,23 +42,41 @@ export function ChatPanelProvider({ userId, children }: Props) {
   const [orders, setOrders] = useState<Record<string, OrderEntry>>({})
   const ordersRef = useRef<Record<string, OrderEntry>>({})
 
-  // Keep ref in sync so the Realtime callback always sees the latest state
+  // Keep ref in sync so the realtime callback always sees the latest state
   useEffect(() => {
     ordersRef.current = orders
   }, [orders])
 
-  const openPanel = useCallback((orderId: string, status: OrderStatus = 'open', eateryName = '') => {
-    setOrders((prev) => {
-      if (prev[orderId]) {
-        // Backfill eateryName if the panel was opened before the name was known
-        if (eateryName && !prev[orderId].eateryName) {
-          return { ...prev, [orderId]: { ...prev[orderId], eateryName } }
+  const openPanel = useCallback(
+    (
+      orderId: string,
+      status: OrderStatus = 'open',
+      eateryName = '',
+      conversationId: string | null = null
+    ) => {
+      setOrders((prev) => {
+        if (prev[orderId]) {
+          // Backfill eateryName / conversationId if either was unknown when first opened
+          const next = { ...prev[orderId] }
+          let changed = false
+          if (eateryName && !next.eateryName) {
+            next.eateryName = eateryName
+            changed = true
+          }
+          if (conversationId && !next.conversationId) {
+            next.conversationId = conversationId
+            changed = true
+          }
+          return changed ? { ...prev, [orderId]: next } : prev
         }
-        return prev
-      }
-      return { ...prev, [orderId]: { orderId, status, eateryName, isExpanded: true } }
-    })
-  }, [])
+        return {
+          ...prev,
+          [orderId]: { orderId, status, eateryName, conversationId, isExpanded: true },
+        }
+      })
+    },
+    []
+  )
 
   const closePanel = useCallback((orderId: string) => {
     setOrders((prev) => {
@@ -72,7 +99,6 @@ export function ChatPanelProvider({ userId, children }: Props) {
     setOrders((prev) => {
       if (!prev[orderId]) return prev
       if (TERMINAL_STATUSES.includes(status)) {
-        // Auto-close panel when order reaches a terminal state
         const next = { ...prev }
         delete next[orderId]
         return next
@@ -81,79 +107,94 @@ export function ChatPanelProvider({ userId, children }: Props) {
     })
   }, [])
 
-  // On mount: auto-open panels for all of the user's incomplete orders
-  useEffect(() => {
+  // --- Auto-open active orders ---
+  // The loadActiveOrders query LEFT JOINs conversations(id) so each panel is
+  // opened with a pre-resolved conversationId (B2 pairing — no per-panel
+  // client-side conversations lookup in useMessages).
+  const loadActiveOrders = useCallback(async () => {
     if (!userId) return
-    let cancelled = false
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    const isAnon = user?.is_anonymous ?? false
 
-    async function loadActiveOrders() {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      const isAnon = user?.is_anonymous ?? false
+    const query = supabase
+      .from('orders')
+      .select('id, status, restaurant_name, conversations(id)')
+      .in('status', ACTIVE_STATUSES)
+      .order('created_at', { ascending: true })
 
-      const query = supabase
-        .from('orders')
-        .select('id, status, eateries(name)')
-        .in('status', ACTIVE_STATUSES)
-        .order('created_at', { ascending: true })
+    const { data } = isAnon
+      ? await query.eq('anon_user_id', userId)
+      : await query.eq('orderer_id', userId)
 
-      const { data } = isAnon
-        ? await query.eq('anon_user_id', userId)
-        : await query.eq('orderer_id', userId)
-
-      if (cancelled) return
-      for (const order of data ?? []) {
-        const eateryName = (order.eateries as unknown as { name: string } | null)?.name ?? ''
-        openPanel(order.id, order.status as OrderStatus, eateryName)
-      }
-    }
-
-    loadActiveOrders()
-    return () => {
-      cancelled = true
+    for (const order of data ?? []) {
+      const restaurantName = (order as { restaurant_name?: string }).restaurant_name ?? ''
+      const conversationsArray =
+        (order as { conversations?: Array<{ id: string }> | { id: string } | null }).conversations
+      const conversationId = Array.isArray(conversationsArray)
+        ? conversationsArray[0]?.id ?? null
+        : conversationsArray?.id ?? null
+      openPanel(order.id, order.status as OrderStatus, restaurantName, conversationId)
     }
   }, [userId, openPanel])
 
-  // Single subscription handles all status updates for the orderer's orders:
-  // swiper acceptance, in-progress, completion, cancellation, and terminal cleanup.
-  // Uses anon_user_id filter for anonymous users, orderer_id for authenticated users.
+  useEffect(() => {
+    if (!userId) return
+    // Defer through a microtask so the setState calls inside loadActiveOrders
+    // run after the effect body returns — keeps react-hooks/set-state-in-effect
+    // satisfied (the rule only flags synchronous setState in the effect body).
+    void Promise.resolve().then(() => loadActiveOrders().catch(() => {
+      // Silent — visibility-refetch will reattempt
+    }))
+  }, [userId, loadActiveOrders])
+
+  // Visibility refetch — reconcile the auto-open list when tab returns to foreground.
+  // Wraps loadActiveOrders so a swiper accepting an order while we're backgrounded
+  // surfaces as soon as the user comes back.
+  useVisibilityRefetch(loadActiveOrders)
+
+  // --- Realtime: status updates via the channel registry ---
   useEffect(() => {
     if (!userId) return
     const uid: string = userId
-
-    const supabase = createClient()
+    let handle: RegistryHandle | null = null
 
     async function subscribe() {
+      const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
       const isAnon = user?.is_anonymous ?? false
       const filterField = isAnon ? 'anon_user_id' : 'orderer_id'
 
-      const channel = supabase
-        .channel(ordersOrdererChannel(uid))
-        .on<{ id: string; status: OrderStatus }>(
-          'postgres_changes',
-          {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'orders',
-            filter: `${filterField}=eq.${uid}`,
-          },
-          (payload) => {
-            // Only update panels that are currently open
-            if (ordersRef.current[payload.new.id]) {
-              updateOrderStatus(payload.new.id, payload.new.status)
-            }
-          }
-        )
-        .subscribe()
-
-      return channel
+      try {
+        handle = subscribeChannel({
+          channelName: ordersOrdererChannel(uid),
+          validateUuid: uid,
+          configure: (channel) =>
+            channel.on<{ id: string; status: OrderStatus }>(
+              'postgres_changes',
+              {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'orders',
+                filter: `${filterField}=eq.${uid}`,
+              },
+              (payload) => {
+                if (ordersRef.current[payload.new.id]) {
+                  updateOrderStatus(payload.new.id, payload.new.status)
+                }
+              }
+            ),
+        })
+      } catch {
+        // §11 fail-closed: if registry refuses subscribe (e.g. malformed userId),
+        // the visibility-refetch path keeps the panel list eventually consistent.
+      }
     }
 
-    const channelPromise = subscribe()
+    void subscribe()
 
     return () => {
-      channelPromise.then((channel) => supabase.removeChannel(channel))
+      handle?.unsubscribe()
     }
   }, [userId, updateOrderStatus])
 

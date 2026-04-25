@@ -14,11 +14,24 @@ export interface OrderEntry {
   status: OrderStatus
   eateryName: string
   isExpanded: boolean
+  /**
+   * Pre-resolved conversation_id from the provider's loadActiveOrders LEFT JOIN.
+   * Null when no conversation exists yet (status='open' before swiper accepts).
+   * Plumbed down into ChatView → useMessages so the hook can subscribe-before-
+   * fetch without an extra client query (B2 pairing — eliminates the per-mount
+   * conversations lookup across N open panels).
+   */
+  conversationId: string | null
 }
 
 export interface ChatPanelState {
   orders: Record<string, OrderEntry>
-  openPanel: (orderId: string, status?: OrderStatus, eateryName?: string) => void
+  openPanel: (
+    orderId: string,
+    status?: OrderStatus,
+    eateryName?: string,
+    conversationId?: string | null
+  ) => void
   closePanel: (orderId: string) => void
   toggleMinimize: (orderId: string) => void
   updateOrderStatus: (orderId: string, status: OrderStatus) => void

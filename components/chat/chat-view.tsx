@@ -123,6 +123,13 @@ interface Props {
   eateryName: string
   currentUserId: string | null
   orderStatus: OrderStatus
+  /**
+   * Pre-resolved conversation_id supplied by the chat-panel-provider's
+   * loadActiveOrders LEFT JOIN (B2 pairing). When provided, useMessages skips
+   * its own conversations lookup. Null when no conversation exists yet
+   * (status='open' before swiper accepts).
+   */
+  conversationId?: string | null
   onStatusChange?: (status: OrderStatus) => void
 }
 
@@ -132,11 +139,12 @@ interface Props {
  * @param eateryName - Eatery name for the status pseudo-message
  * @param currentUserId - Authenticated user ID, or null for guests
  * @param orderStatus - Current order status
+ * @param conversationId - Pre-resolved conversation id from chat-panel-provider (B2 pairing)
  * @param onStatusChange - Optional callback when the swiper transitions the order status
  * @called-by components/chat-panel/chat-panel.tsx, app/current-orders/current-orders-list.tsx
  */
-export function ChatView({ orderId, eateryName, currentUserId, orderStatus, onStatusChange }: Props) {
-  const { messages, conversation, isLoading, error, sendMessage } = useMessages({ orderId })
+export function ChatView({ orderId, eateryName, currentUserId, orderStatus, conversationId, onStatusChange }: Props) {
+  const { messages, conversation, isLoading, error, sendMessage } = useMessages({ orderId, conversationId })
   return (
     <ChatViewCore
       orderId={orderId}
