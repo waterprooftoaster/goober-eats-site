@@ -2,58 +2,121 @@
 
 /**
  * @file current-orders-list.tsx
- * @description Client component rendering a list of the orderer's active orders, each with an embedded chat view.
+ * @description Client list of active orders, each rendered as a tinted card
+ *   with an embedded ChatView. Status badge variants follow the OKLCH-126
+ *   palette; the list shows an empty-state Surface when no rows are present.
  *   Called by: app/current-orders/page.tsx
- * @dependencies components/chat/chat-view.tsx, components/chat-panel.tsx
+ * @dependencies components/chat/chat-view.tsx, components/chat-panel,
+ *   components/ui/surface.tsx
  */
 
 import { ChatView } from '@/components/chat/chat-view'
 import { useChatPanel } from '@/components/chat-panel'
+import { Surface } from '@/components/ui/surface'
+import { cn } from '@/lib/utils'
 import type { OrderStatus } from '@/lib/types/database'
 
+interface CurrentOrderListItem {
+  id: string
+  status: OrderStatus
+  restaurantName: string
+}
+
 interface Props {
-  orders: { id: string; status: OrderStatus; eateryName: string }[]
+  orders: CurrentOrderListItem[]
   currentUserId: string
 }
 
 /**
- * Renders each active order as a card with an embedded ChatView panel.
- * @param orders - List of orders with id, status, and eatery name
- * @param currentUserId - The authenticated user's ID passed to ChatView
- * @returns Order cards with chat, or an empty-state message
+ * Renders the active-orders list. Empty state, populated cards, and
+ * per-card status badges all carry catalog testids.
+ * @param orders - Already-fetched + projected orders (server query)
+ * @param currentUserId - Authed user ID forwarded to the embedded ChatView
  * @called-by app/current-orders/page.tsx
  */
 export function CurrentOrdersList({ orders, currentUserId }: Props) {
   const { updateOrderStatus } = useChatPanel()
 
   if (orders.length === 0) {
-    return <p className="text-sm text-gray-500">No active orders.</p>
+    return (
+      <Surface
+        tone="subtle"
+        padding="lg"
+        data-testid="current-orders-empty-state"
+        className="flex flex-col items-start gap-1"
+      >
+        <p className="text-base font-medium">No active orders.</p>
+        <p className="text-sm text-muted-foreground">
+          When you place an order or accept one, it&rsquo;ll show up here.
+        </p>
+      </Surface>
+    )
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div data-testid="current-orders-list" className="flex flex-col gap-4">
       {orders.map((order) => (
-        <div
+        <article
           key={order.id}
-          className="flex h-[28rem] flex-col rounded-lg border border-gray-200 bg-white shadow-sm"
+          className="flex flex-col overflow-hidden rounded-2xl border border-border bg-card"
         >
-          <div className="flex items-center justify-between border-b border-gray-200 px-4 py-2.5">
-            <span className="text-sm font-semibold">Order #{order.id.slice(0, 8)}</span>
-            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
-              {order.status}
-            </span>
-          </div>
-          <div className="flex flex-1 flex-col overflow-hidden">
+          <header className="flex items-center justify-between gap-3 border-b border-border px-5 py-3">
+            <div className="flex min-w-0 items-baseline gap-2">
+              <span className="truncate text-sm font-semibold text-foreground">
+                {order.restaurantName || 'Order'}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                #{order.id.slice(0, 8)}
+              </span>
+            </div>
+            <StatusBadge status={order.status} />
+          </header>
+          <div className="flex h-[26rem] flex-col">
             <ChatView
               orderId={order.id}
               currentUserId={currentUserId}
               orderStatus={order.status}
-              eateryName={order.eateryName}
+              eateryName={order.restaurantName}
               onStatusChange={(status) => updateOrderStatus(order.id, status)}
             />
           </div>
-        </div>
+        </article>
       ))}
     </div>
+  )
+}
+
+// --- Helpers ---
+
+const STATUS_LABEL: Record<OrderStatus, string> = {
+  open: 'Open',
+  in_progress: 'In progress',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
+}
+
+const STATUS_TONE: Record<OrderStatus, string> = {
+  open: 'bg-secondary text-secondary-foreground',
+  in_progress: 'bg-primary/15 text-foreground',
+  completed: 'bg-muted text-muted-foreground',
+  cancelled: 'bg-destructive/10 text-destructive',
+}
+
+/**
+ * Per-order status pill. Picks a tinted background per status and stamps
+ * the catalog `current-orders-status-badge` testid for E2E assertions.
+ */
+function StatusBadge({ status }: { status: OrderStatus }) {
+  return (
+    <span
+      data-testid="current-orders-status-badge"
+      data-status={status}
+      className={cn(
+        'inline-flex shrink-0 items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
+        STATUS_TONE[status]
+      )}
+    >
+      {STATUS_LABEL[status]}
+    </span>
   )
 }
