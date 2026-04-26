@@ -17,7 +17,7 @@ const iconBtnClass = "rounded-full p-2 text-white transition-colors hover:bg-whi
  * @returns Navigation header
  * @called-by app/layout.tsx
  */
-export async function Header() {
+export async function Header({ showHomeIcon = true }: { showHomeIcon?: boolean } = {}) {
     const supabase = await createClient()
     const user = await getAuthenticatedUser(supabase)
 
@@ -32,9 +32,11 @@ export async function Header() {
 
             <div className="flex items-center gap-2">
                 <div className="flex items-center">
-                    <Link href="/" className={iconBtnClass} aria-label="Home">
-                        <Home className="h-5 w-5" />
-                    </Link>
+                    {showHomeIcon && (
+                        <Link href="/" className={iconBtnClass} aria-label="Home">
+                            <Home className="h-5 w-5" />
+                        </Link>
+                    )}
                     {user && (
                         <Link href="/account" className={iconBtnClass} aria-label="Profile">
                             <User className="h-5 w-5" />

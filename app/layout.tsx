@@ -33,6 +33,7 @@ export const metadata: Metadata = {
 
 /**
  * Renders the root HTML shell with fonts, providers, header, banner slot, and chat panel.
+ * Unauthenticated users get a bare shell (no header/chrome) — the cover page is self-contained.
  * @param children - Page content
  * @param banner - Parallel route @banner slot
  * @returns Full HTML document with all layout wrappers
@@ -48,12 +49,22 @@ export default async function RootLayout({
   const supabase = await createClient();
   const user = await getAuthenticatedUser(supabase);
 
-  const isSwiper = user
-    ? ((await supabase.from('profiles').select('is_swiper').eq('id', user.id).single())
-        .data?.is_swiper ?? false)
-    : false
+  const fontClasses = `${plusJakartaSans.variable} ${geistMono.variable} antialiased`
 
-  const pendingOrderCount = (user && isSwiper)
+  if (!user) {
+    return (
+      <html lang="en" className={fontClasses}>
+        <body>
+          <div className="px-6">{children}</div>
+        </body>
+      </html>
+    )
+  }
+
+  const isSwiper = ((await supabase.from('profiles').select('is_swiper').eq('id', user.id).single())
+    .data?.is_swiper ?? false)
+
+  const pendingOrderCount = isSwiper
     ? (await supabase
         .from('orders')
         .select('*', { count: 'exact', head: true })
@@ -62,19 +73,16 @@ export default async function RootLayout({
     : 0
 
   return (
-    <html
-      lang="en"
-      className={`${plusJakartaSans.variable} ${geistMono.variable} antialiased`}
-    >
+    <html lang="en" className={fontClasses}>
       <body>
-        <ChatPanelProvider userId={user?.id ?? null}>
+        <ChatPanelProvider userId={user.id}>
           <HeaderWrapper hasBanner={!isSwiper}>
             <Header />
           </HeaderWrapper>
           {banner}
           <div className="px-6">{children}</div>
           <SwiperOrdersButton isSwiper={isSwiper} pendingOrderCount={pendingOrderCount} />
-          <ChatPanel currentUserId={user?.id ?? null} />
+          <ChatPanel currentUserId={user.id} />
         </ChatPanelProvider>
       </body>
     </html>
