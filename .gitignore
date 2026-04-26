@@ -50,7 +50,8 @@ AGENTS.md
 supabase/.temp/
 
 
-#playwright
+#testing
 /test-results/
 /playwright-report/
 /.auth/
+/screenshots/
