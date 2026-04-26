@@ -1,0 +1,67 @@
+.outer-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem 1rem 0;
+  width: min(56rem, 100%);
+}
+
+.step-circle-container {
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+  max-width: 56rem;
+  border-radius: 2rem;
+}
+
+.step-indicator-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  padding: 2rem;
+}
+
+.step-content-default {
+  position: relative;
+  overflow: hidden;
+}
+
+.step-default {
+  padding-left: 2rem;
+  padding-right: 2rem;
+}
+
+.step-indicator {
+  position: relative;
+  cursor: default;
+  outline: none;
+}
+
+.step-indicator-inner {
+  display: flex;
+  height: 2rem;
+  width: 2rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  font-weight: 600;
+}
+
+.step-connector {
+  position: relative;
+  margin-left: 0.5rem;
+  margin-right: 0.5rem;
+  height: 0.125rem;
+  flex: 1;
+  overflow: hidden;
+  border-radius: 0.25rem;
+  background-color: #e5e5e5;
+}
+
+.step-connector-inner {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+}
