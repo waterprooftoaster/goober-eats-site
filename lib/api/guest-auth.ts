@@ -1,8 +1,7 @@
 /**
  * @file guest-auth.ts
  * @description Validates guest order tokens from cookies for all guest-facing API endpoints.
- *   Called by: app/api/guest/messages/route.ts, app/api/guest/messages/[orderId]/route.ts,
- *              app/api/guest/orders/[orderId]/route.ts, app/api/guest/verify-order/route.ts
+ *   Called by: app/api/guest/orders/[orderId]/route.ts, app/api/guest/verify-order/route.ts
  * @dependencies lib/supabase/service.ts
  */
 

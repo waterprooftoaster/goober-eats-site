@@ -62,7 +62,7 @@ function HeroSection({ schools }: { schools: School[] }) {
                     can be feeding you.
                 </h1>
                 <p className="text-base md:text-lg text-muted-foreground max-w-[54ch] mb-10 leading-relaxed">
-                    We&rsquo;ll pair you with a student who&rsquo;s got extra meal swipes. You
+                    We'll pair you with a student who&rsquo;s got extra meal swipes. You
                     get a discount, they earn &mdash; it&rsquo;s a win-win.
                 </p>
                 <div className="max-w-[360px]">
@@ -99,7 +99,7 @@ function HowItWorks() {
                     <Step
                         n="01"
                         title="Snap your cart"
-                        body="Take a screenshot of your GrubHub cart — items, totals, the whole thing."
+                        body="Go on the GrubHub "
                     />
                     <Step
                         n="02"

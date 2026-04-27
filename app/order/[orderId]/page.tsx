@@ -35,10 +35,14 @@ export default async function OrderPage({
     redirect('/')
   }
 
-  // Any existing session (auth or anonymous) means panels are managed by ChatPanelProvider
+  // Real authed users are managed by ChatPanelProvider on /; anon-session guests
+  // (HomeUpload calls signInAnonymously before checkout) must fall through to
+  // GuestPanelOpener so it can PATCH orders.anon_user_id — without that link
+  // ChatPanelProvider's loadActiveOrders query (anon_user_id=eq.<id>) returns
+  // nothing and the chat panel never opens.
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (user) {
+  if (user && !user.is_anonymous) {
     redirect('/')
   }
 
@@ -54,7 +58,7 @@ export default async function OrderPage({
   const serviceClient = createServiceClient()
   const { data: order } = await serviceClient
     .from('orders')
-    .select('id, status, guest_access_token, orderer_id, restaurant_name')
+    .select('id, status, guest_access_token, orderer_id, restaurant_name, school_id')
     .eq('id', orderId)
     .maybeSingle()
 
@@ -67,6 +71,7 @@ export default async function OrderPage({
       orderId={order.id}
       initialStatus={order.status as OrderStatus}
       eateryName={order.restaurant_name ?? ''}
+      schoolId={order.school_id}
     />
   )
 }

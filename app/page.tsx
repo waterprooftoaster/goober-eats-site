@@ -22,8 +22,18 @@ export default async function HomePage() {
   const supabase = await createClient()
   const user = await getAuthenticatedUser(supabase)
 
-  if (user) {
-    return <HomeUpload />
+  // Only real (non-anonymous) authed users with a profile.school_id may see
+  // the upload home. Anon sessions (created by HomeUpload before checkout)
+  // have no profile row → they belong on the cover until they pick a school.
+  if (user && !user.is_anonymous) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('school_id')
+      .eq('id', user.id)
+      .maybeSingle()
+    if (profile?.school_id) {
+      return <HomeUpload />
+    }
   }
 
   const { data: schools } = await supabase

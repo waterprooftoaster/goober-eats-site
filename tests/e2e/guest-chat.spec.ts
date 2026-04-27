@@ -336,7 +336,7 @@ test.describe('Guest Anon Auth + Realtime Chat', () => {
     // Track all HTTP requests after panel is loaded — Realtime uses WebSocket not HTTP
     const pollingRequests: string[] = []
     page.on('request', (req) => {
-      if (req.url().includes('/api/guest/messages/')) {
+      if (req.url().includes('/api/messages/')) {
         pollingRequests.push(req.url())
       }
     })
@@ -353,7 +353,7 @@ test.describe('Guest Anon Auth + Realtime Chat', () => {
     // Message should appear in the panel within 5 seconds via Realtime
     await expect(page.getByText(testMessage)).toBeVisible({ timeout: 8000 })
 
-    // No polling requests should have been made to /api/guest/messages/
+    // No polling requests should have been made to /api/messages/
     expect(pollingRequests).toHaveLength(0)
   })
 

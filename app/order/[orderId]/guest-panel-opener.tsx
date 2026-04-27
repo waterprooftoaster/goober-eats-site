@@ -12,12 +12,14 @@ import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useChatPanel } from '@/components/chat-panel'
 import { createClient } from '@/lib/supabase/client'
+import { PENDING_SCHOOL_ID_KEY } from '@/lib/constants'
 import type { OrderStatus } from '@/lib/types/database'
 
 interface Props {
   orderId: string
   initialStatus: OrderStatus
   eateryName: string
+  schoolId: string
 }
 
 /**
@@ -25,30 +27,43 @@ interface Props {
  * @param orderId - UUID of the guest's order
  * @param initialStatus - Current order status passed into the chat panel
  * @param eateryName - Eatery name displayed in the chat panel header
- * @returns Spinner while bootstrapping; redirects to / when done
+ * @param schoolId - Order's school_id; re-seeded into sessionStorage so HomeUpload's guard accepts the anon visitor
+ * @returns Spinner while bootstrapping; redirects to /order/new when done
  * @called-by app/order/[orderId]/page.tsx
  */
-export function GuestPanelOpener({ orderId, initialStatus, eateryName }: Props) {
+export function GuestPanelOpener({ orderId, initialStatus, eateryName, schoolId }: Props) {
   const { openPanel } = useChatPanel()
   const router = useRouter()
 
   useEffect(() => {
     async function initAndOpen() {
       const supabase = createClient()
-      const { data, error } = await supabase.auth.signInAnonymously()
-      if (!error && data.session) {
+      // Reuse an existing anon session if one is already present — minting a
+      // fresh anon user on every order would orphan prior guest orders (their
+      // anon_user_id would point at the discarded identity), preventing the
+      // chat-panel stack from re-surfacing them.
+      const { data: existing } = await supabase.auth.getSession()
+      let anonUserId = existing.session?.user.id ?? null
+      if (!anonUserId) {
+        const { data, error } = await supabase.auth.signInAnonymously()
+        if (!error && data.session) anonUserId = data.session.user.id
+      }
+      if (anonUserId) {
         await fetch(`/api/guest/orders/${orderId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ anon_user_id: data.session.user.id }),
+          body: JSON.stringify({ anon_user_id: anonUserId }),
         })
       }
+      // Checkout cleared PENDING_SCHOOL_ID_KEY; re-seed it from the order so
+      // HomeUpload's school-resolution guard doesn't bounce the anon visitor.
+      sessionStorage.setItem(PENDING_SCHOOL_ID_KEY, schoolId)
       openPanel(orderId, initialStatus, eateryName)
-      router.replace('/')
+      router.replace('/order/new')
     }
 
     initAndOpen()
-  }, [orderId, initialStatus, eateryName, openPanel, router])
+  }, [orderId, initialStatus, eateryName, schoolId, openPanel, router])
 
   return (
     <main

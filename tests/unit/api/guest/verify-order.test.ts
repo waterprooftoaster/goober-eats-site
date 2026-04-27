@@ -98,8 +98,9 @@ describe('GET /api/guest/verify-order', () => {
     expect(setCookie).toContain(`guest_order_token_${VALID_ORDER_ID}`)
     expect(setCookie).toContain(VALID_TOKEN)
     expect(setCookie).toContain('HttpOnly')
-    // Cookie path must be / so the browser sends it to /api/guest/messages/[orderId].
-    // A narrow path like /order/guest/{id} silently drops the cookie on API calls → 401.
+    // Cookie path must be / so the browser sends it to /api/guest/orders/[orderId]
+    // and /api/messages/[orderId]. A narrow path like /order/guest/{id} would
+    // silently drop the cookie on API calls → 401.
     expect(setCookie).toMatch(/Path=\/\s*(;|$)/)
     expect(setCookie).not.toContain('/order/guest/')
   })
