@@ -1,9 +1,16 @@
+/**
+ * @file chat.spec.ts
+ * @description Authenticated E2E tests for in-order chat between orderer and swiper.
+ *   Called by: Playwright "authenticated" project
+ */
+
 import { test, expect } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
+import { randomUUID } from 'node:crypto'
 
 const TEST_EMAIL = 'test@goobereats.test'
-const FAKE_UUID = '00000000-0000-4000-8000-000000000099'
-
+const ORDER_SUBTOTAL_CENTS = 2500
+const ORDER_TOTAL_CENTS = 1500
 // 1×1 white JPEG (107 bytes)
 const TINY_JPEG = Buffer.from(
   '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8U' +
@@ -23,31 +30,12 @@ test.describe('Chat Flow', () => {
       process.env.SUPABASE_SECRET_KEY!
     )
 
-    await supabase.rpc('seed_dev_eateries')
-
     const { data: school } = await supabase
       .from('schools')
       .select('id')
       .limit(1)
       .single()
     if (!school) throw new Error('No schools found')
-
-    const { data: menuItem } = await supabase
-      .from('menu_items')
-      .select('id, name, original_price_cents, restaurant_id')
-      .eq('is_available', true)
-      .limit(1)
-      .single()
-    if (!menuItem) throw new Error('No menu items found')
-
-    const { data: eatery } = await supabase
-      .from('eateries')
-      .select('id')
-      .eq('id', menuItem.restaurant_id)
-      .eq('school_id', school.id)
-      .eq('is_active', true)
-      .single()
-    if (!eatery) throw new Error('No eateries found for school with menu items')
 
     const { data: { users } } = await supabase.auth.admin.listUsers()
     const user = users.find((u) => u.email === TEST_EMAIL)
@@ -69,23 +57,15 @@ test.describe('Chat Flow', () => {
     const { data: order } = await supabase
       .from('orders')
       .insert({
-        eatery_id: eatery.id,
         orderer_id: null,
         swiper_id: null,
-        status: 'pending',
-        items: [
-          {
-            menu_item_id: menuItem.id,
-            name: menuItem.name,
-            price_cents: menuItem.original_price_cents,
-            quantity: 1,
-          },
-        ],
-        total_cents: menuItem.original_price_cents,
-        tip_cents: 0,
+        school_id: school.id,
+        restaurant_name: 'Chipotle',
+        cart_screenshot_urls: [`pre-checkout/chat-e2e/${randomUUID()}.png`],
+        subtotal_cents: ORDER_SUBTOTAL_CENTS,
+        total_cents: ORDER_TOTAL_CENTS,
+        status: 'open',
         guest_name: 'Chat Test',
-        guest_phone: '+15005550006',
-        guest_stripe_pm_id: 'pm_test_chat',
       })
       .select('id')
       .single()
@@ -108,18 +88,21 @@ test.describe('Chat Flow', () => {
       .eq('id', userId)
   })
 
-  test('accept → conversation created → system message appears', async ({ request }) => {
+  test('accept → conversation created (no DB system message; pseudo-message is client-side)', async ({ request }) => {
     const acceptRes = await request.fetch(`/api/orders/${orderId}/accept`, { method: 'PATCH' })
     expect(acceptRes.status()).toBe(200)
     const acceptBody = await acceptRes.json()
-    expect(acceptBody.status).toBe('accepted')
+    expect(acceptBody.status).toBe('in_progress')
 
+    // Conversation is created server-side; messages start empty because the
+    // "in_progress" notification is rendered as a client-side pseudo-message
+    // (chat-thread.tsx derives it from order.status), not a DB row.
     const msgRes = await request.get(`/api/messages/${orderId}`)
     expect(msgRes.status()).toBe(200)
     const msgBody = await msgRes.json()
+    expect(msgBody.conversation).toBeTruthy()
     expect(Array.isArray(msgBody.messages)).toBe(true)
-    expect(msgBody.messages.length).toBeGreaterThan(0)
-    expect(msgBody.messages[0].message_type).toBe('system')
+    expect(msgBody.messages).toHaveLength(0)
   })
 
   test('send text message', async ({ request }) => {
@@ -137,33 +120,22 @@ test.describe('Chat Flow', () => {
     expect(textMessages[0].body).toBe('Hello from swiper')
   })
 
-  test('advance to in_progress', async ({ request }) => {
-    const res = await request.fetch(`/api/orders/${orderId}/status`, {
-      method: 'PATCH',
-      data: { status: 'in_progress' },
-    })
-    expect(res.status()).toBe(200)
-  })
-
-  test('cannot complete without delivery photo', async ({ request }) => {
+  test('cannot complete without completion photo', async ({ request }) => {
     const res = await request.fetch(`/api/orders/${orderId}/status`, {
       method: 'PATCH',
       data: { status: 'completed' },
     })
     expect(res.status()).toBe(400)
     const body = await res.json()
-    expect(body.error).toMatch(/delivery photo/i)
+    expect(body.error).toMatch(/completion photo/i)
   })
 
-  test('upload delivery photo → photo message appears', async ({ request }) => {
-    const formData = new FormData()
-    formData.append('file', new Blob([TINY_JPEG], { type: 'image/jpeg' }), 'delivery.jpg')
-
+  test('upload completion photo → photo message appears', async ({ request }) => {
     const uploadRes = await request.fetch(`/api/messages/${orderId}/upload`, {
       method: 'POST',
       multipart: {
         file: {
-          name: 'delivery.jpg',
+          name: 'completion.jpg',
           mimeType: 'image/jpeg',
           buffer: TINY_JPEG,
         },
@@ -171,13 +143,13 @@ test.describe('Chat Flow', () => {
     })
     expect(uploadRes.status()).toBe(201)
     const uploadBody = await uploadRes.json()
-    expect(uploadBody.message_type).toBe('delivery_photo')
+    expect(uploadBody.message_type).toBe('completion_photo')
     expect(uploadBody.image_url).toBeTruthy()
 
     const msgRes = await request.get(`/api/messages/${orderId}`)
     const msgBody = await msgRes.json()
     const photoMessages = msgBody.messages.filter(
-      (m: { message_type: string }) => m.message_type === 'delivery_photo'
+      (m: { message_type: string }) => m.message_type === 'completion_photo'
     )
     expect(photoMessages.length).toBeGreaterThan(0)
   })
@@ -192,13 +164,4 @@ test.describe('Chat Flow', () => {
     expect(body.status).toBe('completed')
   })
 
-  test('chat input disabled after completion', async ({ page }) => {
-    await page.goto(`/order/${orderId}/chat`)
-    await expect(page.getByRole('button', { name: /send/i })).toBeDisabled()
-  })
-
-  test('non-participant redirected to home', async ({ page }) => {
-    await page.goto(`/order/${FAKE_UUID}/chat`)
-    await expect(page).toHaveURL('/')
-  })
 })

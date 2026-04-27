@@ -1,5 +1,11 @@
 "use client"
 
+/**
+ * @file combobox.tsx
+ * @description shadcn/ui Combobox built on @base-ui/react with search, clear, chips, and portal support.
+ *   Called by: app/auth/login/login-form.tsx
+ */
+
 import * as React from "react"
 import { Combobox as ComboboxPrimitive } from "@base-ui/react"
 

@@ -1,3 +1,10 @@
+/**
+ * @file auth.setup.ts
+ * @description Playwright global setup that creates a test user in Supabase and writes
+ *   browser auth state to .auth/user.json for the authenticated test project.
+ *   Called by: Playwright "authenticated" project (playwright.config.ts)
+ */
+
 import { test as setup } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 
@@ -47,12 +54,12 @@ setup('create test user and authenticate', async ({ page }) => {
   await page.goto('/auth/login')
 
   // Step 1: Enter email
-  await page.getByPlaceholder('Enter your email').fill(TEST_EMAIL)
-  await page.getByRole('button', { name: 'Continue', exact: true }).click()
+  await page.getByTestId('auth-email-input').fill(TEST_EMAIL)
+  await page.getByTestId('auth-continue-button').click()
 
   // Step 2: Enter password (existing user = single password field, sign-in mode)
-  await page.getByPlaceholder('Password', { exact: true }).fill(TEST_PASSWORD)
-  await page.getByRole('button', { name: 'Sign In' }).click()
+  await page.getByTestId('auth-password-input').fill(TEST_PASSWORD)
+  await page.getByTestId('auth-signin-button').click()
 
   // Wait for redirect to homepage
   await page.waitForURL('/', { timeout: 10000 })

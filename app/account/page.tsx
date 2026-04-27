@@ -1,24 +1,34 @@
+/**
+ * @file page.tsx
+ * @description /account server component. Fetches profile + stripe_accounts
+ *   + schools in parallel, then hands off to <AccountPanel /> which renders
+ *   inside the S03 <Modal> primitive. Anonymous users redirect to login.
+ *   Called by: Next.js routing (/account); header avatar link.
+ * @dependencies lib/supabase/server.ts, components/account-panel
+ */
+
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { AccountActions } from './account-actions'
-import { SwiperSection } from './swiper-section'
+import { AccountPanel } from '@/components/account-panel'
 
+/**
+ * Server-side data prefetch for the account modal. All three queries run
+ * in parallel; missing profile rows fall through to the orderer view (the
+ * "Become a swiper" CTA).
+ * @returns The AccountPanel element
+ * @called-by Next.js App Router (/account)
+ */
 export default async function AccountPage() {
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect('/auth/login')
-  }
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/auth/login')
 
   const [profileResult, stripeResult, schoolsResult] = await Promise.all([
     supabase
       .from('profiles')
       .select('is_swiper, school_id')
       .eq('id', user.id)
-      .single(),
+      .maybeSingle(),
     supabase
       .from('stripe_accounts')
       .select('onboarding_complete')
@@ -32,18 +42,11 @@ export default async function AccountPage() {
   const schools = schoolsResult.data ?? []
 
   return (
-    <main className="min-h-screen bg-white">
-      <div className="mx-auto max-w-md p-8">
-        <h1 className="text-2xl font-bold mb-4">Account</h1>
-        <p className="text-gray-600 mb-8">{user.email}</p>
-
-        <AccountActions />
-        <SwiperSection
-          profile={profile}
-          stripeAccount={stripeAccount}
-          schools={schools}
-        />
-      </div>
-    </main>
+    <AccountPanel
+      email={user.email ?? ''}
+      profile={profile}
+      stripeAccount={stripeAccount}
+      schools={schools}
+    />
   )
 }

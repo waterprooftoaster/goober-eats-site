@@ -1,7 +1,20 @@
+/**
+ * @file route.ts
+ * @description POST endpoint to create or retrieve a swiper's Stripe Express account and return an onboarding URL.
+ *   Handles race-condition duplicate inserts via the 23505 conflict path.
+ *   Called by: app/account/swiper-section.tsx (begin Stripe onboarding button)
+ * @dependencies lib/supabase/server.ts, lib/stripe/connect.ts, lib/api/helpers.ts
+ */
+
 import { createClient } from '@/lib/supabase/server'
 import { createExpressAccount, createOnboardingLink } from '@/lib/stripe/connect'
 import { apiError, apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
 
+/**
+ * Creates or retrieves the caller's Stripe Express account and returns a fresh onboarding URL.
+ * @returns JSON { url } for Stripe onboarding; 400/401/500 on validation or Stripe errors
+ * @called-by app/account/swiper-section.tsx (begin onboarding button)
+ */
 export async function POST() {
   const supabase = await createClient()
   const user = await getAuthenticatedUser(supabase)

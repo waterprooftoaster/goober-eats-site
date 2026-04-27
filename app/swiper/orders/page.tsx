@@ -1,8 +1,25 @@
+/**
+ * @file page.tsx
+ * @description Swiper queue page: server-fetches open unclaimed orders for
+ *   the swiper's school, oldest first, then hands off to the client list.
+ *   The §10 security gate lives in app/swiper/layout.tsx — this page only
+ *   defends with belt-and-suspenders against a missing profile row.
+ *   Called by: Next.js routing (/swiper/orders); SwiperOrdersButton link.
+ * @dependencies lib/supabase/server.ts, lib/api/helpers.ts,
+ *   ./pending-orders-list
+ */
+
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getAuthenticatedUser } from '@/lib/api/helpers'
 import { PendingOrdersList, type PendingOrder } from './pending-orders-list'
 
+/**
+ * Renders the swiper queue page; fetches open unclaimed orders at the
+ * swiper's school for the client list to hydrate.
+ * @returns The page element, or a redirect if profile is missing
+ * @called-by Next.js App Router (/swiper/orders)
+ */
 export default async function PendingOrdersPage() {
   const supabase = await createClient()
   const user = await getAuthenticatedUser(supabase)
@@ -14,42 +31,43 @@ export default async function PendingOrdersPage() {
     .eq('id', user.id)
     .single()
 
-  // Belt-and-suspenders: layout guard should have caught this, but defend explicitly
+  // Belt-and-suspenders: app/swiper/layout.tsx already gates non-swipers,
+  // but defend explicitly so a future routing refactor cannot silently
+  // expose this page.
   if (!profile?.is_swiper) redirect('/account?notice=swiper_required')
 
   let orders: PendingOrder[] = []
-
   if (profile?.school_id) {
-    const { data: eateries } = await supabase
-      .from('eateries')
-      .select('id')
+    const { data } = await supabase
+      .from('orders')
+      .select('id, subtotal_cents, restaurant_name, cart_screenshot_urls, created_at')
+      .eq('status', 'open')
+      .is('swiper_id', null)
       .eq('school_id', profile.school_id)
-      .eq('is_active', true)
-    const eateryIds = (eateries ?? []).map((e) => e.id)
-
-    if (eateryIds.length > 0) {
-      const { data } = await supabase
-        .from('orders')
-        .select(
-          'id, total_cents, tip_cents, items, special_instructions, created_at, eateries!orders_eatery_id_fkey(id, name)'
-        )
-        .eq('status', 'pending')
-        .is('swiper_id', null)
-        .in('eatery_id', eateryIds)
-        .order('created_at', { ascending: true })
-      orders = (data ?? []) as unknown as PendingOrder[]
-    }
+      .order('created_at', { ascending: true })
+    orders = (data ?? []).map((row) => ({
+      id: row.id,
+      subtotal_cents: row.subtotal_cents,
+      restaurant_name: row.restaurant_name,
+      cart_screenshot_urls: (row.cart_screenshot_urls as string[]) ?? [],
+      created_at: row.created_at,
+    }))
   }
 
   return (
-    <main className="min-h-screen bg-white">
-      <div className="mx-auto max-w-2xl p-4 md:p-8">
-        <h1 className="text-2xl font-bold mb-2">Pending Orders</h1>
-        <p className="text-sm text-gray-500 mb-8">
-          Orders from your school — oldest first. Tap an order to see details and accept it.
+    <main
+      data-testid="swiper-orders-page"
+      className="mx-auto max-w-2xl py-8 sm:py-12"
+    >
+      <header className="mb-8">
+        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+          Open orders.
+        </h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Orders from your school, oldest first. Tap one to see the cart and accept.
         </p>
-        <PendingOrdersList orders={orders} />
-      </div>
+      </header>
+      <PendingOrdersList orders={orders} />
     </main>
   )
 }

@@ -156,8 +156,8 @@ CASE
     WHEN (("latitude" IS NOT NULL) AND ("longitude" IS NOT NULL)) THEN ("extensions"."st_makepoint"("longitude", "latitude"))::"extensions"."geography"
     ELSE NULL::"extensions"."geography"
 END) STORED,
-    CONSTRAINT "restaurants_latitude_check" CHECK ((("latitude" >= ('-90'::integer)::double precision) AND ("latitude" <= (90)::double precision))),
-    CONSTRAINT "restaurants_longitude_check" CHECK ((("longitude" >= ('-180'::integer)::double precision) AND ("longitude" <= (180)::double precision)))
+    CONSTRAINT "eateries_latitude_check" CHECK ((("latitude" >= ('-90'::integer)::double precision) AND ("latitude" <= (90)::double precision))),
+    CONSTRAINT "eateries_longitude_check" CHECK ((("longitude" >= ('-180'::integer)::double precision) AND ("longitude" <= (180)::double precision)))
 );
 ALTER TABLE "public"."eateries" OWNER TO "postgres";
 
@@ -185,19 +185,19 @@ end;$$;
 ALTER FUNCTION "public"."find_nearby_eateries"("user_lat" double precision, "user_lng" double precision, "radius_km" double precision) OWNER TO "postgres";
 
 ALTER TABLE ONLY "public"."eateries"
-    ADD CONSTRAINT "restaurants_pkey" PRIMARY KEY ("id");
+    ADD CONSTRAINT "eateries_pkey" PRIMARY KEY ("id");
 
-CREATE INDEX "restaurants_location_gist_idx" ON "public"."eateries" USING "gist" ("location") WHERE ("is_active" = true);
-CREATE INDEX "restaurants_school_active_idx" ON "public"."eateries" USING "btree" ("school_id") WHERE ("is_active" = true);
+CREATE INDEX "eateries_location_gist_idx" ON "public"."eateries" USING "gist" ("location") WHERE ("is_active" = true);
+CREATE INDEX "eateries_school_active_idx" ON "public"."eateries" USING "btree" ("school_id") WHERE ("is_active" = true);
 
-CREATE OR REPLACE TRIGGER "restaurants_set_updated_at" BEFORE UPDATE ON "public"."eateries" FOR EACH ROW EXECUTE FUNCTION "public"."set_updated_at"();
+CREATE OR REPLACE TRIGGER "eateries_set_updated_at" BEFORE UPDATE ON "public"."eateries" FOR EACH ROW EXECUTE FUNCTION "public"."set_updated_at"();
 
 ALTER TABLE ONLY "public"."eateries"
-    ADD CONSTRAINT "restaurants_school_id_fkey" FOREIGN KEY ("school_id") REFERENCES "public"."schools"("id") ON DELETE CASCADE;
+    ADD CONSTRAINT "eateries_school_id_fkey" FOREIGN KEY ("school_id") REFERENCES "public"."schools"("id") ON DELETE CASCADE;
 
 ALTER TABLE "public"."eateries" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "eateries_anon_select" ON "public"."eateries" FOR SELECT TO "anon" USING (("is_active" = true));
-CREATE POLICY "restaurants_select" ON "public"."eateries" FOR SELECT TO "authenticated" USING (("is_active" = true));
+CREATE POLICY "eateries_select" ON "public"."eateries" FOR SELECT TO "authenticated" USING (("is_active" = true));
 
 GRANT ALL ON TABLE "public"."eateries" TO "service_role";
 GRANT SELECT ON TABLE "public"."eateries" TO "authenticated";
@@ -209,7 +209,7 @@ GRANT SELECT ON TABLE "public"."eateries" TO "anon";
 
 CREATE TABLE IF NOT EXISTS "public"."menu_items" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "restaurant_id" "uuid" NOT NULL,
+    "eatery_id" "uuid" NOT NULL,
     "name" "text" NOT NULL,
     "price_cents" integer NOT NULL,
     "image_url" "text",
@@ -223,12 +223,12 @@ ALTER TABLE "public"."menu_items" OWNER TO "postgres";
 ALTER TABLE ONLY "public"."menu_items"
     ADD CONSTRAINT "menu_items_pkey" PRIMARY KEY ("id");
 
-CREATE INDEX "menu_items_restaurant_available_idx" ON "public"."menu_items" USING "btree" ("restaurant_id") WHERE ("is_available" = true);
+CREATE INDEX "menu_items_eatery_available_idx" ON "public"."menu_items" USING "btree" ("eatery_id") WHERE ("is_available" = true);
 
 CREATE OR REPLACE TRIGGER "menu_items_set_updated_at" BEFORE UPDATE ON "public"."menu_items" FOR EACH ROW EXECUTE FUNCTION "public"."set_updated_at"();
 
 ALTER TABLE ONLY "public"."menu_items"
-    ADD CONSTRAINT "menu_items_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "public"."eateries"("id") ON DELETE CASCADE;
+    ADD CONSTRAINT "menu_items_eatery_id_fkey" FOREIGN KEY ("eatery_id") REFERENCES "public"."eateries"("id") ON DELETE CASCADE;
 
 ALTER TABLE "public"."menu_items" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "menu_items_anon_select" ON "public"."menu_items" FOR SELECT TO "anon" USING (("is_available" = true));

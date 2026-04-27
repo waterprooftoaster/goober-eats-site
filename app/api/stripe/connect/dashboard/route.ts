@@ -1,7 +1,19 @@
+/**
+ * @file route.ts
+ * @description POST endpoint that generates a Stripe Express dashboard login link for a onboarded swiper.
+ *   Called by: app/account/swiper-section.tsx
+ * @dependencies lib/supabase/server.ts, lib/stripe/connect.ts, lib/api/helpers.ts
+ */
+
 import { createClient } from '@/lib/supabase/server'
 import { createLoginLink } from '@/lib/stripe/connect'
 import { apiError, apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
 
+/**
+ * Generates a Stripe Express dashboard login link for a fully onboarded swiper.
+ * @returns JSON { url } for the Stripe dashboard; 400/401 if not onboarded or unauthenticated
+ * @called-by app/account/swiper-section.tsx
+ */
 export async function POST() {
   const supabase = await createClient()
   const user = await getAuthenticatedUser(supabase)

@@ -1,3 +1,11 @@
+/**
+ * @file route.ts
+ * @description GET endpoint that checks if an email address is already registered.
+ *   Includes a fixed 300ms delay to mitigate timing-based email enumeration attacks.
+ *   Called by: auth/login form to drive sign-in vs sign-up UX split
+ * @dependencies lib/supabase/service.ts, lib/api/helpers.ts
+ */
+
 import { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -7,6 +15,11 @@ const querySchema = z.object({
   email: z.string().email(),
 })
 
+/**
+ * Checks if the given email address is already registered.
+ * @returns JSON { data: { exists: boolean } } — always 200; 400 on invalid email
+ * @called-by auth/login form
+ */
 export async function GET(request: NextRequest) {
   const parsed = querySchema.safeParse({
     email: request.nextUrl.searchParams.get('email'),

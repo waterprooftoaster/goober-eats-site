@@ -1,6 +1,19 @@
+/**
+ * @file middleware.ts
+ * @description Supabase middleware helper that refreshes the user session on every request.
+ *   Called by: middleware.ts (root)
+ * @dependencies @supabase/ssr
+ */
+
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+/**
+ * Refreshes the Supabase session cookie on every request to prevent premature session expiry.
+ * @param request - The incoming Next.js request
+ * @returns A NextResponse with updated session cookies set
+ * @called-by middleware.ts (root)
+ */
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,

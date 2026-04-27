@@ -1,116 +1,420 @@
-import { redirect } from 'next/navigation'
-import { cookies } from 'next/headers'
-import { createClient } from '@/lib/supabase/server'
-import { createServiceClient } from '@/lib/supabase/service'
-import { getAuthenticatedUser } from '@/lib/api/helpers'
-import { loadCart } from '@/lib/cart/load'
-import { CheckoutForm } from '@/components/checkout-form'
+'use client'
+
+/**
+ * @file page.tsx
+ * @description Checkout page: signed-URL cart preview + auth-branched form
+ *   (guest gets a name field; authed-with-profile does not) → Stripe Embedded
+ *   Checkout. Reads screenshot paths from sessionStorage; redirects home if
+ *   empty. Errors render inline above the Pay button.
+ *   Called by: Next.js routing (/checkout), app/page.tsx (router.push)
+ * @dependencies @stripe/react-stripe-js, lib/supabase/client.ts,
+ *   components/{back-button, ui/button, ui/input, ui/surface, ui/skeleton}
+ */
+
+import { useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { loadStripe } from '@stripe/stripe-js'
+import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { Surface } from '@/components/ui/surface'
+import { Skeleton } from '@/components/ui/skeleton'
 import { BackButton } from '@/components/back-button'
-import type { LoadedCart } from '@/lib/cart/load'
+import { createClient } from '@/lib/supabase/client'
+import { PENDING_SCREENSHOTS_KEY, PENDING_SCHOOL_ID_KEY } from '@/lib/constants'
+import { computeSplit } from '@/lib/pricing'
 
-function formatCents(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`
-}
+// Guarded so a missing env var (CI / preview environment / fresh clone)
+// surfaces as the colocated error.tsx boundary instead of an unhandled
+// loadStripe(undefined) crash inside EmbeddedCheckoutProvider.
+const STRIPE_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? null
+const stripePromise = STRIPE_PUBLISHABLE_KEY ? loadStripe(STRIPE_PUBLISHABLE_KEY) : null
 
-function CartSummary({ cart }: { cart: LoadedCart }) {
-  const subtotal = cart.items.reduce((sum, item) => sum + item.quantity * item.price_cents, 0)
+type Stage = 'form' | 'submitting' | 'checkout'
+type ViewerKind = 'loading' | 'guest' | 'authed'
 
-  return (
-    <div className="rounded-lg border border-gray-200 bg-white p-6">
-      <h2 className="mb-1 text-xs font-semibold uppercase tracking-wider text-gray-500">
-        Your order
-      </h2>
-      <p className="mb-6 text-lg font-semibold text-gray-900">{cart.eatery_name ?? 'Order'}</p>
+export default function CheckoutPage() {
+    const router = useRouter()
+    const [screenshotPaths, setScreenshotPaths] = useState<string[]>([])
+    const [previewUrls, setPreviewUrls] = useState<string[]>([])
+    const [viewerKind, setViewerKind] = useState<ViewerKind>('loading')
 
-      <ul className="divide-y divide-gray-100">
-        {cart.items.map((item) => (
-          <li key={item.id} className="flex items-center justify-between py-3">
-            <div>
-              <span className="text-sm font-medium text-gray-900">{item.name}</span>
-              {item.quantity > 1 && (
-                <span className="ml-2 text-xs text-gray-400">×{item.quantity}</span>
-              )}
-              {item.selected_options.length > 0 && (
-                <ul className="mt-0.5 space-y-0.5">
-                  {item.selected_options.map((opt) => (
-                    <li key={opt.id} className="text-xs text-gray-500">
-                      {opt.name}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            <span className="text-sm font-medium text-gray-900">
-              {formatCents(item.quantity * item.price_cents)}
-            </span>
-          </li>
-        ))}
-      </ul>
+    const [name, setName] = useState('')
+    const [eatery, setEatery] = useState('')
+    const [subtotal, setSubtotal] = useState('')
+    const [stage, setStage] = useState<Stage>('form')
+    const [clientSecret, setClientSecret] = useState<string | null>(null)
+    const [error, setError] = useState<string | null>(null)
+    const initialized = useRef(false)
 
-      <div className="mt-4 border-t border-gray-100 pt-4">
-        <div className="flex justify-between text-sm text-gray-600">
-          <span>Subtotal</span>
-          <span>{formatCents(subtotal)}</span>
-        </div>
-        <div className="mt-2 flex justify-between text-base font-semibold text-gray-900">
-          <span>Total</span>
-          <span>{formatCents(subtotal)}</span>
-        </div>
-        <p className="mt-2 text-xs text-gray-400">Tips and any extras collected at payment</p>
-      </div>
-    </div>
-  )
-}
+    // sessionStorage bootstrap — redirect home if no screenshots are queued.
+    useEffect(() => {
+        if (initialized.current) return
+        initialized.current = true
+        const raw = sessionStorage.getItem(PENDING_SCREENSHOTS_KEY)
+        let paths: string[] = []
+        if (raw) {
+            try {
+                const parsed: unknown = JSON.parse(raw)
+                if (Array.isArray(parsed) && parsed.every((p): p is string => typeof p === 'string')) {
+                    paths = parsed
+                }
+            } catch {
+                // Malformed sessionStorage — fall through to redirect.
+            }
+        }
+        if (paths.length === 0) {
+            router.replace('/')
+            return
+        }
+        setScreenshotPaths(paths)
+    }, [router])
 
-export default async function CheckoutPage() {
-  const supabase = await createClient()
-  const user = await getAuthenticatedUser(supabase)
-  const cookieStore = await cookies()
-  const service = createServiceClient()
+    // Resolve viewerKind: a Supabase user without a profile row is a guest
+    // for backend purposes (the API requires guest_name in that case).
+    useEffect(() => {
+        let cancelled = false
+        void (async () => {
+            const supabase = createClient()
+            const { data: { user } } = await supabase.auth.getUser()
+            if (!user) {
+                if (!cancelled) setViewerKind('guest')
+                return
+            }
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('id')
+                .eq('id', user.id)
+                .maybeSingle()
+            if (cancelled) return
+            setViewerKind(profile ? 'authed' : 'guest')
+        })()
+        return () => { cancelled = true }
+    }, [])
 
-  let cart: { id: string; eatery_id: string } | null = null
-  if (user) {
-    const { data } = await service
-      .from('carts')
-      .select('id, eatery_id')
-      .eq('user_id', user.id)
-      .maybeSingle()
-    cart = data
-  } else {
-    const sessionId = cookieStore.get('cart_session_id')?.value
-    if (sessionId) {
-      const { data } = await service
-        .from('carts')
-        .select('id, eatery_id')
-        .eq('session_id', sessionId)
-        .maybeSingle()
-      cart = data
+    // Load signed display URLs for the cart preview.
+    useEffect(() => {
+        if (screenshotPaths.length === 0) return
+        let cancelled = false
+        void (async () => {
+            const supabase = createClient()
+            const { data, error: signErr } = await supabase.storage
+                .from('cart-screenshots')
+                .createSignedUrls(screenshotPaths, 3600)
+            if (cancelled || signErr || !data) return
+            setPreviewUrls(data.map((d) => d.signedUrl).filter((u): u is string => typeof u === 'string'))
+        })()
+        return () => { cancelled = true }
+    }, [screenshotPaths])
+
+    const subtotalCents = parseCents(subtotal)
+    const split = subtotalCents !== null ? computeSplit(subtotalCents) : null
+    const eateryValid = eatery.trim().length >= 1 && eatery.trim().length <= 80
+    const subtotalValid = subtotalCents !== null && subtotalCents >= 50
+    const nameValid = viewerKind === 'authed' ? true : name.trim().length > 0
+    const canSubmit =
+        eateryValid && subtotalValid && nameValid &&
+        stage === 'form' && viewerKind !== 'loading'
+
+    async function handleSubmit(e: React.FormEvent) {
+        e.preventDefault()
+        if (!canSubmit || subtotalCents === null) return
+        setStage('submitting')
+        setError(null)
+
+        const body: Record<string, unknown> = {
+            restaurant_name: eatery.trim(),
+            cart_screenshot_paths: screenshotPaths,
+            subtotal_cents: subtotalCents,
+        }
+        if (viewerKind === 'guest') {
+            body.guest_name = name.trim()
+            const pendingSchoolId = sessionStorage.getItem(PENDING_SCHOOL_ID_KEY)
+            if (pendingSchoolId) body.school_id = pendingSchoolId
+        }
+
+        try {
+            const res = await fetch('/api/stripe/checkout-session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            })
+            const json = await res.json() as { clientSecret?: string; error?: string }
+            if (!res.ok) throw new Error(json.error ?? 'Failed to create payment session')
+            if (!json.clientSecret) throw new Error('No client secret returned')
+            // Clear sessionStorage only after the session is confirmed so a Stripe
+            // failure leaves the paths behind for retry.
+            sessionStorage.removeItem(PENDING_SCREENSHOTS_KEY)
+            sessionStorage.removeItem(PENDING_SCHOOL_ID_KEY)
+            setClientSecret(json.clientSecret)
+            setStage('checkout')
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
+            setStage('form')
+        }
     }
-  }
 
-  if (!cart) redirect('/cart')
+    if (clientSecret) {
+        if (!stripePromise) {
+            // Should never happen — the POST that returned the clientSecret would
+            // have failed first — but a missing publishable key would still leave
+            // the iframe unmounted. Surface the error inline rather than crash.
+            throw new Error('Stripe publishable key is not configured')
+        }
+        return (
+            <main
+                data-testid="checkout-page"
+                className="mx-auto max-w-3xl py-6 sm:py-10"
+            >
+                <div className="mb-4">
+                    <BackButton />
+                </div>
+                <Surface
+                    tone="subtle"
+                    padding="none"
+                    data-testid="checkout-stripe-embedded"
+                    className="overflow-hidden"
+                >
+                    <EmbeddedCheckoutProvider stripe={stripePromise} options={{ clientSecret }}>
+                        <EmbeddedCheckout />
+                    </EmbeddedCheckoutProvider>
+                </Surface>
+            </main>
+        )
+    }
 
-  const loaded = await loadCart(service, cart)
-  if (loaded.items.length === 0) redirect('/cart')
+    const isSubmitting = stage === 'submitting'
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="mx-auto max-w-5xl px-4 py-8">
-        {/* Header */}
-        <div className="mb-8 flex items-center gap-3">
-          <BackButton />
-          <h1 className="text-xl font-semibold text-gray-900">Checkout</h1>
+    return (
+        <main
+            data-testid="checkout-page"
+            className="mx-auto max-w-5xl py-6 sm:py-10"
+        >
+            <div className="mb-6">
+                <BackButton />
+            </div>
+
+            <div className="grid gap-8 sm:grid-cols-[minmax(0,1fr)_minmax(0,440px)] lg:gap-12">
+                <section
+                    data-testid="checkout-cart-preview"
+                    className="flex flex-col gap-3"
+                >
+                    <h2 className="text-sm font-medium text-muted-foreground">Your cart</h2>
+                    {previewUrls.length === 0 ? (
+                        <Skeleton className="aspect-square w-full max-w-md rounded-2xl" />
+                    ) : (
+                        <div className="flex flex-col gap-3">
+                            {previewUrls.map((url, idx) => (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                    key={url}
+                                    src={url}
+                                    alt={`Cart screenshot ${idx + 1}`}
+                                    className="w-full max-w-md rounded-2xl border border-border bg-card object-contain"
+                                />
+                            ))}
+                        </div>
+                    )}
+                </section>
+
+                <section className="flex flex-col">
+                    <header className="mb-6">
+                        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+                            Pay for your order.
+                        </h1>
+                        <p className="mt-2 text-sm text-muted-foreground">
+                            Once you pay, a swiper at your school picks it up.
+                        </p>
+                    </header>
+
+                    {viewerKind === 'loading' ? (
+                        <FormSkeleton />
+                    ) : (
+                        <CheckoutForm
+                            kind={viewerKind}
+                            name={name} setName={setName}
+                            eatery={eatery} setEatery={setEatery}
+                            subtotal={subtotal} setSubtotal={setSubtotal}
+                            isSubmitting={isSubmitting}
+                            canSubmit={canSubmit}
+                            error={error}
+                            ordererPaysCents={split?.ordererPaysCents ?? null}
+                            onSubmit={handleSubmit}
+                        />
+                    )}
+                </section>
+            </div>
+        </main>
+    )
+}
+
+// --- Helpers ---
+
+interface CheckoutFormProps {
+    kind: 'guest' | 'authed'
+    name: string
+    setName: (v: string) => void
+    eatery: string
+    setEatery: (v: string) => void
+    subtotal: string
+    setSubtotal: (v: string) => void
+    isSubmitting: boolean
+    canSubmit: boolean
+    error: string | null
+    ordererPaysCents: number | null
+    onSubmit: (e: React.FormEvent) => void
+}
+
+/**
+ * Renders the guest- or authed-variant of the checkout form. The two share
+ * 90%+ of their structure; the only difference is whether the name field is
+ * present in the DOM and the testid carried by the form root.
+ * @called-by CheckoutPage
+ */
+function CheckoutForm({
+    kind, name, setName, eatery, setEatery, subtotal, setSubtotal,
+    isSubmitting, canSubmit, error, ordererPaysCents, onSubmit,
+}: CheckoutFormProps) {
+    const isGuest = kind === 'guest'
+    const formTestId = isGuest ? 'checkout-form-guest' : 'checkout-form-authed'
+    const buttonLabel = isSubmitting
+        ? 'Creating session…'
+        : ordererPaysCents !== null ? `Pay ${formatDollars(ordererPaysCents)}` : 'Pay'
+
+    return (
+        <form
+            data-testid={formTestId}
+            onSubmit={onSubmit}
+            className="flex flex-col gap-4"
+        >
+            {isGuest && (
+                <FieldRow label="Your full name" htmlFor="checkout-name">
+                    <Input
+                        id="checkout-name"
+                        type="text"
+                        placeholder="Jane Doe"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        maxLength={100}
+                        disabled={isSubmitting}
+                        autoComplete="name"
+                    />
+                </FieldRow>
+            )}
+
+            <FieldRow
+                label="Campus Eatery Name"
+                htmlFor="checkout-eatery">
+                <Input
+                    id="checkout-eatery"
+                    type="text"
+                    placeholder="e.g. Downstein, Jasper Kane"
+                    value={eatery}
+                    onChange={(e) => setEatery(e.target.value)}
+                    maxLength={80}
+                    disabled={isSubmitting}
+                />
+            </FieldRow>
+
+            <FieldRow
+                label="Cart Total"
+                htmlFor="checkout-subtotal"
+                hint={
+                    ordererPaysCents !== null
+                        ? `You'll pay ${formatDollars(ordererPaysCents)} (40% off)`
+                        : 'Minimum $0.50'
+                }
+            >
+                <Input
+                    id="checkout-subtotal"
+                    data-testid="checkout-subtotal-input"
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="0.00"
+                    min="0.50"
+                    step="0.01"
+                    value={subtotal}
+                    onChange={(e) => setSubtotal(e.target.value)}
+                    disabled={isSubmitting}
+                />
+            </FieldRow>
+
+            {error && (
+                <p
+                    data-testid="checkout-error-message"
+                    role="alert"
+                    className="text-sm text-destructive"
+                >
+                    {error}
+                </p>
+            )}
+
+            <Button
+                type="submit"
+                variant="primary"
+                size="lg"
+                disabled={!canSubmit || isSubmitting}
+                className="mt-2 w-full"
+                data-testid="checkout-submit-button"
+            >
+                {buttonLabel}
+            </Button>
+        </form>
+    )
+}
+
+/**
+ * Loading-state placeholder for the auth-branched form. Mirrors the
+ * eventual form's vertical rhythm so the layout doesn't reflow.
+ */
+function FormSkeleton() {
+    return (
+        <div className="flex flex-col gap-4" aria-busy>
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="mt-2 h-9 w-full" />
         </div>
+    )
+}
 
-        {/* Two-column layout */}
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
-          {/* Left: Cart summary */}
-          <CartSummary cart={loaded} />
+interface FieldRowProps {
+    label: string
+    htmlFor: string
+    hint?: string
+    children: React.ReactNode
+}
 
-          {/* Right: Payment form */}
-          <CheckoutForm isGuest={!user} />
+/**
+ * Single label + control + optional hint stack. Inlined helper because the
+ * pattern repeats four times across the two form variants.
+ */
+function FieldRow({ label, htmlFor, hint, children }: FieldRowProps) {
+    return (
+        <div className="flex flex-col gap-1.5">
+            <label htmlFor={htmlFor} className="text-sm font-medium">
+                {label}
+            </label>
+            {children}
+            {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
         </div>
-      </div>
-    </div>
-  )
+    )
+}
+
+/**
+ * Converts a user-entered dollar string to integer cents.
+ * @param value - Dollar amount string (e.g. "12.50")
+ * @returns Integer cents, or null if the input is invalid
+ */
+function parseCents(value: string): number | null {
+    const n = parseFloat(value)
+    if (isNaN(n) || n <= 0) return null
+    return Math.round(n * 100)
+}
+
+/**
+ * Formats integer cents as a US dollar string (e.g. 1250 → "$12.50").
+ */
+function formatDollars(cents: number): string {
+    return `$${(cents / 100).toFixed(2)}`
 }

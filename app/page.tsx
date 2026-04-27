@@ -1,65 +1,45 @@
+/**
+ * @file page.tsx
+ * @description Home page entry point. Unauthenticated visitors see the cover/landing
+ *   page; authenticated users see the upload-cart-screenshot home experience.
+ *   Gating is a server-component branch — no middleware redirect, no client check.
+ *   Called by: Next.js routing (/)
+ * @dependencies lib/supabase/server.ts, lib/api/helpers.ts,
+ *   components/cover-page.tsx, components/home-upload.tsx
+ */
+
 import { createClient } from '@/lib/supabase/server'
 import { getAuthenticatedUser } from '@/lib/api/helpers'
-import { RestaurantCard } from '@/components/restaurant-card'
-import { BecomeSwiperBanner } from '@/components/become-swiper-banner'
-import { BringToSchoolBanner } from '@/components/bring-to-school-banner'
-import { seedDevEateries } from '@/lib/dev-seed'
+import CoverPage from '@/components/cover-page'
+import HomeUpload from '@/components/home-upload'
 
-export default async function Home() {
+/**
+ * Renders the cover page for anon users; the upload-cart home for authed users.
+ * @returns Cover page (anon) or HomeUpload (authed)
+ * @called-by Next.js routing (/)
+ */
+export default async function HomePage() {
   const supabase = await createClient()
   const user = await getAuthenticatedUser(supabase)
-  const isSwiper = user
-    ? ((await supabase.from('profiles').select('is_swiper').eq('id', user.id).single())
-        .data?.is_swiper ?? false)
-    : false
 
-  let { data: eateries } = await supabase
-    .from('eateries')
-    .select('id, name, image_url, schools(name)')
-    .eq('is_active', true)
+  // Only real (non-anonymous) authed users with a profile.school_id may see
+  // the upload home. Anon sessions (created by HomeUpload before checkout)
+  // have no profile row → they belong on the cover until they pick a school.
+  if (user && !user.is_anonymous) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('school_id')
+      .eq('id', user.id)
+      .maybeSingle()
+    if (profile?.school_id) {
+      return <HomeUpload />
+    }
+  }
+
+  const { data: schools } = await supabase
+    .from('schools')
+    .select('id, name')
     .order('name')
 
-  if (process.env.NODE_ENV === 'development' && (!eateries || eateries.length === 0)) {
-    await seedDevEateries()
-    const { data: seeded } = await supabase
-      .from('eateries')
-      .select('id, name, image_url, schools(name)')
-      .eq('is_active', true)
-    eateries = seeded
-  }
-
-  const grouped = new Map<string, NonNullable<typeof eateries>>()
-  for (const eatery of eateries ?? []) {
-    const school = ((eatery.schools as unknown) as { name: string } | null)?.name ?? 'Other'
-    if (!grouped.has(school)) grouped.set(school, [])
-    grouped.get(school)!.push(eatery)
-  }
-
-  return (
-    <main className="min-h-screen bg-white space-y-8 p-4">
-      <section className="mb-12">
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-          {!isSwiper && (
-            <BecomeSwiperBanner ctaHref={user ? '/account' : '/auth/login'} />
-          )}
-          <BringToSchoolBanner />
-        </div>
-      </section>
-      {[...grouped.entries()].map(([schoolName, schoolEateries]) => (
-        <section key={schoolName}>
-          <h2 className="text-lg font-bold text-gray-900 mb-3">{schoolName}</h2>
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-            {schoolEateries.map((eatery) => (
-              <RestaurantCard
-                key={eatery.id}
-                id={eatery.id}
-                name={eatery.name}
-                imageUrl={eatery.image_url}
-              />
-            ))}
-          </div>
-        </section>
-      ))}
-    </main>
-  )
+  return <CoverPage schools={schools ?? []} />
 }

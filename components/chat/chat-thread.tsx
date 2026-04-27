@@ -1,128 +1,123 @@
 'use client'
 
+/**
+ * @file chat-thread.tsx
+ * @description Scrollable thread rendering pinned pseudo-messages, real chat
+ *   messages, and optimistic entries with pending/failed treatments. After
+ *   the S07 C2 wiring, messages are OptimisticMessage[] (Message + optional
+ *   `status: 'pending' | 'failed'`). Failed entries surface a Retry affordance
+ *   that calls onRetry(temp_id, body).
+ *   Called by: components/chat/chat-view.tsx
+ * @dependencies lib/types/messaging.ts, hooks/use-messages.ts (OptimisticMessage)
+ */
+
 import type { RefObject } from 'react'
-import type { Conversation, Message } from '@/lib/types/messaging'
+import Image from 'next/image'
+import type { OptimisticMessage } from '@/hooks/use-messages'
+import type { PseudoMessage } from '@/components/chat/chat-view'
 import { cn } from '@/lib/utils'
 
 interface Props {
-  messages: Message[]
-  conversation: Conversation
-  currentUserId: string
+  pseudoMessages: PseudoMessage[]
+  messages: OptimisticMessage[]
+  currentUserId: string | null
   messagesEndRef: RefObject<HTMLDivElement | null>
+  /** Called when the user clicks Retry on a failed optimistic entry. */
+  onRetry?: (temp_id: string, body: string) => void
 }
 
-function formatDateLabel(iso: string): string {
-  const date = new Date(iso)
-  const today = new Date()
-  const yesterday = new Date(today)
-  yesterday.setDate(today.getDate() - 1)
-  if (date.toDateString() === today.toDateString()) return 'Today'
-  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday'
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-}
-
-function getSenderLabel(
-  message: Message,
-  conversation: Conversation,
-  currentUserId: string
-): string | null {
-  if (message.sender_id === null) return null
-  if (message.sender_id === currentUserId) return 'You'
-  if (message.sender_id === conversation.swiper_id) return 'Swiper'
-  if (message.sender_id === conversation.orderer_id) return 'Orderer'
-  return null
-}
-
-interface MessageGroup {
-  label: string
-  messages: Message[]
-}
-
-function groupByDate(messages: Message[]): MessageGroup[] {
-  const groups: MessageGroup[] = []
-  let currentLabel: string | null = null
-  for (const message of messages) {
-    const label = formatDateLabel(message.sent_at)
-    if (label !== currentLabel) {
-      groups.push({ label, messages: [message] })
-      currentLabel = label
-    } else {
-      groups[groups.length - 1].messages.push(message)
-    }
-  }
-  return groups
-}
-
-export function ChatThread({ messages, conversation, currentUserId, messagesEndRef }: Props) {
-  const groups = groupByDate(messages)
+/**
+ * Renders pinned status pseudo-messages followed by real + optimistic messages.
+ * Pending entries are muted with a small spinner; failed entries are muted with
+ * a Retry button that re-submits via onRetry.
+ * @param pseudoMessages - Status text rows pinned above real messages (not stored in DB)
+ * @param messages - Real + optimistic chat messages
+ * @param currentUserId - Authenticated user ID for aligning own messages to the right
+ * @param messagesEndRef - Scroll anchor at the bottom of the thread
+ * @param onRetry - Retry callback for failed optimistic entries
+ * @called-by components/chat/chat-view.tsx
+ */
+export function ChatThread({ pseudoMessages, messages, currentUserId, messagesEndRef, onRetry }: Props) {
   return (
-    <div className="flex-1 space-y-1 overflow-y-auto px-4 py-3">
-      {groups.map((group) => (
-        <div key={group.label}>
-          {/* Date separator */}
-          <div data-testid="date-separator" className="my-4 flex items-center gap-3">
-            <div className="h-px flex-1 bg-gray-100" />
-            <span className="text-[11px] font-medium uppercase tracking-wide text-gray-400">
-              {group.label}
-            </span>
-            <div className="h-px flex-1 bg-gray-100" />
+    <div data-testid="chat-thread" className="flex-1 space-y-1 overflow-y-auto px-4 py-3">
+      {pseudoMessages.map((pseudo, i) => (
+        <div
+          key={`pseudo-${i}`}
+          className="mb-1 mr-auto flex max-w-[75%] flex-col items-start"
+          data-testid={pseudo.testid}
+        >
+          <div className="rounded-2xl rounded-bl-sm bg-secondary px-3 py-2 text-sm text-foreground">
+            {pseudo.text}
           </div>
-
-          {group.messages.map((message) => {
-            const isSystem = message.message_type === 'system'
-            const isPhoto = message.message_type === 'delivery_photo'
-            const isOwn = message.sender_id === currentUserId
-            const senderLabel = getSenderLabel(message, conversation, currentUserId)
-
-            if (isSystem) {
-              return (
-                <div key={message.id} className="my-2 flex justify-center">
-                  <p className="px-4 text-center text-xs italic text-gray-400">{message.body}</p>
-                </div>
-              )
-            }
-
-            return (
-              <div
-                key={message.id}
-                className={cn(
-                  'mb-1 flex max-w-[75%] flex-col',
-                  isOwn ? 'ml-auto items-end' : 'mr-auto items-start'
-                )}
-              >
-                {senderLabel && (
-                  <span className="mb-0.5 px-1 text-[10px] text-gray-400">{senderLabel}</span>
-                )}
-                {isPhoto && message.image_url ? (
-                  <a
-                    href={message.image_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block"
-                  >
-                    <img
-                      src={message.image_url}
-                      alt="Delivery photo"
-                      className="max-w-[200px] cursor-pointer rounded-lg border border-gray-100 object-cover transition-opacity hover:opacity-90"
-                    />
-                  </a>
-                ) : (
-                  <div
-                    className={cn(
-                      'rounded-2xl px-3 py-2 text-sm',
-                      isOwn
-                        ? 'rounded-br-sm bg-black text-white'
-                        : 'rounded-bl-sm bg-gray-100 text-gray-900'
-                    )}
-                  >
-                    {message.body}
-                  </div>
-                )}
-              </div>
-            )
-          })}
         </div>
       ))}
+      {messages.map((message) => {
+        const isPhoto = message.message_type === 'completion_photo'
+        const isOwn = message.sender_id === currentUserId
+        const isPending = message.status === 'pending'
+        const isFailed = message.status === 'failed'
+
+        return (
+          <div
+            key={message.id}
+            data-testid={isPending ? 'chat-message-pending' : isFailed ? 'chat-message-failed' : undefined}
+            className={cn(
+              'mb-1 flex max-w-[75%] flex-col',
+              isOwn ? 'ml-auto items-end' : 'mr-auto items-start'
+            )}
+          >
+            {isPhoto && message.image_url ? (
+              <a
+                href={message.image_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block"
+              >
+                <Image
+                  src={message.image_url}
+                  alt="Completion photo"
+                  width={200}
+                  height={200}
+                  className="cursor-pointer rounded-lg border border-border object-cover transition-opacity hover:opacity-90"
+                />
+              </a>
+            ) : (
+              <div
+                className={cn(
+                  'rounded-2xl px-3 py-2 text-sm',
+                  isOwn
+                    ? 'rounded-br-sm bg-foreground text-background'
+                    : 'rounded-bl-sm bg-secondary text-foreground',
+                  (isPending || isFailed) && 'opacity-60'
+                )}
+              >
+                {message.body}
+              </div>
+            )}
+            {isPending && (
+              <span className="mt-0.5 inline-flex items-center gap-1 text-xs text-muted-foreground">
+                <span aria-hidden className="h-2 w-2 animate-spin rounded-full border border-muted-foreground border-t-transparent" />
+                Sending…
+              </span>
+            )}
+            {isFailed && (
+              <div className="mt-0.5 flex items-center gap-2 text-xs text-destructive">
+                <span role="alert">Failed to send.</span>
+                {onRetry && message.temp_id && message.body && (
+                  <button
+                    type="button"
+                    onClick={() => onRetry(message.temp_id!, message.body!)}
+                    data-testid="chat-message-retry"
+                    className="font-medium underline hover:no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                  >
+                    Retry
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )
+      })}
       {/* Scroll anchor */}
       <div ref={messagesEndRef} />
     </div>

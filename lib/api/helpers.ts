@@ -1,3 +1,10 @@
+/**
+ * @file helpers.ts
+ * @description Shared API utilities: response helpers, authenticated user lookup, and cart session management.
+ *   Called by: all app/api/ route handlers
+ * @dependencies next/server, @supabase/supabase-js
+ */
+
 import { NextResponse } from 'next/server'
 import { SupabaseClient } from '@supabase/supabase-js'
 import { ReadonlyRequestCookies } from 'next/dist/server/web/spec-extension/adapters/request-cookies'

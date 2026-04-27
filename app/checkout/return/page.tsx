@@ -1,114 +1,56 @@
-import Link from 'next/link'
+/**
+ * @file page.tsx
+ * @description Stripe Embedded Checkout return handler. Receives the
+ *   Checkout `session_id` from Stripe, retrieves the session to read the
+ *   PaymentIntent ID + guest metadata, then `redirect()`s downstream:
+ *   guests → /api/guest/verify-order (cookie + redirect home);
+ *   authed users → /current-orders.
+ *
+ *   Pure server redirect — never renders DOM in the happy path.
+ *   Called by: Stripe `return_url` redirect after successful payment
+ * @dependencies lib/stripe/client.ts
+ */
+
+import { redirect } from 'next/navigation'
 import { getStripe } from '@/lib/stripe/client'
-import { createClient } from '@/lib/supabase/server'
 
 interface Props {
   searchParams: Promise<{ session_id?: string }>
 }
 
-const SESSION_ID_RE = /^cs_(test|live)_[a-zA-Z0-9]+$/
-
-function FailurePage({ message, href }: { message: string; href: string }) {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
-      <div className="max-w-md rounded-lg border border-gray-200 bg-white p-8 text-center shadow-sm">
-        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
-          <svg
-            className="h-6 w-6 text-red-600"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </div>
-        <h1 className="mb-2 text-xl font-semibold text-gray-900">Payment didn&apos;t go through</h1>
-        <p className="text-sm text-gray-500">{message}</p>
-        <Link
-          href={href}
-          className="mt-6 inline-block w-full rounded-none bg-black py-3 text-sm font-semibold text-white hover:bg-gray-900"
-        >
-          Try again
-        </Link>
-      </div>
-    </div>
-  )
-}
-
+/**
+ * Resolves the Stripe Checkout session and routes the user to the right
+ * downstream surface. Authed users land on /current-orders so the realtime
+ * order they just paid for is visible immediately (catalog
+ * ORD-CHECKOUT-RETURN-AUTHED).
+ * @param searchParams - URL search params containing `session_id` from Stripe
+ * @called-by Stripe return_url redirect
+ */
 export default async function CheckoutReturnPage({ searchParams }: Props) {
   const { session_id } = await searchParams
+  // Stripe Checkout session IDs are `cs_test_…` / `cs_live_…` followed by
+  // alphanumerics + underscores. Validate the shape before issuing the SDK
+  // call so attacker-controlled query strings don't end up in Stripe's API
+  // error logs or our application monitoring.
+  if (!session_id || !/^cs_[a-zA-Z0-9_]+$/.test(session_id)) redirect('/')
 
-  if (!session_id || !SESSION_ID_RE.test(session_id)) {
-    return <FailurePage message="Invalid payment session." href="/checkout" />
-  }
-
-  let status: string | null = null
-  let sessionOrderId: string | undefined
-  let isAuthenticated = false
+  let session
   try {
-    const session = await getStripe().checkout.sessions.retrieve(session_id)
-    sessionOrderId = session.metadata?.order_id ?? undefined
-
-    // H-2: For authenticated users, verify the session belongs to their order
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      isAuthenticated = true
-      if (sessionOrderId) {
-        const { data: order } = await supabase
-          .from('orders')
-          .select('orderer_id')
-          .eq('id', sessionOrderId)
-          .single()
-        if (!order || order.orderer_id !== user.id) {
-          return <FailurePage message="Payment session not found." href="/checkout" />
-        }
-      }
-    }
-
-    status = session.status
+    session = await getStripe().checkout.sessions.retrieve(session_id)
   } catch {
-    return <FailurePage message="Could not verify payment status. Please try again." href="/checkout" />
+    redirect('/')
   }
 
-  if (status === 'complete') {
-    const trackingHref = isAuthenticated && sessionOrderId ? `/order/${sessionOrderId}/chat` : '/'
-    const trackingLabel = isAuthenticated && sessionOrderId ? 'Track your order' : 'Back to home'
+  const piId =
+    typeof session.payment_intent === 'string'
+      ? session.payment_intent
+      : session.payment_intent?.id
 
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
-        <div className="max-w-md rounded-lg border border-gray-200 bg-white p-8 text-center shadow-sm">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
-            <svg
-              className="h-6 w-6 text-green-600"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-          </div>
-          <h1 className="mb-2 text-xl font-semibold text-gray-900">Order placed!</h1>
-          <p className="text-sm text-gray-500">
-            We&apos;ll send you a text when a swiper picks up your order.
-          </p>
-          <Link
-            href={trackingHref}
-            className="mt-6 inline-block w-full rounded-none bg-black py-3 text-sm font-semibold text-white hover:bg-gray-900"
-          >
-            {trackingLabel}
-          </Link>
-        </div>
-      </div>
-    )
+  if (!piId) redirect('/')
+
+  if (session.metadata?.is_guest === 'true') {
+    redirect(`/api/guest/verify-order?pi_id=${piId}`)
   }
 
-  return (
-    <FailurePage
-      message="Your card wasn't charged. Please try again."
-      href="/checkout"
-    />
-  )
+  redirect('/current-orders')
 }

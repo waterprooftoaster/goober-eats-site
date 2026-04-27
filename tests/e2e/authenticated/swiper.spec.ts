@@ -1,3 +1,9 @@
+/**
+ * @file swiper.spec.ts
+ * @description Authenticated E2E tests for the swiper order acceptance and completion flow.
+ *   Called by: Playwright "authenticated" project
+ */
+
 import { test, expect } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 
@@ -11,8 +17,6 @@ test.describe('PATCH /api/profile — authenticated', () => {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SECRET_KEY!
     )
-    // Ensure seed eateries exist (creates the NYU school if not present)
-    await supabase.rpc('seed_dev_eateries')
     const { data: schools } = await supabase
       .from('schools')
       .select('id')
@@ -120,28 +124,28 @@ test.describe('Account page — swiper section', () => {
 
   test('shows "Become a Swiper" section for non-swiper', async ({ page }) => {
     await page.goto('/account')
-    await expect(page.getByText('Become a Swiper')).toBeVisible()
+    await expect(page.getByTestId('account-become-swiper-cta')).toBeVisible()
   })
 
-  test('school select and save updates profile', async ({ page, request }) => {
+  test('school select and save updates profile', async ({ page }) => {
     await page.goto('/swiper-registration')
-    // Select the first school option (not the placeholder)
-    const select = page.locator('select')
-    await expect(select).toBeVisible()
-    const options = await select.locator('option').all()
-    // Find a non-empty option value
-    let targetValue = ''
-    for (const opt of options) {
-      const val = await opt.getAttribute('value')
-      if (val && val !== '') {
-        targetValue = val
-        break
-      }
-    }
-    expect(targetValue).toBeTruthy()
-    await select.selectOption(targetValue)
-    await page.getByRole('button', { name: 'Save School' }).click()
-    // After saving, the school name should be displayed and the Continue button enabled
-    await expect(page.getByRole('button', { name: 'Continue to Payment Setup' })).toBeEnabled()
+    // S06 migrated the school selector from native <select> to the
+    // S03 <Combobox> primitive (Base UI). Base UI renders BOTH an
+    // `<input role="combobox">` and a trigger `<button role="combobox">`
+    // inside the testid wrapper, so we narrow by the accessible name
+    // (the placeholder) to target the typeable input specifically.
+    const schoolInput = page
+      .getByTestId('swiper-reg-school-selector')
+      .getByRole('combobox', { name: 'Search schools…' })
+    await expect(schoolInput).toBeVisible()
+    // Type to filter, arrow-down to highlight first match, Enter to select.
+    // Using a single character keeps the test independent of the
+    // particular schools list — any environment with ≥1 school passes.
+    await schoolInput.fill('a')
+    await schoolInput.press('ArrowDown')
+    await schoolInput.press('Enter')
+    await page.getByTestId('swiper-reg-save-button').click()
+    // After saving, the Continue button should be enabled.
+    await expect(page.getByTestId('swiper-reg-continue-button')).toBeEnabled()
   })
 })

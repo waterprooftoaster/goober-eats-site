@@ -1,3 +1,9 @@
+/**
+ * @file swiper-pending.spec.ts
+ * @description Authenticated E2E tests for the swiper's pending orders view.
+ *   Called by: Playwright "authenticated" project
+ */
+
 import { test, expect } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 
@@ -9,7 +15,6 @@ test.describe('Pending Orders', () => {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SECRET_KEY!
     )
-    await supabase.rpc('seed_dev_eateries')
     const { data: schools } = await supabase
       .from('schools')
       .select('id')
@@ -25,6 +30,17 @@ test.describe('Pending Orders', () => {
       .from('profiles')
       .update({ is_swiper: true, school_id: schools.id })
       .eq('id', user.id)
+    // S07: layout.tsx now resolves swiper status via the §10 Principal helper,
+    // which requires a stripe_accounts row with onboarding_complete=true to
+    // classify the user as authed_swiper (and therefore render the swiper
+    // queue affordances). Seed it here so the test fixture matches the new
+    // contract.
+    await supabase
+      .from('stripe_accounts')
+      .upsert(
+        { user_id: user.id, stripe_account_id: 'acct_swiper_pending_e2e', onboarding_complete: true },
+        { onConflict: 'user_id' }
+      )
   })
 
   test.afterAll(async () => {
@@ -35,6 +51,7 @@ test.describe('Pending Orders', () => {
     const { data: existing } = await supabase.auth.admin.listUsers()
     const user = existing?.users?.find((u) => u.email === TEST_EMAIL)
     if (user) {
+      await supabase.from('stripe_accounts').delete().eq('user_id', user.id)
       await supabase
         .from('profiles')
         .update({ is_swiper: false })
@@ -49,13 +66,13 @@ test.describe('Pending Orders', () => {
     expect(Array.isArray(body)).toBe(true)
   })
 
-  test('page loads and shows Pending Orders heading', async ({ page }) => {
+  test('page loads and shows Open Orders heading', async ({ page }) => {
     await page.goto('/swiper/orders')
-    await expect(page.getByRole('heading', { name: 'Pending Orders' })).toBeVisible()
+    await expect(page.getByTestId('swiper-orders-page')).toBeVisible()
   })
 
   test('sidebar shows Pending Orders link', async ({ page }) => {
     await page.goto('/')
-    await expect(page.getByRole('link', { name: /pending orders/i })).toBeVisible()
+    await expect(page.getByTestId('swiper-orders-button')).toBeVisible()
   })
 })

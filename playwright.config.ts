@@ -1,3 +1,10 @@
+/**
+ * @file playwright.config.ts
+ * @description Playwright E2E configuration: two projects (unauthenticated chromium, authenticated chromium).
+ *   Loads .env.local for Supabase credentials; authenticated project depends on auth.setup.ts.
+ *   Called by: npx playwright test
+ */
+
 import { defineConfig, devices } from '@playwright/test'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'

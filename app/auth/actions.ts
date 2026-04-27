@@ -1,5 +1,13 @@
 'use server'
 
+/**
+ * @file actions.ts
+ * @description Server actions for authentication: sign in, sign up, sign out, Google OAuth,
+ *   unified authenticate flow, onboarding completion, and account deletion.
+ *   Called by: app/auth/login/login-form.tsx, app/account/account-actions.tsx
+ * @dependencies lib/supabase/server.ts, lib/supabase/admin.ts
+ */
+
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
@@ -13,6 +21,13 @@ type ActionState =
   | { needsOnboarding: true; email: string }
   | null
 
+/**
+ * Signs in an existing user with email and password, then redirects to home.
+ * @param _prevState - Previous action state (unused)
+ * @param formData - Form data containing email and password fields
+ * @returns Error state on failure; redirects to / on success
+ * @called-by app/auth/login/login-form.tsx
+ */
 export async function signIn(
   _prevState: ActionState,
   formData: FormData,
@@ -37,6 +52,13 @@ export async function signIn(
   redirect('/')
 }
 
+/**
+ * Registers a new user with email and password, then redirects to home.
+ * @param _prevState - Previous action state (unused)
+ * @param formData - Form data containing email and password fields
+ * @returns Error state on failure; redirects to / on success
+ * @called-by app/auth/login/login-form.tsx
+ */
 export async function signUp(
   _prevState: ActionState,
   formData: FormData,
@@ -61,12 +83,20 @@ export async function signUp(
   redirect('/')
 }
 
+/**
+ * Signs out the current user and redirects to home.
+ * @called-by app/account/account-actions.tsx
+ */
 export async function signOut() {
   const supabase = await createClient()
   await supabase.auth.signOut()
   redirect('/')
 }
 
+/**
+ * Initiates Google OAuth sign-in and redirects to the provider's auth URL.
+ * @called-by app/auth/login/login-form.tsx
+ */
 export async function signInWithGoogle() {
   const headersList = await headers()
   const origin =
@@ -88,6 +118,13 @@ export async function signInWithGoogle() {
   redirect(data.url)
 }
 
+/**
+ * Unified sign-in/sign-up server action; distinguishes mode by presence of confirm_password field.
+ * @param _prevState - Previous action state (unused)
+ * @param formData - Form data; includes confirm_password only during sign-up
+ * @returns Error state, needsOnboarding state, or redirects to / on success
+ * @called-by app/auth/login/login-form.tsx
+ */
 export async function authenticate(
   _prevState: ActionState,
   formData: FormData,
@@ -160,6 +197,13 @@ export async function authenticate(
   redirect('/')
 }
 
+/**
+ * Creates the user's profile row with full name and school, completing the onboarding flow.
+ * @param _prevState - Previous action state (unused)
+ * @param formData - Form data containing full_name and school_id fields
+ * @returns Error state on failure; redirects to / on success
+ * @called-by app/auth/login/login-form.tsx
+ */
 export async function completeOnboarding(
   _prevState: ActionState,
   formData: FormData,
@@ -204,6 +248,11 @@ export async function completeOnboarding(
   redirect('/')
 }
 
+/**
+ * Permanently deletes the authenticated user's account via the admin client, then signs out.
+ * @returns Error object on failure; redirects to / on success
+ * @called-by app/account/account-actions.tsx
+ */
 export async function deleteAccount(): Promise<{ error: string }> {
   const supabase = await createClient()
   const {

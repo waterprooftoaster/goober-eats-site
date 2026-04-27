@@ -1,7 +1,20 @@
 'use client'
 
+/**
+ * @file login-form.tsx
+ * @description Multi-step login/sign-up form (email → password → name → school)
+ *   built on the redesigned OKLCH-126 primitive set. Preserves the S01 state
+ *   machine, every catalog testid, and the onboarding-resume sub-branch
+ *   triggered when an authenticated user lands here without a profile row.
+ *   Errors render inline (role="alert"), never as toasts.
+ *   Called by: app/auth/login/page.tsx
+ * @dependencies app/auth/actions.ts, components/ui/{button,input,combobox}
+ */
+
 import { useActionState, useEffect, useState } from 'react'
-import { authenticate, signInWithGoogle, completeOnboarding } from '@/app/auth/actions'
+import { authenticate, completeOnboarding } from '@/app/auth/actions'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import {
   Combobox,
   ComboboxInput,
@@ -18,24 +31,36 @@ interface School {
   name: string
 }
 
+interface LoginFormProps {
+  callbackError?: string
+  schools: School[]
+  initialOnboarding?: boolean
+  userEmail?: string
+}
+
+/**
+ * Renders the multi-step authentication form (email → password → name → school).
+ * @param callbackError - Error message from OAuth callback query param
+ * @param schools - Available schools for the onboarding school-selection step
+ * @param initialOnboarding - Start directly at the name step (returning user without profile)
+ * @param userEmail - Pre-fill the email field (used during onboarding resume)
+ * @returns Multi-step auth/onboarding form
+ * @called-by app/auth/login/page.tsx
+ */
 export function LoginForm({
   callbackError,
   schools,
   initialOnboarding,
   userEmail,
-}: {
-  callbackError?: string
-  schools: School[]
-  initialOnboarding?: boolean
-  userEmail?: string
-}) {
-  const [step, setStep] = useState<'email' | 'password' | 'onboarding'>(
-    initialOnboarding ? 'onboarding' : 'email',
+}: LoginFormProps) {
+  const [step, setStep] = useState<'email' | 'password' | 'name' | 'school'>(
+    initialOnboarding ? 'name' : 'email',
   )
   const [email, setEmail] = useState(userEmail ?? '')
   const [emailError, setEmailError] = useState('')
   const [emailExists, setEmailExists] = useState<boolean | null>(null)
   const [checkingEmail, setCheckingEmail] = useState(false)
+  const [fullName, setFullName] = useState('')
   const [selectedSchool, setSelectedSchool] = useState<{ value: string; label: string } | null>(null)
   const [schoolSearchQuery, setSchoolSearchQuery] = useState('')
 
@@ -45,16 +70,25 @@ export function LoginForm({
     null,
   )
 
-  // Transition to onboarding when authenticate signals it
-  useEffect(() => {
-    if (authState && 'needsOnboarding' in authState) {
-      setEmail(authState.email)
-      setStep('onboarding')
-    }
-  }, [authState])
+  // When authenticate signals onboarding is needed, derive the step and email from authState.
+  // Once the user advances to 'school', step takes over (needsOnboarding && step !== 'school').
+  const needsOnboarding = !!authState && 'needsOnboarding' in authState
+  const effectiveStep = (needsOnboarding && step !== 'school') ? 'name' : step
+  const effectiveEmail = needsOnboarding
+    ? (authState as { email: string }).email
+    : email
 
-  const inputStyle =
-    'block w-full h-12 rounded-md border border-gray-300 px-3 py-2 text-base focus:border-black focus:outline-none focus:ring-1 focus:ring-black'
+  // Defensive reset: whenever onboarding starts (either via initialOnboarding
+  // from the server, or via authState.needsOnboarding after a successful
+  // sign-up), force a fresh school choice. Cover-page school selection is
+  // intentionally ephemeral, but this guarantees sign-up always asks again
+  // even if a future change seeds these fields from elsewhere.
+  useEffect(() => {
+    if (initialOnboarding || needsOnboarding) {
+      setSelectedSchool(null)
+      setSchoolSearchQuery('')
+    }
+  }, [initialOnboarding, needsOnboarding])
 
   async function handleContinue() {
     if (!email || !EMAIL_REGEX.test(email)) {
@@ -79,23 +113,38 @@ export function LoginForm({
     setStep('password')
   }
 
-  const error =
-    (authState && 'error' in authState ? authState.error : null) ?? callbackError
+  const passwordError =
+    authState && 'error' in authState ? authState.error : null
+  const onboardingError =
+    onboardingState && 'error' in onboardingState ? onboardingState.error : null
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-white pb-24">
-      <div className="w-full max-w-sm space-y-4 p-8">
-        {step === 'email' && (
+    <main
+      data-testid="auth-login-page"
+      className="mx-auto flex min-h-screen max-w-sm flex-col px-6 pt-16 pb-12 sm:pt-24"
+    >
+      <div className="flex flex-col gap-6">
+        {effectiveStep === 'email' && (
           <>
             {callbackError && (
-              <p className="text-sm text-red-600 text-center">{callbackError}</p>
+              <p
+                data-testid="auth-callback-error"
+                role="alert"
+                className="text-sm text-destructive"
+              >
+                {callbackError}
+              </p>
             )}
 
-            <div>
-              <input
+            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+              Enter your email
+            </h1>
+
+            <div className="flex flex-col gap-1.5">
+              <Input
                 type="email"
-                placeholder="Enter your email"
-                value={email}
+                placeholder="you@school.edu"
+                value={effectiveEmail}
                 onChange={(e) => setEmail(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
@@ -103,112 +152,165 @@ export function LoginForm({
                     handleContinue()
                   }
                 }}
-                className={inputStyle}
+                data-testid="auth-email-input"
+                autoComplete="email"
+                className="h-11"
               />
               {emailError && (
-                <p className="mt-1 text-sm text-red-600">{emailError}</p>
+                <p role="alert" className="text-sm text-destructive">
+                  {emailError}
+                </p>
               )}
             </div>
 
-            <button
+            <Button
               type="button"
+              variant="primary"
+              size="lg"
               onClick={handleContinue}
               disabled={checkingEmail}
-              className="w-full h-12 rounded-md bg-black text-white hover:bg-gray-800 disabled:opacity-50"
+              data-testid="auth-continue-button"
+              className="h-11 w-full"
             >
-              {checkingEmail ? '...' : 'Continue'}
-            </button>
-
-            <form action={signInWithGoogle}>
-              <button
-                type="submit"
-                className="w-full h-12 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
-              >
-                Continue with Google
-              </button>
-            </form>
+              {checkingEmail ? '…' : 'Continue'}
+            </Button>
           </>
         )}
 
-        {step === 'password' && (
+        {effectiveStep === 'password' && (
           <>
-            {error && (
-              <p className="text-sm text-red-600 text-center">{error}</p>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setStep('email')}
+              data-testid="auth-back-button"
+              className="-ml-2 self-start"
+            >
+              ← Back
+            </Button>
+
+            {passwordError && (
+              <p
+                data-testid="auth-form-error"
+                role="alert"
+                className="text-sm text-destructive"
+              >
+                {passwordError}
+              </p>
             )}
 
-            <button
-              type="button"
-              onClick={() => setStep('email')}
-              className="text-sm text-gray-500 hover:text-black"
-            >
-              &larr; Back
-            </button>
+            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+              {emailExists ? 'Welcome back' : 'Create your password'}
+            </h1>
 
-            <form action={formAction} className="space-y-4">
-              <input type="hidden" name="email" value={email} />
+            <form action={formAction} className="flex flex-col gap-4">
+              <input type="hidden" name="email" value={effectiveEmail} />
 
-              <input
+              <Input
                 name="password"
                 type="password"
                 placeholder="Password"
                 required
                 minLength={6}
-                className={inputStyle}
+                data-testid="auth-password-input"
+                autoComplete={emailExists ? 'current-password' : 'new-password'}
+                className="h-11"
               />
 
               {emailExists === false && (
-                <input
+                <Input
                   name="confirm_password"
                   type="password"
-                  placeholder="Confirm Password"
+                  placeholder="Confirm password"
                   required
                   minLength={6}
-                  className={inputStyle}
+                  data-testid="auth-password-confirm-input"
+                  autoComplete="new-password"
+                  className="h-11"
                 />
               )}
 
-              <button
+              <Button
                 type="submit"
+                variant="primary"
+                size="lg"
                 disabled={authPending}
-                className="w-full h-12 rounded-md bg-black text-white hover:bg-gray-800 disabled:opacity-50"
+                data-testid={emailExists ? 'auth-signin-button' : 'auth-signup-button'}
+                className="h-11 w-full"
               >
                 {authPending
-                  ? '...'
+                  ? '…'
                   : emailExists
                     ? 'Sign In'
                     : 'Sign Up'}
-              </button>
+              </Button>
             </form>
           </>
         )}
 
-        {step === 'onboarding' && (
+        {effectiveStep === 'name' && (
           <>
-            {onboardingState && 'error' in onboardingState && (
-              <p className="text-sm text-red-600 text-center">
-                {onboardingState.error}
+            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+              What should we call you?
+            </h1>
+
+            <Input
+              type="text"
+              placeholder="Your full name"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              maxLength={100}
+              data-testid="auth-fullname-input"
+              autoComplete="name"
+              className="h-11"
+            />
+
+            <Button
+              type="button"
+              variant="primary"
+              size="lg"
+              onClick={() => setStep('school')}
+              disabled={!fullName.trim()}
+              data-testid="auth-name-continue-button"
+              className="h-11 w-full"
+            >
+              Continue
+            </Button>
+          </>
+        )}
+
+        {effectiveStep === 'school' && (
+          <>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setStep('name')}
+              data-testid="auth-back-button"
+              className="-ml-2 self-start"
+            >
+              ← Back
+            </Button>
+
+            {onboardingError && (
+              <p
+                data-testid="auth-form-error"
+                role="alert"
+                className="text-sm text-destructive"
+              >
+                {onboardingError}
               </p>
             )}
 
-            <form action={onboardingAction} className="space-y-6">
-              <div className="space-y-2">
-                <p className="text-base font-medium text-gray-900">
-                  What should we call you?
-                </p>
-                <input
-                  name="full_name"
-                  type="text"
-                  placeholder="Enter your full name"
-                  required
-                  maxLength={100}
-                  className={inputStyle}
-                />
-              </div>
+            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+              Where do you go to school?
+            </h1>
 
-              <div className="space-y-2">
-                <p className="text-base font-medium text-gray-900">
-                  What school do you go to?
-                </p>
+            <form action={onboardingAction} className="flex flex-col gap-4">
+              <input type="hidden" name="full_name" value={fullName} />
+
+              <div data-testid="auth-school-input">
                 <Combobox
                   value={selectedSchool}
                   onValueChange={(value) =>
@@ -221,8 +323,8 @@ export function LoginForm({
                   autoHighlight
                 >
                   <ComboboxInput
-                    placeholder="Search schools..."
-                    className="h-12 rounded-md border-gray-300 text-base focus:border-black focus:ring-1 focus:ring-black"
+                    placeholder="Search schools…"
+                    className="h-11 text-base"
                   />
                   <ComboboxContent>
                     <ComboboxList>
@@ -241,16 +343,19 @@ export function LoginForm({
                     </ComboboxList>
                   </ComboboxContent>
                 </Combobox>
-                <input type="hidden" name="school_id" value={selectedSchool?.value ?? ''} />
               </div>
+              <input type="hidden" name="school_id" value={selectedSchool?.value ?? ''} />
 
-              <button
+              <Button
                 type="submit"
+                variant="primary"
+                size="lg"
                 disabled={onboardingPending || !selectedSchool}
-                className="w-full h-12 rounded-md bg-black text-white hover:bg-gray-800 disabled:opacity-50"
+                data-testid="auth-onboarding-complete-button"
+                className="h-11 w-full"
               >
-                {onboardingPending ? '...' : 'Get Started'}
-              </button>
+                {onboardingPending ? '…' : 'Get Started'}
+              </Button>
             </form>
           </>
         )}

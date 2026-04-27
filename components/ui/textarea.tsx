@@ -1,3 +1,9 @@
+/**
+ * @file textarea.tsx
+ * @description shadcn/ui Textarea primitive with auto-sizing, focus ring, and error state styles.
+ *   Called by: components/ui/input-group.tsx, components/chat/chat-input.tsx
+ */
+
 import * as React from "react"
 
 import { cn } from "@/lib/utils"

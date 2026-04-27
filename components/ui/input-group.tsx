@@ -1,5 +1,12 @@
 "use client"
 
+/**
+ * @file input-group.tsx
+ * @description Compound input group components (InputGroup, InputGroupAddon, InputGroupButton, etc.)
+ *   for composing inputs with leading/trailing icons or buttons.
+ *   Called by: components/ui/combobox.tsx
+ */
+
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 

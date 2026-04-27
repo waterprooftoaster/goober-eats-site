@@ -1,17 +1,51 @@
 'use client'
 
+/**
+ * @file swiper-registration-form.tsx
+ * @description Two-step swiper registration: school selection (Combobox)
+ *   then POST /api/stripe/connect to launch Stripe Connect onboarding.
+ *   Errors render inline (role="alert"). Combobox follows the auth-login
+ *   dual-input pattern so Playwright disambiguation
+ *   (getByTestId(...).getByRole('combobox')) keeps working.
+ *   Called by: app/swiper-registration/page.tsx
+ * @dependencies components/ui/{button,combobox}
+ */
+
 import { useState } from 'react'
+import { Button } from '@/components/ui/button'
+import {
+  Combobox,
+  ComboboxInput,
+  ComboboxContent,
+  ComboboxList,
+  ComboboxItem,
+  ComboboxEmpty,
+} from '@/components/ui/combobox'
 
-type School = { id: string; name: string }
+interface School {
+  id: string
+  name: string
+}
 
-type Props = {
+interface Props {
   schoolId: string | null
   schoolName: string | null
   schools: School[]
 }
 
+/**
+ * Renders the two-step swiper registration form (school → Stripe connect).
+ * @param schoolId - Pre-set school id (already saved on the profile)
+ * @param schoolName - Display name for the pre-set school
+ * @param schools - Schools available for selection
+ * @returns Form element with school selector and Stripe-continue CTA
+ * @called-by app/swiper-registration/page.tsx
+ */
 export function SwiperRegistrationForm({ schoolId, schoolName, schools }: Props) {
-  const [selectedSchoolId, setSelectedSchoolId] = useState(schoolId ?? '')
+  const [selectedSchool, setSelectedSchool] = useState<{ value: string; label: string } | null>(
+    schoolId && schoolName ? { value: schoolId, label: schoolName } : null,
+  )
+  const [schoolSearchQuery, setSchoolSearchQuery] = useState('')
   const [schoolConfirmed, setSchoolConfirmed] = useState(schoolId !== null)
   const [confirmedName, setConfirmedName] = useState(schoolName)
   const [saving, setSaving] = useState(false)
@@ -19,86 +53,154 @@ export function SwiperRegistrationForm({ schoolId, schoolName, schools }: Props)
   const [error, setError] = useState<string | null>(null)
 
   async function handleSaveSchool() {
-    if (!selectedSchoolId) return
+    if (!selectedSchool) return
     setSaving(true)
     setError(null)
-    const res = await fetch('/api/profile', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ school_id: selectedSchoolId }),
-    })
-    setSaving(false)
-    if (!res.ok) {
-      const body = await res.json()
-      setError(body.error ?? 'Failed to save school')
-      return
+    try {
+      const res = await fetch('/api/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ school_id: selectedSchool.value }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setError((body as { error?: string }).error ?? 'Failed to save school.')
+        return
+      }
+      setConfirmedName(selectedSchool.label)
+      setSchoolConfirmed(true)
+    } catch {
+      setError('Network error. Please try again.')
+    } finally {
+      setSaving(false)
     }
-    const name = schools.find((s) => s.id === selectedSchoolId)?.name ?? null
-    setConfirmedName(name)
-    setSchoolConfirmed(true)
   }
 
   async function handleContinue() {
     setConnecting(true)
     setError(null)
-    const res = await fetch('/api/stripe/connect', { method: 'POST' })
-    if (!res.ok) {
-      const body = await res.json()
-      setError(body.error ?? 'Failed to set up payment account')
+    try {
+      const res = await fetch('/api/stripe/connect', { method: 'POST' })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setError((body as { error?: string }).error ?? 'Failed to set up payment account.')
+        setConnecting(false)
+        return
+      }
+      const { url } = (await res.json()) as { url: string }
+      window.location.href = url
+    } catch {
+      setError('Network error. Please try again.')
       setConnecting(false)
-      return
     }
-    const { url } = await res.json()
-    window.location.href = url
   }
 
   return (
-    <>
-      <h1 className="text-2xl font-bold mb-2">Become a Swiper</h1>
-      <p className="text-gray-600 mb-8">
-        Fulfill orders using your meal plan and earn money per delivery.
-      </p>
+    <div className="flex flex-col gap-6">
+      <header>
+        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+          Become a swiper.
+        </h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Fulfill orders using your meal plan and earn money per delivery.
+        </p>
+      </header>
 
-      {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
+      {error && (
+        <p
+          data-testid="swiper-reg-error-message"
+          role="alert"
+          className="text-sm text-destructive"
+        >
+          {error}
+        </p>
+      )}
 
-      {/* School section */}
-      <div className="mb-6">
-        <p className="text-sm font-medium text-gray-700 mb-2">Your school</p>
+      <div className="flex flex-col gap-2">
+        <p className="text-sm font-medium">Your school</p>
         {schoolConfirmed ? (
-          <p className="text-sm font-medium">{confirmedName}</p>
+          <p className="text-sm">{confirmedName}</p>
         ) : (
-          <div className="flex flex-col sm:flex-row gap-2">
-            <select
-              value={selectedSchoolId}
-              onChange={(e) => setSelectedSchoolId(e.target.value)}
-              className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black"
-            >
-              <option value="">Select a school…</option>
-              {schools.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-            <button
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div data-testid="swiper-reg-school-selector" className="flex-1">
+              <Combobox
+                value={selectedSchool}
+                onValueChange={(value) => setSelectedSchool(asSchoolItem(value))}
+                onInputValueChange={(inputValue) => setSchoolSearchQuery(inputValue)}
+                isItemEqualToValue={(a, b) => a.value === b.value}
+                autoHighlight
+              >
+                <ComboboxInput
+                  placeholder="Search schools…"
+                  className="h-11 text-base"
+                />
+                <ComboboxContent>
+                  <ComboboxList>
+                    {schools.map((school) => (
+                      <ComboboxItem
+                        key={school.id}
+                        value={{ value: school.id, label: school.name }}
+                        className="py-3 text-base"
+                      >
+                        {school.name}
+                      </ComboboxItem>
+                    ))}
+                    {schoolSearchQuery.trim().length > 0 && (
+                      <ComboboxEmpty>No schools found</ComboboxEmpty>
+                    )}
+                  </ComboboxList>
+                </ComboboxContent>
+              </Combobox>
+            </div>
+            <Button
+              type="button"
+              variant="subtle"
+              size="default"
               onClick={handleSaveSchool}
-              disabled={saving || !selectedSchoolId}
-              className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              disabled={saving || !selectedSchool}
+              data-testid="swiper-reg-save-button"
             >
-              {saving ? 'Saving…' : 'Save School'}
-            </button>
+              {saving ? 'Saving…' : 'Save school'}
+            </Button>
           </div>
         )}
       </div>
 
-      {/* Continue to Stripe */}
-      <button
+      <Button
+        type="button"
+        variant="primary"
+        size="lg"
         onClick={handleContinue}
         disabled={!schoolConfirmed || connecting}
-        className="w-full rounded-md bg-black px-4 py-2 text-white hover:bg-gray-800 disabled:opacity-50"
+        data-testid="swiper-reg-continue-button"
+        className="w-full"
       >
-        {connecting ? 'Opening Stripe…' : 'Continue to Payment Setup'}
-      </button>
-    </>
+        {connecting ? 'Opening Stripe…' : 'Continue to payment setup'}
+      </Button>
+    </div>
   )
+}
+
+// --- Helpers ---
+
+/**
+ * Narrows the unknown value emitted by Combobox.onValueChange into the
+ * `{ value, label }` shape this form consumes. Returns null on any other
+ * shape so a primitive API drift cannot silently corrupt selectedSchool.
+ * @param raw - The value emitted by Combobox onValueChange
+ * @returns The narrowed school item, or null
+ * @called-by SwiperRegistrationForm
+ */
+function asSchoolItem(raw: unknown): { value: string; label: string } | null {
+  if (
+    raw !== null &&
+    typeof raw === 'object' &&
+    'value' in raw &&
+    'label' in raw &&
+    typeof (raw as { value: unknown }).value === 'string' &&
+    typeof (raw as { label: unknown }).label === 'string'
+  ) {
+    return raw as { value: string; label: string }
+  }
+  return null
 }

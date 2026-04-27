@@ -1,3 +1,9 @@
+/**
+ * @file navigation-menu.tsx
+ * @description shadcn/ui NavigationMenu built on Radix UI with animated viewport and accessible triggers.
+ *   Called by: (available for use in future navigation UI)
+ */
+
 import * as React from "react"
 import { cva } from "class-variance-authority"
 import { NavigationMenu as NavigationMenuPrimitive } from "radix-ui"

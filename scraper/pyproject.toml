@@ -1,0 +1,12 @@
+[project]
+name = "goober-eats-scraper"
+version = "0.1.0"
+description = "Grubhub Campus menu scraper for Goober Eats"
+requires-python = ">=3.11"
+dependencies = [
+    "mitmproxy>=10.0",
+    "python-dotenv>=1.0",
+]
+
+[project.scripts]
+parse = "src.parse:main"
