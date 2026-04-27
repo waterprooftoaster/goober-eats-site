@@ -21,7 +21,7 @@ import { Surface } from '@/components/ui/surface'
 import { Skeleton } from '@/components/ui/skeleton'
 import { BackButton } from '@/components/back-button'
 import { createClient } from '@/lib/supabase/client'
-import { PENDING_SCREENSHOTS_KEY } from '@/lib/constants'
+import { PENDING_SCREENSHOTS_KEY, PENDING_SCHOOL_ID_KEY } from '@/lib/constants'
 
 // Guarded so a missing env var (CI / preview environment / fresh clone)
 // surfaces as the colocated error.tsx boundary instead of an unhandled
@@ -127,6 +127,8 @@ export default function CheckoutPage() {
     }
     if (viewerKind === 'guest') {
       body.guest_name = name.trim()
+      const pendingSchoolId = sessionStorage.getItem(PENDING_SCHOOL_ID_KEY)
+      if (pendingSchoolId) body.school_id = pendingSchoolId
     }
 
     try {
@@ -141,6 +143,7 @@ export default function CheckoutPage() {
       // Clear sessionStorage only after the session is confirmed so a Stripe
       // failure leaves the paths behind for retry.
       sessionStorage.removeItem(PENDING_SCREENSHOTS_KEY)
+      sessionStorage.removeItem(PENDING_SCHOOL_ID_KEY)
       setClientSecret(json.clientSecret)
       setStage('checkout')
     } catch (err) {

@@ -22,6 +22,7 @@ interface SearchPillProps<T extends SearchPillItem> {
     items: T[]
     getLabel: (item: T) => string
     onSelect?: (item: T) => void
+    onNavigate?: () => void
     placeholder?: string
     maxItems?: number
     ctaHref: string
@@ -32,13 +33,14 @@ interface SearchPillProps<T extends SearchPillItem> {
 }
 
 /**
- * Renders a unified pill-shaped item selector with an arrow-button that navigates to ctaHref.
+ * Renders a unified pill-shaped item selector with an arrow-button CTA.
  * @param items - List of items to populate the custom listbox
  * @param getLabel - Returns the display label for an item
  * @param onSelect - Optional callback fired when an item is selected
+ * @param onNavigate - When provided, renders the CTA as a button (disabled until an item is selected) and calls this instead of following ctaHref
  * @param placeholder - Placeholder text for the input (default: "Select…")
  * @param maxItems - If set, limits the number of items shown in the dropdown
- * @param ctaHref - URL the arrow button navigates to
+ * @param ctaHref - URL the arrow button navigates to (unused when onNavigate is provided)
  * @param ctaColor - Hex color for the circle button background (default: "#000000")
  * @param emptyMessage - Message shown when items list is empty (default: "No options available")
  * @param noResultsMessage - Message shown when query has no matches (default: "No results found")
@@ -49,6 +51,7 @@ export default function SearchPill<T extends SearchPillItem>({
     items,
     getLabel,
     onSelect,
+    onNavigate,
     placeholder = 'Select…',
     maxItems,
     ctaHref,
@@ -148,14 +151,31 @@ export default function SearchPill<T extends SearchPillItem>({
                     />
                 </div>
 
-                <Link href={ctaHref} aria-label="Continue" className="flex-shrink-0">
-                    <span
-                        className="flex items-center justify-center w-11 h-11 rounded-full transition-transform duration-150 motion-safe:hover:scale-[1.06] motion-safe:active:scale-95"
-                        style={{ backgroundColor: ctaColor ?? '#000000' }}
+                {onNavigate ? (
+                    <button
+                        type="button"
+                        onClick={onNavigate}
+                        disabled={selected === null}
+                        aria-label="Continue"
+                        className="flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
                     >
-                        <ArrowRight size={18} style={{ color: ctaArrowColor ?? '#ffffff' }} />
-                    </span>
-                </Link>
+                        <span
+                            className="flex items-center justify-center w-11 h-11 rounded-full transition-transform duration-150 motion-safe:hover:scale-[1.06] motion-safe:active:scale-95"
+                            style={{ backgroundColor: ctaColor ?? '#000000' }}
+                        >
+                            <ArrowRight size={18} style={{ color: ctaArrowColor ?? '#ffffff' }} />
+                        </span>
+                    </button>
+                ) : (
+                    <Link href={ctaHref} aria-label="Continue" className="flex-shrink-0">
+                        <span
+                            className="flex items-center justify-center w-11 h-11 rounded-full transition-transform duration-150 motion-safe:hover:scale-[1.06] motion-safe:active:scale-95"
+                            style={{ backgroundColor: ctaColor ?? '#000000' }}
+                        >
+                            <ArrowRight size={18} style={{ color: ctaArrowColor ?? '#ffffff' }} />
+                        </span>
+                    </Link>
+                )}
             </div>
 
             {open && (
@@ -185,8 +205,8 @@ export default function SearchPill<T extends SearchPillItem>({
                                 }}
                                 className={cn(
                                     'flex items-center px-5 min-h-14 text-base text-black font-bold rounded cursor-pointer',
-                                    'transition-colors hover:bg-black/20',
-                                    (selected?.id === item.id || index === highlighted) && 'bg-black/20',
+                                    'transition-colors hover:bg-foreground/15',
+                                    (selected?.id === item.id || index === highlighted) && 'bg-foreground/15',
                                 )}
                             >
                                 {getLabel(item)}

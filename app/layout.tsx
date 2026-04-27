@@ -11,7 +11,7 @@
  */
 
 import type { Metadata } from "next"
-import { cookies } from "next/headers"
+import { cookies, headers } from "next/headers"
 import "./globals.css"
 import { bricolageGrotesque, figtree } from "./fonts"
 import { Header } from "@/components/header"
@@ -41,6 +41,7 @@ export default async function RootLayout({
   const supabase = await createClient()
   const cookieStore = await cookies()
   const principal = await resolvePrincipal(supabase, cookieStore)
+  const pathname = (await headers()).get('x-pathname') ?? ''
 
   const isSwiper =
     principal.kind === 'authed_swiper' || principal.kind === 'authed_swiper_pre_stripe'
@@ -57,7 +58,9 @@ export default async function RootLayout({
       <body>
         <ChatPanelProvider userId={userId}>
           <Header principal={principal} />
-          <Banner isSwiper={isSwiper} isLoggedIn={isLoggedIn} />
+          {(isLoggedIn || pathname !== '/') && (
+            <Banner isSwiper={isSwiper} isLoggedIn={isLoggedIn} />
+          )}
           <main className="px-6">{children}</main>
           <SwiperOrdersButton isSwiper={isSwiper} pendingOrderCount={pendingOrderCount} />
           <ChatPanel currentUserId={userId} />
