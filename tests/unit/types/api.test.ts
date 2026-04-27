@@ -87,9 +87,11 @@ describe('createCheckoutSchema', () => {
     expect(r.success).toBe(false)
   })
 
-  it('rejects subtotal_cents above $500 sanity cap', () => {
+  it('accepts large subtotal_cents — no upper bound', () => {
     const r = createCheckoutSchema.safeParse({ ...baseValid, subtotal_cents: 50_001 })
-    expect(r.success).toBe(false)
+    expect(r.success).toBe(true)
+    const r2 = createCheckoutSchema.safeParse({ ...baseValid, subtotal_cents: 10_000_000 })
+    expect(r2.success).toBe(true)
   })
 
   it('rejects non-integer subtotal_cents', () => {

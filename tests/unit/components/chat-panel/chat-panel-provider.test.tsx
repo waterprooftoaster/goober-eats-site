@@ -108,8 +108,27 @@ describe('ChatPanelProvider (S07 — registry + conversations JOIN + visibility)
     expect(selectArg).toContain('conversations(id)')
     // sanity: also includes restaurant_name (post-grubhub-pivot field)
     expect(selectArg).toContain('restaurant_name')
-    // and the in('status', ...) chain was wired
-    expect(selectChain.in).toHaveBeenCalledWith('status', expect.arrayContaining(['open', 'in_progress', 'completed']))
+    // and the in('status', ...) chain was wired with exactly the active statuses
+    expect(selectChain.in).toHaveBeenCalledWith('status', ['open', 'in_progress'])
+  })
+
+  // Regression guard: completed orders must NOT auto-re-open after refresh.
+  // Symptom previously: orderer dismisses a completed-order panel, refresh
+  // brings it right back because loadActiveOrders included 'completed'.
+  // Real-time updates (in_progress → completed while the panel is already
+  // open) still flow through updateOrderStatus and let the orderer see the
+  // completion view; this only excludes the auto-open path.
+  it('loadActiveOrders does NOT include completed in the status filter', async () => {
+    const { selectChain } = setupOrdersJoinReturn([])
+    render(<ChatPanelProvider userId={USER_ID}><div /></ChatPanelProvider>)
+
+    await waitFor(() => {
+      expect(selectChain.in).toHaveBeenCalledWith('status', expect.any(Array))
+    })
+
+    const passedStatuses = selectChain.in.mock.calls[0][1] as string[]
+    expect(passedStatuses).not.toContain('completed')
+    expect(passedStatuses).toEqual(['open', 'in_progress'])
   })
 
   it('openPanel receives the JOINed conversationId for each active order', async () => {

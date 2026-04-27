@@ -98,8 +98,8 @@ function ChatViewCore({
     const isSwiper = currentUserId !== null && currentUserId === conversation?.swiper_id
     return (
       <OrderCompletedView
+        viewerRole={isSwiper ? 'swiper' : 'orderer'}
         deliveryPhoto={completionPhoto}
-        label={isSwiper ? 'Order Completed' : undefined}
       />
     )
   }
@@ -151,8 +151,21 @@ interface Props {
  * @called-by components/chat-panel/chat-panel.tsx, app/current-orders/current-orders-list.tsx
  */
 export function ChatView({ orderId, eateryName, currentUserId, orderStatus, conversationId, onStatusChange }: Props) {
-  const { messages, conversation, isLoading, error, sendMessage, appendOptimistic, markFailed, markPending } =
+  const { messages, conversation, isLoading, error, sendMessage, appendOptimistic, markFailed, markPending, refetch } =
     useMessages({ orderId, conversationId })
+
+  // When the order reaches `completed`, force a refetch so the orderer always
+  // sees the completion photo. The order status UPDATE arrives on a separate
+  // realtime channel from the message INSERT and can race ahead of it; the
+  // panel may also have been minimized when the photo was inserted (ChatView
+  // unmounted, INSERT missed). One refetch per transition closes both gaps.
+  const lastSeenStatusRef = useRef<OrderStatus | null>(null)
+  useEffect(() => {
+    if (orderStatus === 'completed' && lastSeenStatusRef.current !== 'completed') {
+      void refetch()
+    }
+    lastSeenStatusRef.current = orderStatus
+  }, [orderStatus, refetch])
 
   // Wrap sendMessage in the C2 optimistic flow: generate a temp_id, append the
   // optimistic entry, fire the POST. Realtime / POST response will dedupe by

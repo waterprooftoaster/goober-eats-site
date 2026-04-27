@@ -20,9 +20,10 @@ interface CurrentOrderRow {
 }
 
 /**
- * Renders the authenticated user's open + in_progress + completed orders.
- * Each row is a card hosting the embedded ChatView; realtime status updates
- * propagate via the ChatPanel provider on the client side.
+ * Renders the authenticated user's active orders (open + in_progress only).
+ * Completed orders live on /orders (history). Each row is a card hosting
+ * the embedded ChatView; realtime status updates propagate via the
+ * ChatPanel provider on the client side.
  * @returns The page element, or a redirect to /auth/login for anon callers
  * @called-by Next.js App Router (/current-orders)
  */
@@ -38,7 +39,7 @@ export default async function CurrentOrdersPage() {
     .from('orders')
     .select('id, status, restaurant_name')
     .or(`orderer_id.eq.${user.id},swiper_id.eq.${user.id}`)
-    .in('status', ['open', 'in_progress', 'completed'])
+    .in('status', ['open', 'in_progress'])
     .order('created_at', { ascending: false })
 
   const rows = ((orders ?? []) as CurrentOrderRow[]).map((o) => ({

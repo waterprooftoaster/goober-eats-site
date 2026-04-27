@@ -50,6 +50,8 @@ export interface UseMessagesResult {
   markFailed: (temp_id: string) => void
   /** Flip a previously-failed entry back to `pending` (used by the retry flow). */
   markPending: (temp_id: string) => void
+  /** Force-pull canonical messages — used on order completion to grab the photo if the realtime INSERT was missed (panel was minimized) or raced behind the order status update. */
+  refetch: () => Promise<void>
 }
 
 /**
@@ -280,7 +282,7 @@ export function useMessages(opts: UseMessagesOptions): UseMessagesResult {
     )
   }, [])
 
-  return { messages, conversation, isLoading, error, sendMessage, appendOptimistic, markFailed, markPending }
+  return { messages, conversation, isLoading, error, sendMessage, appendOptimistic, markFailed, markPending, refetch }
 }
 
 // --- Helpers ---

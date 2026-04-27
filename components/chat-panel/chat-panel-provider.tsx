@@ -24,7 +24,11 @@ import type { OrderEntry } from './chat-panel-context'
 import type { OrderStatus } from '@/lib/types/database'
 
 const TERMINAL_STATUSES: OrderStatus[] = ['cancelled']
-const ACTIVE_STATUSES: OrderStatus[] = ['open', 'in_progress', 'completed']
+// Auto-open only truly active orders. Completed orders stay visible while the
+// panel is already open (real-time UPDATE → updateOrderStatus keeps the panel
+// mounted so the orderer sees the completion view), but on refresh they live
+// on /orders (history) and must not auto-re-open here.
+const ACTIVE_STATUSES: OrderStatus[] = ['open', 'in_progress']
 
 interface Props {
   userId: string | null

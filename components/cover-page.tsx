@@ -59,7 +59,7 @@ function HeroSection({ schools }: { schools: School[] }) {
             <div className="max-w-[1440px] mx-auto">
                 <div className="relative z-10 ml-32 px-6 text-xl">
                     <h1 className="text-4xl text-white font-extrabold mb-10">
-                        50% OFF ALL DINING HALLS,
+                        40% OFF ALL DINING HALLS,
                         <br />
                         NOW.
                     </h1>

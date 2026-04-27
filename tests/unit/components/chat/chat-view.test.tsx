@@ -40,6 +40,7 @@ const SEND_MESSAGE = vi.fn().mockResolvedValue(undefined)
 const APPEND_OPTIMISTIC = vi.fn()
 const MARK_FAILED = vi.fn()
 const MARK_PENDING = vi.fn()
+const REFETCH = vi.fn().mockResolvedValue(undefined)
 
 function mockMessages(overrides: Partial<ReturnType<typeof useMessages>> = {}) {
   vi.mocked(useMessages).mockReturnValue({
@@ -51,6 +52,7 @@ function mockMessages(overrides: Partial<ReturnType<typeof useMessages>> = {}) {
     appendOptimistic: APPEND_OPTIMISTIC,
     markFailed: MARK_FAILED,
     markPending: MARK_PENDING,
+    refetch: REFETCH,
     ...overrides,
   })
 }
@@ -161,6 +163,90 @@ describe('ChatView', () => {
     renderView({ currentUserId: SWIPER_ID, orderStatus: 'in_progress' })
     // CompletionBanner renders a "Complete Order" button
     expect(screen.getByRole('button', { name: /complete order/i })).toBeInTheDocument()
+  })
+
+  // --- Status notification: completed (role × view) ---
+
+  it('orderer sees photo + "Your Order is Ready!" label when order is completed and photo is present', () => {
+    const photoMsg = {
+      id: 'photo-1',
+      conversation_id: 'conv-1',
+      sender_id: SWIPER_ID,
+      body: null,
+      message_type: 'completion_photo' as const,
+      expires_at: '2026-05-01T00:00:00Z',
+      image_url: 'https://cdn.example.com/x.jpg',
+      sent_at: '2026-04-26T12:00:00Z',
+      temp_id: null,
+    }
+    mockMessages({ conversation: CONVERSATION, messages: [photoMsg] })
+    renderView({ currentUserId: ORDERER_ID, orderStatus: 'completed' })
+    expect(screen.getByTestId('order-completed-view')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: /completion photo/i })).toBeInTheDocument()
+    expect(screen.getByText('Your Order is Ready!')).toBeInTheDocument()
+    expect(screen.queryByText('Order Completed')).not.toBeInTheDocument()
+  })
+
+  it('orderer sees a loading skeleton + label when completed but photo not yet in messages', () => {
+    mockMessages({ conversation: CONVERSATION, messages: [] })
+    renderView({ currentUserId: ORDERER_ID, orderStatus: 'completed' })
+    expect(screen.getByTestId('order-completed-view')).toBeInTheDocument()
+    expect(screen.getByTestId('order-completed-loading')).toBeInTheDocument()
+    expect(screen.getByText('Your Order is Ready!')).toBeInTheDocument()
+  })
+
+  it('swiper sees "Order Completed" when order is completed', () => {
+    mockMessages({ conversation: CONVERSATION })
+    renderView({ currentUserId: SWIPER_ID, orderStatus: 'completed' })
+    expect(screen.getByTestId('order-completed-view')).toBeInTheDocument()
+    expect(screen.getByText('Order Completed')).toBeInTheDocument()
+    expect(screen.queryByText('Your Order is Ready!')).not.toBeInTheDocument()
+  })
+
+  // --- Refetch on completion transition ---
+  // Why: the order status UPDATE arrives via chat-panel-provider's separate
+  // realtime channel. The completion_photo INSERT arrives via useMessages's
+  // channel. They can race, OR the panel was minimized when the photo INSERT
+  // fired (ChatView wasn't mounted, INSERT missed). Force a refetch on the
+  // in_progress → completed transition so the orderer always sees the picture.
+
+  it('does not refetch when order is mounted in non-completed status', () => {
+    mockMessages({ conversation: CONVERSATION })
+    renderView({ currentUserId: ORDERER_ID, orderStatus: 'in_progress' })
+    expect(REFETCH).not.toHaveBeenCalled()
+  })
+
+  it('refetches messages once when orderStatus transitions to completed', () => {
+    mockMessages({ conversation: CONVERSATION })
+    const { rerender } = renderView({ currentUserId: ORDERER_ID, orderStatus: 'in_progress' })
+    expect(REFETCH).not.toHaveBeenCalled()
+
+    rerender(
+      <ChatView
+        orderId={ORDER_ID}
+        eateryName={EATERY_NAME}
+        currentUserId={ORDERER_ID}
+        orderStatus="completed"
+      />
+    )
+    expect(REFETCH).toHaveBeenCalledTimes(1)
+
+    // Re-render again with the same completed status — must not refetch again
+    rerender(
+      <ChatView
+        orderId={ORDER_ID}
+        eateryName={EATERY_NAME}
+        currentUserId={ORDERER_ID}
+        orderStatus="completed"
+      />
+    )
+    expect(REFETCH).toHaveBeenCalledTimes(1)
+  })
+
+  it('refetches when mounted directly in completed state (covers fresh-mount race)', () => {
+    mockMessages({ conversation: CONVERSATION })
+    renderView({ currentUserId: ORDERER_ID, orderStatus: 'completed' })
+    expect(REFETCH).toHaveBeenCalledTimes(1)
   })
 
   // --- No legacy chrome ---

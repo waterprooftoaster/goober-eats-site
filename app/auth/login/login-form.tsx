@@ -11,7 +11,7 @@
  * @dependencies app/auth/actions.ts, components/ui/{button,input,combobox}
  */
 
-import { useActionState, useState } from 'react'
+import { useActionState, useEffect, useState } from 'react'
 import { authenticate, completeOnboarding } from '@/app/auth/actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -77,6 +77,18 @@ export function LoginForm({
   const effectiveEmail = needsOnboarding
     ? (authState as { email: string }).email
     : email
+
+  // Defensive reset: whenever onboarding starts (either via initialOnboarding
+  // from the server, or via authState.needsOnboarding after a successful
+  // sign-up), force a fresh school choice. Cover-page school selection is
+  // intentionally ephemeral, but this guarantees sign-up always asks again
+  // even if a future change seeds these fields from elsewhere.
+  useEffect(() => {
+    if (initialOnboarding || needsOnboarding) {
+      setSelectedSchool(null)
+      setSchoolSearchQuery('')
+    }
+  }, [initialOnboarding, needsOnboarding])
 
   async function handleContinue() {
     if (!email || !EMAIL_REGEX.test(email)) {

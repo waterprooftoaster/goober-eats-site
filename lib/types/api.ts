@@ -61,13 +61,13 @@ export type SendMessageInput = z.infer<typeof sendMessageSchema>
 //     /api/cart-screenshots/upload-url, 1..5 entries.
 //   - subtotal_cents is the GrubHub subtotal the orderer enters; the orderer
 //     is charged 60% of this per lib/pricing.ts:computeSplit. 50c minimum is
-//     Stripe's floor; the $500 cap is a sanity bound.
+//     Stripe's floor. No upper bound.
 //   - school_id is only required for guests; for authenticated users it is
 //     derived server-side from the profile and any body value is ignored.
 export const createCheckoutSchema = z.object({
   restaurant_name: z.string().trim().min(1).max(80),
   cart_screenshot_paths: z.array(z.string().regex(SCREENSHOT_PATH_RE)).min(1).max(5),
-  subtotal_cents: z.number().int().min(50).max(50_000),
+  subtotal_cents: z.number().int().min(50),
   school_id: z.string().uuid().optional(),
   guest_name: z.string().trim().min(1).max(100).optional(),
 })

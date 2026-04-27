@@ -36,20 +36,25 @@ export default async function LoginPage(props: {
   let initialOnboarding = onboarding === 'true'
   let userEmail: string | undefined
 
-  // Also check: authenticated user with no profile (handles page refresh during onboarding)
+  // Anonymous Supabase sessions (signInAnonymously) are not real sign-ups —
+  // they have no email and shouldn't preempt the email→password→name→school
+  // flow. Treat them like fully unauthenticated visitors here.
   const { data: { user } } = await supabase.auth.getUser()
-  if (user) {
+  if (user && !user.is_anonymous) {
     const { data: profile } = await supabase
       .from('profiles')
-      .select('id')
+      .select('id, school_id')
       .eq('id', user.id)
-      .single()
+      .maybeSingle()
 
-    if (!profile) {
+    // Profile missing OR profile exists but school_id is null (the FK is
+    // nullable + ON DELETE SET NULL on schools, so this can happen if the
+    // referenced school was deleted) → user still owes us a school choice.
+    if (!profile || !profile.school_id) {
       initialOnboarding = true
       userEmail = user.email ?? undefined
     } else {
-      // Already authenticated with a profile — go home
+      // Already authenticated with a complete profile — go home
       redirect('/')
     }
   }
