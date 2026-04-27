@@ -2,19 +2,22 @@
  * @file route.ts
  * @description Stripe webhook handler. Creates orders on
  *   payment_intent.succeeded from metadata embedded by /api/stripe/checkout-session
- *   (school_id, restaurant_name, cart_screenshot_paths, total_cents). Idempotent
- *   via the unique index on payments.stripe_payment_intent_id; an orphan order
- *   from a partially-failed prior attempt is recovered by PI ID lookup.
- *   Marks swipers active on account.updated when Stripe Connect onboarding
- *   completes.
+ *   (school_id, restaurant_name, cart_screenshot_paths, subtotal_cents). The
+ *   60/50/10 split is re-derived server-side via lib/pricing.ts:computeSplit
+ *   so a tampered total_cents / platform_fee_cents in metadata can't change
+ *   what we persist. Idempotent via the unique index on
+ *   payments.stripe_payment_intent_id; an orphan order from a partially-failed
+ *   prior attempt is recovered by PI ID lookup. Marks swipers active on
+ *   account.updated when Stripe Connect onboarding completes.
  *   Called by: Stripe webhook delivery (not directly by app code)
- * @dependencies lib/stripe/client.ts, lib/supabase/service.ts, lib/api/helpers.ts
+ * @dependencies lib/stripe/client.ts, lib/supabase/service.ts, lib/api/helpers.ts, lib/pricing.ts
  */
 
 import { NextRequest } from 'next/server'
 import { getStripe } from '@/lib/stripe/client'
 import { createServiceClient } from '@/lib/supabase/service'
 import { apiError, apiSuccess } from '@/lib/api/helpers'
+import { computeSplit } from '@/lib/pricing'
 import type Stripe from 'stripe'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -119,7 +122,10 @@ async function handlePaymentIntentSucceeded(
     console.warn(`payment_intent.succeeded: skip — ${validation.reason}`, { piId: pi.id })
     return null
   }
-  const { schoolId, restaurantName, totalCents, screenshotPaths } = validation
+  const { schoolId, restaurantName, subtotalCents, screenshotPaths } = validation
+  // Re-derive the split server-side from the validated subtotal so a tampered
+  // total_cents / platform_fee_cents in metadata can't change what we persist.
+  const split = computeSplit(subtotalCents)
 
   // Idempotency: skip if payment already recorded for this PI.
   const { data: existingPayment, error: paymentCheckError } = await supabase
@@ -141,8 +147,6 @@ async function handlePaymentIntentSucceeded(
     return null
   }
 
-  const platformFeeCents = Math.round(totalCents * 0.10)
-
   // Create order — unified path for guest and auth.
   // stripe_payment_intent_id has a unique index, so on retry (when the previous
   // attempt created the order but payment insert failed) the insert fails and
@@ -156,7 +160,8 @@ async function handlePaymentIntentSucceeded(
       restaurant_name: restaurantName,
       cart_screenshot_urls: screenshotPaths,
       stripe_payment_intent_id: pi.id,
-      total_cents: totalCents,
+      subtotal_cents: split.subtotalCents,
+      total_cents: split.ordererPaysCents,
       guest_name: guestName,
       guest_phone: null,
       guest_access_token: isGuest ? crypto.randomUUID() : null,
@@ -183,8 +188,8 @@ async function handlePaymentIntentSucceeded(
   const { error: paymentError } = await supabase.from('payments').insert({
     order_id: orderId,
     stripe_payment_intent_id: pi.id,
-    amount_cents: totalCents,
-    platform_fee_cents: platformFeeCents,
+    amount_cents: split.ordererPaysCents,
+    platform_fee_cents: split.platformFeeCents,
     status: 'succeeded',
     payer_id: ordererId,
     payee_id: null,
@@ -202,7 +207,7 @@ type MetadataOk = {
   ok: true
   schoolId: string
   restaurantName: string
-  totalCents: number
+  subtotalCents: number
   screenshotPaths: string[]
 }
 
@@ -227,7 +232,7 @@ function validatePaymentIntentMetadata(
 ): MetadataOk | MetadataErr {
   const schoolId = meta.school_id
   const restaurantName = meta.restaurant_name
-  const totalCentsRaw = meta.total_cents
+  const subtotalCentsRaw = meta.subtotal_cents
   const screenshotPathsRaw = meta.cart_screenshot_paths
 
   if (!schoolId) return { ok: false, reason: 'missing school_id' }
@@ -237,12 +242,12 @@ function validatePaymentIntentMetadata(
   if (trimmed.length < 1 || trimmed.length > 80) {
     return { ok: false, reason: 'restaurant_name length out of range' }
   }
-  if (!totalCentsRaw) return { ok: false, reason: 'missing total_cents' }
-  const totalCents = parseInt(totalCentsRaw, 10)
+  if (!subtotalCentsRaw) return { ok: false, reason: 'missing subtotal_cents' }
+  const subtotalCents = parseInt(subtotalCentsRaw, 10)
   // Mirrors createCheckoutSchema bounds in lib/types/api.ts. Defends against
   // post-checkout metadata tampering by a compromised platform key.
-  if (!Number.isInteger(totalCents) || totalCents < 50 || totalCents > 50_000) {
-    return { ok: false, reason: 'invalid total_cents' }
+  if (!Number.isInteger(subtotalCents) || subtotalCents < 50 || subtotalCents > 50_000) {
+    return { ok: false, reason: 'invalid subtotal_cents' }
   }
   if (!screenshotPathsRaw) return { ok: false, reason: 'missing cart_screenshot_paths' }
   const screenshotPaths = screenshotPathsRaw.split(',').map((p) => p.trim()).filter(Boolean)
@@ -261,7 +266,7 @@ function validatePaymentIntentMetadata(
     return { ok: false, reason: 'invalid orderer_id UUID' }
   }
 
-  return { ok: true, schoolId, restaurantName: trimmed, totalCents, screenshotPaths }
+  return { ok: true, schoolId, restaurantName: trimmed, subtotalCents, screenshotPaths }
 }
 
 /**

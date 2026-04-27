@@ -24,7 +24,7 @@ describe('createCheckoutSchema', () => {
   const baseValid = {
     restaurant_name: 'Chipotle',
     cart_screenshot_paths: [VALID_PATH_PNG],
-    total_cents: 1500,
+    subtotal_cents: 1500,
   }
 
   it('accepts a minimal valid payload', () => {
@@ -82,18 +82,18 @@ describe('createCheckoutSchema', () => {
     ).toBe(true)
   })
 
-  it('rejects total_cents below Stripe minimum (50)', () => {
-    const r = createCheckoutSchema.safeParse({ ...baseValid, total_cents: 49 })
+  it('rejects subtotal_cents below Stripe minimum (50)', () => {
+    const r = createCheckoutSchema.safeParse({ ...baseValid, subtotal_cents: 49 })
     expect(r.success).toBe(false)
   })
 
-  it('rejects total_cents above $500 sanity cap', () => {
-    const r = createCheckoutSchema.safeParse({ ...baseValid, total_cents: 50_001 })
+  it('rejects subtotal_cents above $500 sanity cap', () => {
+    const r = createCheckoutSchema.safeParse({ ...baseValid, subtotal_cents: 50_001 })
     expect(r.success).toBe(false)
   })
 
-  it('rejects non-integer total_cents', () => {
-    const r = createCheckoutSchema.safeParse({ ...baseValid, total_cents: 1500.5 })
+  it('rejects non-integer subtotal_cents', () => {
+    const r = createCheckoutSchema.safeParse({ ...baseValid, subtotal_cents: 1500.5 })
     expect(r.success).toBe(false)
   })
 

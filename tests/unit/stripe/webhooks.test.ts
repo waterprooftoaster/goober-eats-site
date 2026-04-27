@@ -3,8 +3,9 @@
  * @description Unit tests for the Stripe webhook route handler after the
  *   GrubHub-screenshot pivot. Verifies: signature validation, payment_intent
  *   metadata validation (school_id / restaurant_name / cart_screenshot_paths
- *   / total_cents / UUIDs), idempotency via payments.stripe_payment_intent_id,
- *   orphan-order recovery, and account.updated onboarding completion.
+ *   / subtotal_cents / UUIDs), server-side re-derivation of the 60/50/10
+ *   split, idempotency via payments.stripe_payment_intent_id, orphan-order
+ *   recovery, and account.updated onboarding completion.
  *   Called by: Vitest
  */
 
@@ -75,13 +76,16 @@ function makeEvent(type: string, object: Record<string, unknown>) {
   }
 }
 
+// Subtotal $25 → orderer pays $15 (60%), platform $2.50, swiper $12.50.
 function guestMetadata(overrides: Record<string, string> = {}) {
   return {
     is_guest: 'true',
     school_id: VALID_SCHOOL_ID,
     restaurant_name: 'Chipotle',
     cart_screenshot_paths: VALID_PATH,
+    subtotal_cents: '2500',
     total_cents: '1500',
+    platform_fee_cents: '250',
     guest_name: 'Test Guest',
     ...overrides,
   }
@@ -92,7 +96,9 @@ function authMetadata(overrides: Record<string, string> = {}) {
     school_id: VALID_SCHOOL_ID,
     restaurant_name: 'Chipotle',
     cart_screenshot_paths: VALID_PATH,
+    subtotal_cents: '2500',
     total_cents: '1500',
+    platform_fee_cents: '250',
     orderer_id: VALID_ORDERER_ID,
     ...overrides,
   }
@@ -180,6 +186,7 @@ describe('POST /api/stripe/webhooks', () => {
           restaurant_name: 'Chipotle',
           cart_screenshot_urls: [VALID_PATH],
           guest_name: 'Test Guest',
+          subtotal_cents: 2500,
           total_cents: 1500,
           stripe_payment_intent_id: VALID_PI_ID,
         })
@@ -195,7 +202,7 @@ describe('POST /api/stripe/webhooks', () => {
         expect.objectContaining({
           stripe_payment_intent_id: VALID_PI_ID,
           amount_cents: 1500,
-          platform_fee_cents: 150,
+          platform_fee_cents: 250,
           status: 'succeeded',
           payer_id: null,
           payee_id: null,
@@ -278,10 +285,22 @@ describe('POST /api/stripe/webhooks', () => {
       expect(mockServiceFrom).not.toHaveBeenCalled()
     })
 
-    it('skips when total_cents is non-numeric', async () => {
-      const res = await POST(buildSignedRequest(guestPiEvent({ total_cents: 'banana' })))
+    it('skips when subtotal_cents is non-numeric', async () => {
+      const res = await POST(buildSignedRequest(guestPiEvent({ subtotal_cents: 'banana' })))
       expect(res.status).toBe(200)
       expect(mockServiceFrom).not.toHaveBeenCalled()
+    })
+
+    it('re-derives platform_fee_cents server-side; tampered metadata is ignored', async () => {
+      const { paymentsInsert } = setupHappyPath()
+      // Attacker-controlled platform_fee_cents in metadata — should be ignored.
+      const res = await POST(
+        buildSignedRequest(guestPiEvent({ platform_fee_cents: '0', total_cents: '99999' }))
+      )
+      expect(res.status).toBe(200)
+      expect(paymentsInsert.insert).toHaveBeenCalledWith(
+        expect.objectContaining({ amount_cents: 1500, platform_fee_cents: 250 })
+      )
     })
 
     it('skips when restaurant_name is empty after trim', async () => {

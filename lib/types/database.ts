@@ -31,6 +31,7 @@ export interface Order {
   cart_screenshot_urls: string[]
   stripe_payment_intent_id: string | null
   status: OrderStatus
+  subtotal_cents: number
   total_cents: number
   guest_name: string | null
   guest_phone: string | null

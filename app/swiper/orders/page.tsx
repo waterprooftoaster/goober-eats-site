@@ -40,14 +40,14 @@ export default async function PendingOrdersPage() {
   if (profile?.school_id) {
     const { data } = await supabase
       .from('orders')
-      .select('id, total_cents, restaurant_name, cart_screenshot_urls, created_at')
+      .select('id, subtotal_cents, restaurant_name, cart_screenshot_urls, created_at')
       .eq('status', 'open')
       .is('swiper_id', null)
       .eq('school_id', profile.school_id)
       .order('created_at', { ascending: true })
     orders = (data ?? []).map((row) => ({
       id: row.id,
-      total_cents: row.total_cents,
+      subtotal_cents: row.subtotal_cents,
       restaurant_name: row.restaurant_name,
       cart_screenshot_urls: (row.cart_screenshot_urls as string[]) ?? [],
       created_at: row.created_at,

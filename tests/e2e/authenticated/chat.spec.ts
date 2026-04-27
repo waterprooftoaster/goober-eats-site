@@ -9,6 +9,7 @@ import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'node:crypto'
 
 const TEST_EMAIL = 'test@goobereats.test'
+const ORDER_SUBTOTAL_CENTS = 2500
 const ORDER_TOTAL_CENTS = 1500
 // 1×1 white JPEG (107 bytes)
 const TINY_JPEG = Buffer.from(
@@ -61,6 +62,7 @@ test.describe('Chat Flow', () => {
         school_id: school.id,
         restaurant_name: 'Chipotle',
         cart_screenshot_urls: [`pre-checkout/chat-e2e/${randomUUID()}.png`],
+        subtotal_cents: ORDER_SUBTOTAL_CENTS,
         total_cents: ORDER_TOTAL_CENTS,
         status: 'open',
         guest_name: 'Chat Test',

@@ -20,7 +20,7 @@ const { OrderCard } = await import('@/components/order/order-card')
 const BASE_ORDER = {
   id: 'order-1',
   restaurant_name: 'Chipotle',
-  total_cents: 1500,
+  subtotal_cents: 2500,
   cart_screenshot_urls: ['https://example.com/cart.jpg'],
   created_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(), // 5 min ago
 }
@@ -31,9 +31,9 @@ describe('OrderCard', () => {
     expect(screen.getByText('Chipotle')).toBeInTheDocument()
   })
 
-  it('renders the total formatted as dollars', () => {
+  it('renders the GrubHub subtotal formatted as dollars (the bill the swiper covers)', () => {
     render(<OrderCard order={BASE_ORDER} onClick={vi.fn()} />)
-    expect(screen.getByText('$15.00')).toBeInTheDocument()
+    expect(screen.getByText('$25.00')).toBeInTheDocument()
   })
 
   it('renders a thumbnail when cart_screenshot_urls[0] is present', () => {

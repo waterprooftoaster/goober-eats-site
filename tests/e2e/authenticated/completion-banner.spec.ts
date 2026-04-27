@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto'
 
 const TEST_EMAIL = 'test@goobereats.test'
 const GUEST_TOKEN = '00000000-0000-4000-8000-000000000042'
+const ORDER_SUBTOTAL_CENTS = 2500
 const ORDER_TOTAL_CENTS = 1500
 
 let userId: string
@@ -56,6 +57,7 @@ test.describe('CompletionBanner', () => {
         school_id: school.id,
         restaurant_name: 'Chipotle',
         cart_screenshot_urls: [`pre-checkout/banner-e2e/${randomUUID()}.png`],
+        subtotal_cents: ORDER_SUBTOTAL_CENTS,
         total_cents: ORDER_TOTAL_CENTS,
         status: 'open',
         guest_name: 'Banner Test',

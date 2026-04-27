@@ -24,6 +24,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { getStripe } from '@/lib/stripe/client'
 import { apiError, apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
 import { createCheckoutSchema } from '@/lib/types/api'
+import { computeSplit } from '@/lib/pricing'
 
 // Stripe per-field metadata cap is 500 chars; we guard at 450 to keep the
 // joined path list comfortably under, with margin for future fields.
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
   const {
     restaurant_name,
     cart_screenshot_paths,
-    total_cents,
+    subtotal_cents,
     school_id: bodySchoolId,
     guest_name,
   } = parsed.data
@@ -86,7 +87,7 @@ export async function POST(request: NextRequest) {
     schoolId = resolvedSchoolId
   }
 
-  const platformFeeCents = Math.round(total_cents * 0.10)
+  const split = computeSplit(subtotal_cents)
 
   const appUrl = process.env.NEXT_PUBLIC_URL
   if (!appUrl || !appUrl.startsWith('http')) {
@@ -98,7 +99,7 @@ export async function POST(request: NextRequest) {
     {
       price_data: {
         currency: 'usd',
-        unit_amount: total_cents,
+        unit_amount: split.ordererPaysCents,
         product_data: { name: restaurant_name },
       },
       quantity: 1,
@@ -107,12 +108,15 @@ export async function POST(request: NextRequest) {
 
   // Unified metadata — applied to both session and payment_intent_data so the
   // webhook handler can recover full order context from the PI alone.
+  // total_cents == ordererPaysCents (what was charged); subtotal_cents is the
+  // GrubHub bill the swiper will see.
   const metadata: Record<string, string> = {
     school_id: schoolId,
     restaurant_name,
     cart_screenshot_paths: joinedPaths,
-    total_cents: String(total_cents),
-    platform_fee_cents: String(platformFeeCents),
+    subtotal_cents: String(split.subtotalCents),
+    total_cents: String(split.ordererPaysCents),
+    platform_fee_cents: String(split.platformFeeCents),
   }
 
   if (realAuthProfile && user) {

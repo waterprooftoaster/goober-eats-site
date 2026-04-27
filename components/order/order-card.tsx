@@ -1,6 +1,7 @@
 /**
  * @file order-card.tsx
- * @description List-item card for a pending swiper order showing restaurant, total, thumbnail, and age.
+ * @description List-item card for a pending swiper order showing restaurant,
+ *   GrubHub subtotal (= the bill the swiper will cover), thumbnail, and age.
  *   Called by: app/swiper/orders/pending-orders-list.tsx
  */
 
@@ -11,7 +12,7 @@ import Image from 'next/image'
 export interface OrderSummary {
   id: string
   restaurant_name: string
-  total_cents: number
+  subtotal_cents: number
   cart_screenshot_urls: string[]
   created_at: string
 }
@@ -48,7 +49,7 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
       </div>
 
       <div className="shrink-0 text-right">
-        <p className="text-sm font-semibold tabular-nums">{formatDollars(order.total_cents)}</p>
+        <p className="text-sm font-semibold tabular-nums">{formatDollars(order.subtotal_cents)}</p>
         <p className="text-xs text-muted-foreground">{timeAgo(order.created_at)}</p>
       </div>
     </button>

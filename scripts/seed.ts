@@ -13,6 +13,7 @@ import { readFileSync } from 'fs'
 import { resolve } from 'path'
 import { randomBytes, randomUUID } from 'crypto'
 import { createClient } from '@supabase/supabase-js'
+import { computeSplit } from '../lib/pricing'
 
 // ---------------------------------------------------------------------------
 // Bootstrap env
@@ -240,8 +241,8 @@ async function seedDemoOrder(schoolId: string, ordererId: string): Promise<void>
     }
   }
 
-  const totalCents = 1500
-  const platformFeeCents = Math.round(totalCents * 0.10)
+  // Subtotal $25.00 → orderer pays $15.00, platform $2.50, swiper $12.50.
+  const split = computeSplit(2500)
 
   const { data: order, error: orderErr } = await supabase
     .from('orders')
@@ -251,7 +252,8 @@ async function seedDemoOrder(schoolId: string, ordererId: string): Promise<void>
       restaurant_name: 'Chipotle',
       cart_screenshot_urls: [path1, path2],
       stripe_payment_intent_id: seedPiId,
-      total_cents: totalCents,
+      subtotal_cents: split.subtotalCents,
+      total_cents: split.ordererPaysCents,
       status: 'open',
     })
     .select('id')
@@ -264,8 +266,8 @@ async function seedDemoOrder(schoolId: string, ordererId: string): Promise<void>
     {
       order_id: order.id,
       stripe_payment_intent_id: seedPiId,
-      amount_cents: totalCents,
-      platform_fee_cents: platformFeeCents,
+      amount_cents: split.ordererPaysCents,
+      platform_fee_cents: split.platformFeeCents,
       status: 'succeeded',
       payer_id: ordererId,
       payee_id: null,

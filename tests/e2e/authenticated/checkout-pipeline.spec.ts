@@ -91,8 +91,10 @@ test.describe('Checkout Pipeline', () => {
     request,
   }) => {
     // ── Step 1: Compute expected values ──────────────────────────────
-    const totalCents = 1500 // $15.00 order
-    const expectedFeeCents = Math.round(totalCents * 0.1) // 10% platform fee
+    // Subtotal $25 → orderer pays $15 (60%), platform $2.50, swiper $12.50.
+    const subtotalCents = 2500
+    const totalCents = 1500
+    const expectedFeeCents = 250
 
     // ── Step 2: Simulate payment_intent.succeeded webhook ──────────────
     const piId = `pi_pipeline_${Date.now()}`
@@ -110,6 +112,7 @@ test.describe('Checkout Pipeline', () => {
             cart_screenshot_urls: JSON.stringify(['https://example.com/test-cart.png']),
             school_id: schoolId,
             guest_name: 'Pipeline Guest',
+            subtotal_cents: String(subtotalCents),
             platform_fee_cents: String(expectedFeeCents),
             total_cents: String(totalCents),
           },

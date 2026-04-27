@@ -126,7 +126,7 @@ export async function PATCH(
     .eq('id', id)
     .eq('status', order.status)
     .select(
-      'id, orderer_id, swiper_id, school_id, restaurant_name, cart_screenshot_urls, status, total_cents, guest_name, guest_phone, created_at, updated_at'
+      'id, orderer_id, swiper_id, school_id, restaurant_name, cart_screenshot_urls, status, subtotal_cents, total_cents, guest_name, guest_phone, created_at, updated_at'
     )
     .single()
 
@@ -134,9 +134,11 @@ export async function PATCH(
     return apiError('Order status was changed by another request', 409)
   }
 
-  // Transfer funds to swiper (payment captured at checkout for both guest and auth)
+  // Transfer funds to swiper (payment captured at checkout for both guest and auth).
+  // transferToSwiper reads amount and platform fee from the payment row so the
+  // realized split always matches what was committed at checkout.
   if (newStatus === 'completed' && updated.swiper_id) {
-    await transferToSwiper(updated.id, updated.swiper_id, updated.total_cents)
+    await transferToSwiper(updated.id, updated.swiper_id)
   }
 
   if (STATUS_MESSAGES[newStatus]) {

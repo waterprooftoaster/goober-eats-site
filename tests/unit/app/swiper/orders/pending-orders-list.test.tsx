@@ -38,7 +38,7 @@ import { PendingOrdersList, type PendingOrder } from '@/app/swiper/orders/pendin
 function buildOrder(id: string, restaurantName = 'Chipotle'): PendingOrder {
   return {
     id,
-    total_cents: 1250,
+    subtotal_cents: 2500,
     restaurant_name: restaurantName,
     cart_screenshot_urls: ['https://example.test/screenshot.jpg'],
     created_at: new Date().toISOString(),

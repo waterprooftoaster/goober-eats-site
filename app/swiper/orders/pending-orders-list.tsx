@@ -19,10 +19,11 @@ import { ScreenshotGallery } from '@/components/order/screenshot-gallery'
 import { Modal, ModalContent, ModalTitle, ModalDescription } from '@/components/ui/modal'
 import { Button } from '@/components/ui/button'
 import { Surface } from '@/components/ui/surface'
+import { computeSplit } from '@/lib/pricing'
 
 export type PendingOrder = {
   id: string
-  total_cents: number
+  subtotal_cents: number
   restaurant_name: string
   cart_screenshot_urls: string[]
   created_at: string
@@ -156,15 +157,29 @@ export function PendingOrdersList({ orders: initialOrders }: Props) {
 
             <ScreenshotGallery urls={selectedOrder.cart_screenshot_urls} />
 
-            <div className="flex items-baseline justify-between border-t border-border pt-4">
-              <span className="text-sm text-muted-foreground">Total</span>
-              <span className="text-base font-semibold tabular-nums">
-                {formatDollars(selectedOrder.total_cents)}
-              </span>
+            <div className="flex flex-col gap-1.5 border-t border-border pt-4">
+              <div className="flex items-baseline justify-between">
+                <span className="text-sm text-muted-foreground">GrubHub subtotal</span>
+                <span
+                  className="text-base font-semibold tabular-nums"
+                  data-testid="swiper-order-subtotal"
+                >
+                  {formatDollars(selectedOrder.subtotal_cents)}
+                </span>
+              </div>
+              <div className="flex items-baseline justify-between">
+                <span className="text-sm text-muted-foreground">You earn</span>
+                <span
+                  className="text-base font-semibold tabular-nums text-primary"
+                  data-testid="swiper-order-earnings"
+                >
+                  {formatDollars(computeSplit(selectedOrder.subtotal_cents).swiperReceivesCents)}
+                </span>
+              </div>
             </div>
 
             <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-              Double-check the subtotals in the screenshots match the total before accepting.
+              Double-check the subtotals in the screenshots match the GrubHub subtotal before accepting.
             </p>
 
             {error && (

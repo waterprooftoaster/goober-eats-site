@@ -13,7 +13,9 @@ import { randomUUID } from 'node:crypto'
 const TEST_EMAIL = 'test@goobereats.test'
 // Fixed tokens so tests are deterministic and easy to clean up
 const GUEST_TOKEN = '10000000-0000-4000-8000-000000000001'
+const ORDER_SUBTOTAL_CENTS = 2500
 const ORDER_TOTAL_CENTS = 1500
+const ORDER_PLATFORM_FEE_CENTS = 250
 
 let swiperUserId: string
 let orderId: string
@@ -182,6 +184,7 @@ test.describe('Guest Anon Auth + Realtime Chat', () => {
         school_id: school.id,
         restaurant_name: 'Chipotle',
         cart_screenshot_urls: [`pre-checkout/guest-chat-e2e/${randomUUID()}.png`],
+        subtotal_cents: ORDER_SUBTOTAL_CENTS,
         total_cents: ORDER_TOTAL_CENTS,
         status: 'open',
         guest_name: 'Guest Chat E2E',
@@ -197,7 +200,7 @@ test.describe('Guest Anon Auth + Realtime Chat', () => {
       order_id: orderId,
       stripe_payment_intent_id: 'pi_guest_chat_e2e',
       amount_cents: ORDER_TOTAL_CENTS,
-      platform_fee_cents: Math.floor(ORDER_TOTAL_CENTS * 0.1),
+      platform_fee_cents: ORDER_PLATFORM_FEE_CENTS,
       status: 'succeeded',
       payer_id: null,
       payee_id: null,

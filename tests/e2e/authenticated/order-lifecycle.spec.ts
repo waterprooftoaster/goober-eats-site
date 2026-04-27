@@ -10,7 +10,10 @@ import { randomUUID } from 'node:crypto'
 
 const TEST_EMAIL = 'test@goobereats.test'
 const FAKE_UUID = '00000000-0000-4000-8000-000000000099'
+// Subtotal $25 → orderer pays $15 (60%), platform $2.50, swiper $12.50.
+const ORDER_SUBTOTAL_CENTS = 2500
 const ORDER_TOTAL_CENTS = 1500
+const ORDER_PLATFORM_FEE_CENTS = 250
 
 let userId: string
 let orderId: string
@@ -56,6 +59,7 @@ test.describe('Order Lifecycle', () => {
         school_id: school.id,
         restaurant_name: 'Chipotle',
         cart_screenshot_urls: [`pre-checkout/lifecycle-e2e/${randomUUID()}.png`],
+        subtotal_cents: ORDER_SUBTOTAL_CENTS,
         total_cents: ORDER_TOTAL_CENTS,
         status: 'open',
         guest_name: 'Lifecycle Test',
@@ -71,7 +75,7 @@ test.describe('Order Lifecycle', () => {
       order_id: orderId,
       stripe_payment_intent_id: 'pi_lifecycle_test',
       amount_cents: ORDER_TOTAL_CENTS,
-      platform_fee_cents: Math.floor(ORDER_TOTAL_CENTS * 0.1),
+      platform_fee_cents: ORDER_PLATFORM_FEE_CENTS,
       status: 'succeeded',
       payer_id: null,
       payee_id: null,
@@ -171,6 +175,7 @@ test.describe('Order Lifecycle', () => {
         school_id: school.id,
         restaurant_name: 'Chipotle',
         cart_screenshot_urls: [`pre-checkout/unaccept-e2e/${randomUUID()}.png`],
+        subtotal_cents: ORDER_SUBTOTAL_CENTS,
         total_cents: ORDER_TOTAL_CENTS,
         status: 'open',
         guest_name: 'Un-accept Test',
@@ -184,7 +189,7 @@ test.describe('Order Lifecycle', () => {
       order_id: unacceptOrder.id,
       stripe_payment_intent_id: 'pi_unaccept_test',
       amount_cents: ORDER_TOTAL_CENTS,
-      platform_fee_cents: Math.floor(ORDER_TOTAL_CENTS * 0.1),
+      platform_fee_cents: ORDER_PLATFORM_FEE_CENTS,
       status: 'succeeded',
       payer_id: null,
       payee_id: null,

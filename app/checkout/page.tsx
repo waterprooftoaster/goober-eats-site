@@ -22,6 +22,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { BackButton } from '@/components/back-button'
 import { createClient } from '@/lib/supabase/client'
 import { PENDING_SCREENSHOTS_KEY } from '@/lib/constants'
+import { computeSplit } from '@/lib/pricing'
 
 // Guarded so a missing env var (CI / preview environment / fresh clone)
 // surfaces as the colocated error.tsx boundary instead of an unhandled
@@ -40,7 +41,7 @@ export default function CheckoutPage() {
 
   const [name, setName] = useState('')
   const [eatery, setEatery] = useState('')
-  const [total, setTotal] = useState('')
+  const [subtotal, setSubtotal] = useState('')
   const [stage, setStage] = useState<Stage>('form')
   const [clientSecret, setClientSecret] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -106,24 +107,25 @@ export default function CheckoutPage() {
     return () => { cancelled = true }
   }, [screenshotPaths])
 
-  const totalCents = parseCents(total)
+  const subtotalCents = parseCents(subtotal)
+  const split = subtotalCents !== null ? computeSplit(subtotalCents) : null
   const eateryValid = eatery.trim().length >= 1 && eatery.trim().length <= 80
-  const totalValid = totalCents !== null && totalCents >= 50
+  const subtotalValid = subtotalCents !== null && subtotalCents >= 50
   const nameValid = viewerKind === 'authed' ? true : name.trim().length > 0
   const canSubmit =
-    eateryValid && totalValid && nameValid &&
+    eateryValid && subtotalValid && nameValid &&
     stage === 'form' && viewerKind !== 'loading'
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!canSubmit || totalCents === null) return
+    if (!canSubmit || subtotalCents === null) return
     setStage('submitting')
     setError(null)
 
     const body: Record<string, unknown> = {
       restaurant_name: eatery.trim(),
       cart_screenshot_paths: screenshotPaths,
-      total_cents: totalCents,
+      subtotal_cents: subtotalCents,
     }
     if (viewerKind === 'guest') {
       body.guest_name = name.trim()
@@ -229,11 +231,11 @@ export default function CheckoutPage() {
               kind={viewerKind}
               name={name} setName={setName}
               eatery={eatery} setEatery={setEatery}
-              total={total} setTotal={setTotal}
+              subtotal={subtotal} setSubtotal={setSubtotal}
               isSubmitting={isSubmitting}
               canSubmit={canSubmit}
               error={error}
-              totalCents={totalCents}
+              ordererPaysCents={split?.ordererPaysCents ?? null}
               onSubmit={handleSubmit}
             />
           )}
@@ -251,12 +253,12 @@ interface CheckoutFormProps {
   setName: (v: string) => void
   eatery: string
   setEatery: (v: string) => void
-  total: string
-  setTotal: (v: string) => void
+  subtotal: string
+  setSubtotal: (v: string) => void
   isSubmitting: boolean
   canSubmit: boolean
   error: string | null
-  totalCents: number | null
+  ordererPaysCents: number | null
   onSubmit: (e: React.FormEvent) => void
 }
 
@@ -267,14 +269,14 @@ interface CheckoutFormProps {
  * @called-by CheckoutPage
  */
 function CheckoutForm({
-  kind, name, setName, eatery, setEatery, total, setTotal,
-  isSubmitting, canSubmit, error, totalCents, onSubmit,
+  kind, name, setName, eatery, setEatery, subtotal, setSubtotal,
+  isSubmitting, canSubmit, error, ordererPaysCents, onSubmit,
 }: CheckoutFormProps) {
   const isGuest = kind === 'guest'
   const formTestId = isGuest ? 'checkout-form-guest' : 'checkout-form-authed'
   const buttonLabel = isSubmitting
     ? 'Creating session…'
-    : totalCents !== null ? `Pay ${formatDollars(totalCents)}` : 'Pay'
+    : ordererPaysCents !== null ? `Pay ${formatDollars(ordererPaysCents)}` : 'Pay'
 
   return (
     <form
@@ -309,16 +311,25 @@ function CheckoutForm({
         />
       </FieldRow>
 
-      <FieldRow label="Total (USD)" htmlFor="checkout-total" hint="Minimum $0.50">
+      <FieldRow
+        label="GrubHub subtotal (USD)"
+        htmlFor="checkout-subtotal"
+        hint={
+          ordererPaysCents !== null
+            ? `You'll pay ${formatDollars(ordererPaysCents)} (40% off)`
+            : 'Minimum $0.50'
+        }
+      >
         <Input
-          id="checkout-total"
+          id="checkout-subtotal"
+          data-testid="checkout-subtotal-input"
           type="number"
           inputMode="decimal"
           placeholder="0.00"
           min="0.50"
           step="0.01"
-          value={total}
-          onChange={(e) => setTotal(e.target.value)}
+          value={subtotal}
+          onChange={(e) => setSubtotal(e.target.value)}
           disabled={isSubmitting}
         />
       </FieldRow>

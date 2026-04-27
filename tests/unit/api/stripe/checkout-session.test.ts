@@ -78,10 +78,11 @@ beforeEach(() => {
   mockStripeSessionsCreate.mockResolvedValue({ client_secret: 'cs_test_secret' })
 })
 
+// Subtotal $25 → orderer pays $15 (60%), platform $2.50, swiper $12.50.
 const baseBody = {
   restaurant_name: 'Chipotle',
   cart_screenshot_paths: [VALID_PATH],
-  total_cents: 1500,
+  subtotal_cents: 2500,
 }
 
 function mockAuthUser(schoolId: string | null = NYU_SCHOOL_ID) {
@@ -103,14 +104,14 @@ describe('POST /api/stripe/checkout-session', () => {
     it('rejects missing restaurant_name', async () => {
       mockAuthUser()
       const res = await POST(
-        buildRequest({ cart_screenshot_paths: [VALID_PATH], total_cents: 1500 })
+        buildRequest({ cart_screenshot_paths: [VALID_PATH], subtotal_cents: 2500 })
       )
       expect(res.status).toBe(400)
     })
 
-    it('rejects total_cents below 50', async () => {
+    it('rejects subtotal_cents below 50', async () => {
       mockAuthUser()
-      const res = await POST(buildRequest({ ...baseBody, total_cents: 49 }))
+      const res = await POST(buildRequest({ ...baseBody, subtotal_cents: 49 }))
       expect(res.status).toBe(400)
     })
 
@@ -150,7 +151,7 @@ describe('POST /api/stripe/checkout-session', () => {
       expect(res.status).toBe(400)
     })
 
-    it('builds a single Stripe line item with total_cents and restaurant_name', async () => {
+    it('charges 60% of subtotal_cents (orderer pays after the 40% discount)', async () => {
       mockAuthUser()
       await POST(buildRequest(baseBody))
       const [[arg]] = mockStripeSessionsCreate.mock.calls
@@ -165,6 +166,9 @@ describe('POST /api/stripe/checkout-session', () => {
           }),
         })
       )
+      expect(arg.metadata.subtotal_cents).toBe('2500')
+      expect(arg.metadata.total_cents).toBe('1500')
+      expect(arg.metadata.platform_fee_cents).toBe('250')
     })
 
     it('does NOT set application_fee_amount (platform charges in full, fee computed post-hoc)', async () => {

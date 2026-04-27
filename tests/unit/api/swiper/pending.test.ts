@@ -89,7 +89,7 @@ describe('GET /api/swiper/pending', () => {
         id: 'order-1',
         restaurant_name: 'Chipotle',
         cart_screenshot_urls: ['pre-checkout/ABCdef1234/00000000-0000-4000-8000-000000000010.png'],
-        total_cents: 1500,
+        subtotal_cents: 2500,
         created_at: '2026-04-22T00:00:00Z',
       },
     ]

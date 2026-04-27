@@ -2,20 +2,22 @@
  * @file transfer.ts
  * @description Transfers funds from the platform to the swiper's Stripe connected account on order completion.
  *   Called by: app/api/orders/[id]/status/route.ts
- * @dependencies lib/stripe/client.ts, lib/supabase/service.ts, lib/pricing.ts
+ * @dependencies lib/stripe/client.ts, lib/supabase/service.ts
  */
 
 import 'server-only'
 
 import { getStripe } from './client'
 import { createServiceClient } from '@/lib/supabase/service'
-import { platformFeeCents } from '@/lib/pricing'
 
 /**
  * Transfer funds from the platform to the swiper's connected Stripe account.
  *
  * Called when any order (guest or auth) reaches the 'completed' status.
- * Payment was captured upfront via Stripe Checkout.
+ * Payment was captured upfront via Stripe Checkout. The transfer amount and
+ * platform fee are read from the payment row so the realized split always
+ * matches what was committed at checkout (single source of truth — no
+ * recomputation drift).
  *
  * Idempotency: Stripe's idempotency key (`transfer-${orderId}`) prevents
  * double-charges. The DB payee_id write happens after the Stripe call
@@ -23,15 +25,13 @@ import { platformFeeCents } from '@/lib/pricing'
  */
 export async function transferToSwiper(
   orderId: string,
-  swiperId: string,
-  totalCents: number
+  swiperId: string
 ) {
   const service = createServiceClient()
 
-  // Check if transfer already completed (payee_id already set)
   const { data: payment } = await service
     .from('payments')
-    .select('id, payee_id')
+    .select('id, payee_id, amount_cents, platform_fee_cents')
     .eq('order_id', orderId)
     .eq('status', 'succeeded')
     .maybeSingle()
@@ -51,8 +51,7 @@ export async function transferToSwiper(
     return
   }
 
-  const fee = platformFeeCents(totalCents)
-  const transferAmount = totalCents - fee
+  const transferAmount = payment.amount_cents - payment.platform_fee_cents
 
   try {
     await getStripe().transfers.create(

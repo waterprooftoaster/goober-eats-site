@@ -3,23 +3,25 @@
  * @description My Orders history page. Server-renders the authenticated
  *   user's full order history, merging both legs (orders they placed +
  *   orders they fulfilled as a swiper) into a single newest-first list.
- *   Replaces the prior eateries(name) join + items column with the new
- *   restaurant_name / total_cents shape per CLAUDE.md domain model.
+ *   Per-row amount: placed = what the orderer paid (total_cents);
+ *   fulfilled = what the swiper earned (computeSplit(subtotal).swiperReceivesCents).
  *   Called by: Next.js routing (/orders)
  * @dependencies lib/supabase/server.ts, lib/api/helpers.ts,
- *   components/ui/surface.tsx
+ *   components/ui/surface.tsx, lib/pricing.ts
  */
 
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getAuthenticatedUser } from '@/lib/api/helpers'
 import { Surface } from '@/components/ui/surface'
+import { computeSplit } from '@/lib/pricing'
 import type { OrderStatus } from '@/lib/types/database'
 
 interface OrdersRow {
   id: string
   status: OrderStatus
   restaurant_name: string | null
+  subtotal_cents: number
   total_cents: number
   created_at: string
   orderer_id: string | null
@@ -40,18 +42,27 @@ export default async function MyOrdersPage() {
 
   const { data } = await supabase
     .from('orders')
-    .select('id, status, restaurant_name, total_cents, created_at, orderer_id, swiper_id')
+    .select('id, status, restaurant_name, subtotal_cents, total_cents, created_at, orderer_id, swiper_id')
     .or(`orderer_id.eq.${user.id},swiper_id.eq.${user.id}`)
     .order('created_at', { ascending: false })
 
-  const rows = ((data ?? []) as OrdersRow[]).map((o) => ({
-    id: o.id,
-    status: o.status,
-    restaurantName: o.restaurant_name ?? '',
-    totalCents: o.total_cents,
-    createdAt: o.created_at,
-    role: (o.orderer_id === user.id ? 'placed' : 'fulfilled') as Role,
-  }))
+  const rows = ((data ?? []) as OrdersRow[]).map((o) => {
+    const role: Role = o.orderer_id === user.id ? 'placed' : 'fulfilled'
+    // For placed orders show what the orderer paid; for fulfilled orders
+    // show what the swiper earned.
+    const amountCents =
+      role === 'placed'
+        ? o.total_cents
+        : computeSplit(o.subtotal_cents).swiperReceivesCents
+    return {
+      id: o.id,
+      status: o.status,
+      restaurantName: o.restaurant_name ?? '',
+      amountCents,
+      createdAt: o.created_at,
+      role,
+    }
+  })
 
   return (
     <main
@@ -103,7 +114,7 @@ export default async function MyOrdersPage() {
                   </div>
                   <div className="shrink-0 text-right">
                     <p className="font-semibold tabular-nums">
-                      {formatDollars(order.totalCents)}
+                      {formatDollars(order.amountCents)}
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {STATUS_LABEL[order.status]}

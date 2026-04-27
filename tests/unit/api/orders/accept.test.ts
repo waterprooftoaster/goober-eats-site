@@ -168,6 +168,7 @@ describe('PATCH /api/orders/[id]/accept', () => {
       restaurant_name: 'Chipotle',
       cart_screenshot_urls: ['pre-checkout/ABCdef1234/00000000-0000-4000-8000-000000000010.png'],
       status: 'in_progress',
+      subtotal_cents: 2500,
       total_cents: 1500,
       guest_name: null,
       guest_phone: null,
