@@ -17,6 +17,10 @@ import Stepper, { Step } from '@/components/Stepper'
 import PhoneCart from './icons/phone-cart'
 
 const PIN_DISTANCE_PX = 1800
+// Stepper's outer-container has padding-top: 1rem (Stepper.css), so the visible
+// rectangle sits 16px below the sticky div's top edge. Subtract it from stickyTop
+// to put the rectangle's geometric center at the viewport's center.
+const OUTER_CONTAINER_PADDING_TOP_PX = 16
 
 /**
  * Slide variants matching Stepper's internal step transitions.
@@ -58,7 +62,10 @@ export default function ScrollStepperSection() {
             const vh = window.innerHeight
             // Clamp to 0 when the rectangle is taller than the viewport, otherwise
             // sticky pins above the visible area on short-viewport mobile.
-            const stickyTop = Math.max(0, (vh - rectHeight) / 2)
+            const stickyTop = Math.max(
+                0,
+                (vh - rectHeight) / 2 - OUTER_CONTAINER_PADDING_TOP_PX,
+            )
             const sectionHeight = rectHeight + PIN_DISTANCE_PX
             setGeom({ stickyTop, sectionHeight })
         }
@@ -100,7 +107,7 @@ export default function ScrollStepperSection() {
     return (
         <section
             ref={sectionRef}
-            className="bg-white"
+            className="bg-background"
             style={{ height: geom ? `${geom.sectionHeight}px` : 'auto' }}
         >
             <div
@@ -122,16 +129,16 @@ export default function ScrollStepperSection() {
                         ]}
                     >
                         <Step>
-                            <p className="text-2xl font-bold text-black">Step 1: Screenshot</p>
-                            <p className="text-xl font-medium text-black pb-8">Take a screenshot of your GrubHub cart</p>
+                            <p className="font-display text-2xl font-bold text-foreground">Step 1: Snap your cart</p>
+                            <p className="text-xl font-medium text-muted-foreground pb-8">Take a screenshot of your GrubHub cart</p>
                         </Step>
                         <Step>
-                            <p className="text-2xl font-bold text-black">Step 2: Upload</p>
-                            <p className="text-xl font-medium text-black pb-8">Drop in your screenshot</p>
+                            <p className="font-display text-2xl font-bold text-foreground">Step 2: Drop it in</p>
+                            <p className="text-xl font-medium text-muted-foreground pb-8">Upload the screenshot here on Goober</p>
                         </Step>
                         <Step>
-                            <p className="text-2xl font-bold text-black">Step 3: Hang tight</p>
-                            <p className="text-xl font-medium text-black pb-8">Your food is on its way</p>
+                            <p className="font-display text-2xl font-bold text-foreground">Step 3: Eat</p>
+                            <p className="text-xl font-medium text-muted-foreground pb-8">A student at your school is on the way</p>
                         </Step>
                     </Stepper>
                 </div>

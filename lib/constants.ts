@@ -13,6 +13,7 @@ export const CONTACT_EMAIL = 'goobereats@gmail.com'
 // never re-declared in editable code.
 
 export const PENDING_SCREENSHOTS_KEY = 'pending_screenshots'
+export const PENDING_SCHOOL_ID_KEY = 'pending_school_id'
 
 /**
  * Supabase Realtime channel name for message INSERTs in a conversation.
