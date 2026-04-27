@@ -1,3 +1,10 @@
+/**
+ * @file server.ts
+ * @description Creates a cookie-based SSR Supabase client for server components and API routes; respects RLS.
+ *   Called by: app/api/ route handlers, server components
+ * @dependencies @supabase/ssr, next/headers
+ */
+
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
@@ -10,7 +17,7 @@ export async function createClient() {
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!,
     {
       cookies: {
         getAll() {

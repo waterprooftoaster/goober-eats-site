@@ -42,7 +42,16 @@ next-env.d.ts
 
 #ai
 AGENTS.md
-CLAUDE.md
 /.claude/
 /.agents/
+.mcp.json
 
+#supabase
+supabase/.temp/
+
+
+#testing
+/test-results/
+/playwright-report/
+/.auth/
+/screenshots/

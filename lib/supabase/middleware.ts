@@ -1,6 +1,19 @@
+/**
+ * @file middleware.ts
+ * @description Supabase middleware helper that refreshes the user session on every request.
+ *   Called by: middleware.ts (root)
+ * @dependencies @supabase/ssr
+ */
+
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+/**
+ * Refreshes the Supabase session cookie on every request to prevent premature session expiry.
+ * @param request - The incoming Next.js request
+ * @returns A NextResponse with updated session cookies set
+ * @called-by middleware.ts (root)
+ */
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
@@ -10,7 +23,7 @@ export async function updateSession(request: NextRequest) {
   // variable. Always create a new one on each request.
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!,
     {
       cookies: {
         getAll() {
@@ -35,19 +48,7 @@ export async function updateSession(request: NextRequest) {
 
   // IMPORTANT: If you remove getClaims() and you use server-side rendering
   // with the Supabase client, your users may be randomly logged out.
-  const { data } = await supabase.auth.getClaims()
-  const user = data?.claims
-
-  if (
-    !user &&
-    !request.nextUrl.pathname.startsWith('/login') &&
-    !request.nextUrl.pathname.startsWith('/auth')
-  ) {
-    // no user, potentially respond by redirecting the user to the login page
-    const url = request.nextUrl.clone()
-    url.pathname = '/auth/login'
-    return NextResponse.redirect(url)
-  }
+  await supabase.auth.getClaims()
 
   // IMPORTANT: You *must* return the supabaseResponse object as it is.
   // If you're creating a new response object with NextResponse.next() make sure to:
