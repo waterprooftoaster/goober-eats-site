@@ -16,10 +16,10 @@ import { canTransition } from '@/lib/orders/state-machine'
 import { apiError, apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
 import { transferToSwiper } from '@/lib/stripe/transfer'
 import { sendSystemMessage } from '@/lib/chat/system-messages'
+import { signCartScreenshotPaths } from '@/lib/storage/sign-screenshots'
 import type { OrderStatus } from '@/lib/types/database'
 
 const STATUS_MESSAGES: Partial<Record<string, string>> = {
-  open: 'Swiper is no longer available — your order is open again',
   completed: 'Order completed — check completion photo',
   cancelled: 'Order was cancelled',
 }
@@ -110,6 +110,19 @@ export async function PATCH(
     }
   }
 
+  // Un-accept: capture the swiper's name BEFORE clearing swiper_id so the
+  // system message can address them by name. RLS on profiles already lets the
+  // orderer/swiper read each other's full_name.
+  let unacceptSwiperName: string | null = null
+  if (newStatus === 'open' && order.swiper_id) {
+    const { data: swiperProfile } = await supabase
+      .from('profiles')
+      .select('full_name')
+      .eq('id', order.swiper_id)
+      .maybeSingle()
+    unacceptSwiperName = swiperProfile?.full_name ?? null
+  }
+
   // Un-accept: clear swiper_id so the order re-enters the open queue.
   // Uses service client because the orders_update RLS WITH CHECK only permits
   // rows where the updater remains orderer or swiper — clearing swiper_id to
@@ -134,6 +147,18 @@ export async function PATCH(
     return apiError('Order status was changed by another request', 409)
   }
 
+  // Un-accept side-effect: clear conversations.swiper_id so the prior swiper
+  // loses RLS access to the conversation + its messages. Without this, the
+  // old swiper could keep reading/writing via direct API calls. The accept
+  // route's unique-violation branch reattaches conversations.swiper_id when
+  // a new swiper picks the order back up.
+  if (newStatus === 'open') {
+    await createServiceClient()
+      .from('conversations')
+      .update({ swiper_id: null, swiper_assigned_at: null })
+      .eq('order_id', id)
+  }
+
   // Transfer funds to swiper (payment captured at checkout for both guest and auth).
   // transferToSwiper reads amount and platform fee from the payment row so the
   // realized split always matches what was committed at checkout.
@@ -141,9 +166,18 @@ export async function PATCH(
     await transferToSwiper(updated.id, updated.swiper_id)
   }
 
-  if (STATUS_MESSAGES[newStatus]) {
+  if (newStatus === 'open') {
+    const name = unacceptSwiperName ?? 'Your swiper'
+    await sendSystemMessage(
+      id,
+      `Swiper ${name} is no longer available. Finding you another swiper.`
+    )
+  } else if (STATUS_MESSAGES[newStatus]) {
     await sendSystemMessage(id, STATUS_MESSAGES[newStatus]!)
   }
 
-  return apiSuccess(updated)
+  const cart_screenshot_urls = await signCartScreenshotPaths(
+    (updated.cart_screenshot_urls as string[] | null) ?? []
+  )
+  return apiSuccess({ ...updated, cart_screenshot_urls })
 }

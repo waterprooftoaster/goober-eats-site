@@ -132,12 +132,38 @@ async function simulateAccept(supabase: ReturnType<typeof makeSupabase>) {
 
 /**
  * Reset the order back to open (simulates swiper un-accepting).
+ * Mirrors the real /api/orders/[id]/status route's un-accept side-effects:
+ * clears orders.swiper_id, clears conversations.swiper_id, and inserts the
+ * personalised system message with the swiper's full_name.
  */
 async function simulateUnaccept(supabase: ReturnType<typeof makeSupabase>) {
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('full_name')
+    .eq('id', swiperUserId)
+    .maybeSingle()
+  const swiperName = profile?.full_name ?? 'Your swiper'
+
   await supabase
     .from('orders')
     .update({ status: 'open', swiper_id: null })
     .eq('id', orderId)
+
+  const { data: conv } = await supabase
+    .from('conversations')
+    .update({ swiper_id: null })
+    .eq('order_id', orderId)
+    .select('id')
+    .single()
+
+  if (conv?.id) {
+    await supabase.from('messages').insert({
+      conversation_id: conv.id,
+      sender_id: null,
+      body: `Swiper ${swiperName} is no longer available. Finding you another swiper.`,
+      message_type: 'system',
+    })
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -430,15 +456,25 @@ test.describe('Guest Anon Auth + Realtime Chat', () => {
     // Conversation system message should be visible
     await expect(page.getByTestId('chat-pseudo-in-progress')).toBeVisible({ timeout: 10000 })
 
-    // Simulate un-accept (status → open, swiper_id → null)
+    // Simulate un-accept (status → open, swiper_id → null, conv.swiper_id → null,
+    // personalised system message inserted)
     await simulateUnaccept(supabase)
 
     // Panel should reflect the status change without a page reload.
     // When status reverts to 'open', the placed-order pseudo-message reappears.
     await expect(page.getByTestId('chat-pseudo-placed-order')).toBeVisible({ timeout: 8000 })
 
+    // Personalised system message arrives via Realtime and stacks at the
+    // bottom of the existing thread (not replacing prior history).
+    await expect(
+      page.getByText(/is no longer available\. Finding you another swiper\./i)
+    ).toBeVisible({ timeout: 8000 })
+
+    // Chat input is now disabled (orderer reverts to "waiting on a swiper")
+    await expect(page.getByTestId('chat-input-waiting')).toBeDisabled()
+
     await expect(page).toHaveURL('/')
-    // Verify via DB that status is 'open'
+    // Verify via DB that status is 'open' and conversation.swiper_id was revoked
     const { data: order } = await supabase
       .from('orders')
       .select('status, swiper_id')
@@ -446,6 +482,13 @@ test.describe('Guest Anon Auth + Realtime Chat', () => {
       .single()
     expect(order?.status).toBe('open')
     expect(order?.swiper_id).toBeNull()
+
+    const { data: conv } = await supabase
+      .from('conversations')
+      .select('swiper_id')
+      .eq('order_id', orderId)
+      .single()
+    expect(conv?.swiper_id).toBeNull()
   })
 
   // -------------------------------------------------------------------------

@@ -10,6 +10,7 @@
 import { useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import { Button } from '@/components/ui/button'
+import { normalizeImage } from '@/lib/image/normalize'
 import type { OrderStatus } from '@/lib/types/database'
 
 interface Props {
@@ -34,13 +35,18 @@ export function CompletionBanner({ orderId, onStatusChange }: Props) {
   if (done) return null
 
   async function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const original = e.target.files?.[0]
+    if (!original) return
     setUploading(true)
     setError(null)
     try {
+      const result = await normalizeImage(original)
+      if (!result.ok) {
+        setError('Could not read that image. Try saving it as JPEG.')
+        return
+      }
       const fd = new FormData()
-      fd.append('file', file)
+      fd.append('file', result.file)
       const uploadRes = await fetch(`/api/messages/${orderId}/upload`, {
         method: 'POST',
         body: fd,
@@ -91,6 +97,8 @@ export function CompletionBanner({ orderId, onStatusChange }: Props) {
       if (res.ok) {
         onStatusChange?.('open')
         setDone(true)
+        window.location.reload()
+        return
       } else {
         const json = await res.json().catch(() => ({}))
         setError((json as { error?: string }).error ?? 'Failed to unaccept order')

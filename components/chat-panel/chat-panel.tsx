@@ -59,7 +59,7 @@ function DesktopPanelItem({ entry, currentUserId, onToggle, onClose, onStatusCha
     <Surface
       className={cn(
         'flex flex-col rounded-lg border border-border shadow-xl',
-        'w-[360px] h-[28rem]'
+        'w-[360px] min-h-[28rem]'
       )}
     >
       <div data-testid="chat-panel-header" className="flex items-center justify-between border-b border-border px-4 py-2.5">

@@ -12,7 +12,6 @@
  */
 
 import type { RefObject } from 'react'
-import Image from 'next/image'
 import type { OptimisticMessage } from '@/hooks/use-messages'
 import type { PseudoMessage } from '@/components/chat/chat-view'
 import { cn } from '@/lib/utils'
@@ -52,7 +51,6 @@ export function ChatThread({ pseudoMessages, messages, currentUserId, messagesEn
         </div>
       ))}
       {messages.map((message) => {
-        const isPhoto = message.message_type === 'completion_photo'
         const isOwn = message.sender_id === currentUserId
         const isPending = message.status === 'pending'
         const isFailed = message.status === 'failed'
@@ -66,34 +64,17 @@ export function ChatThread({ pseudoMessages, messages, currentUserId, messagesEn
               isOwn ? 'ml-auto items-end' : 'mr-auto items-start'
             )}
           >
-            {isPhoto && message.image_url ? (
-              <a
-                href={message.image_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block"
-              >
-                <Image
-                  src={message.image_url}
-                  alt="Completion photo"
-                  width={200}
-                  height={200}
-                  className="cursor-pointer rounded-lg border border-border object-cover transition-opacity hover:opacity-90"
-                />
-              </a>
-            ) : (
-              <div
-                className={cn(
-                  'rounded-2xl px-3 py-2 text-sm',
-                  isOwn
-                    ? 'rounded-br-sm bg-foreground text-background'
-                    : 'rounded-bl-sm bg-secondary text-foreground',
-                  (isPending || isFailed) && 'opacity-60'
-                )}
-              >
-                {message.body}
-              </div>
-            )}
+            <div
+              className={cn(
+                'rounded-2xl px-3 py-2 text-sm',
+                isOwn
+                  ? 'rounded-br-sm bg-foreground text-background'
+                  : 'rounded-bl-sm bg-secondary text-foreground',
+                (isPending || isFailed) && 'opacity-60'
+              )}
+            >
+              {message.body}
+            </div>
             {isPending && (
               <span className="mt-0.5 inline-flex items-center gap-1 text-xs text-muted-foreground">
                 <span aria-hidden className="h-2 w-2 animate-spin rounded-full border border-muted-foreground border-t-transparent" />

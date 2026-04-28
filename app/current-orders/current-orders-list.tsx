@@ -10,6 +10,7 @@
  *   components/ui/surface.tsx
  */
 
+import { useState } from 'react'
 import { ChatView } from '@/components/chat/chat-view'
 import { useChatPanel } from '@/components/chat-panel'
 import { Surface } from '@/components/ui/surface'
@@ -36,8 +37,28 @@ interface Props {
  */
 export function CurrentOrdersList({ orders, currentUserId }: Props) {
   const { updateOrderStatus } = useChatPanel()
+  // Locally-removed orders for instant UI feedback after un-accept / cancel.
+  // We deliberately keep `completed` orders mounted so the swiper sees
+  // OrderCompletedView (with the completion photo) until they navigate away;
+  // the next mount re-runs the server query (`['open', 'in_progress']`) which
+  // drops the row.
+  const [removedIds, setRemovedIds] = useState<Set<string>>(new Set())
 
-  if (orders.length === 0) {
+  function handleStatusChange(orderId: string, status: OrderStatus) {
+    updateOrderStatus(orderId, status)
+    if (status === 'open' || status === 'cancelled') {
+      setRemovedIds((prev) => {
+        if (prev.has(orderId)) return prev
+        const next = new Set(prev)
+        next.add(orderId)
+        return next
+      })
+    }
+  }
+
+  const visibleOrders = orders.filter((o) => !removedIds.has(o.id))
+
+  if (visibleOrders.length === 0) {
     return (
       <Surface
         tone="subtle"
@@ -55,7 +76,7 @@ export function CurrentOrdersList({ orders, currentUserId }: Props) {
 
   return (
     <div data-testid="current-orders-list" className="flex flex-col gap-4">
-      {orders.map((order) => (
+      {visibleOrders.map((order) => (
         <article
           key={order.id}
           className="flex flex-col overflow-hidden rounded-2xl border border-border bg-card"
@@ -71,13 +92,13 @@ export function CurrentOrdersList({ orders, currentUserId }: Props) {
             </div>
             <StatusBadge status={order.status} />
           </header>
-          <div className="flex h-[26rem] flex-col">
+          <div className="flex min-h-[26rem] flex-col">
             <ChatView
               orderId={order.id}
               currentUserId={currentUserId}
               orderStatus={order.status}
               eateryName={order.restaurantName}
-              onStatusChange={(status) => updateOrderStatus(order.id, status)}
+              onStatusChange={(status) => handleStatusChange(order.id, status)}
             />
           </div>
         </article>

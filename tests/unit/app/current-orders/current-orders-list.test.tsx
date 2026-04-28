@@ -6,11 +6,20 @@
  */
 
 import { vi, describe, it, expect } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, within, act } from '@testing-library/react'
+import type { OrderStatus } from '@/lib/types/database'
 
 vi.mock('@/components/chat/chat-view', () => ({
-  ChatView: ({ orderId }: { orderId: string }) => (
-    <div data-testid={`chat-view-stub-${orderId}`} />
+  ChatView: ({ orderId, onStatusChange }: { orderId: string; onStatusChange?: (s: OrderStatus) => void }) => (
+    <div data-testid={`chat-view-stub-${orderId}`}>
+      <button
+        type="button"
+        data-testid={`chat-view-fire-${orderId}`}
+        onClick={() => onStatusChange?.('completed')}
+      >
+        fire-completed
+      </button>
+    </div>
   ),
 }))
 
@@ -25,7 +34,6 @@ vi.mock('@/components/chat-panel', () => ({
 }))
 
 import { CurrentOrdersList } from '@/app/current-orders/current-orders-list'
-import type { OrderStatus } from '@/lib/types/database'
 
 const USER_ID = 'user-123'
 
@@ -93,5 +101,19 @@ describe('<CurrentOrdersList />', () => {
       />
     )
     expect(screen.getByText('Order')).toBeInTheDocument()
+  })
+
+  it('keeps a card mounted after onStatusChange("completed") so the swiper can see OrderCompletedView', () => {
+    render(
+      <CurrentOrdersList
+        orders={[buildRow('order-keep', 'in_progress')]}
+        currentUserId={USER_ID}
+      />
+    )
+    expect(screen.getByTestId('chat-view-stub-order-keep')).toBeInTheDocument()
+    act(() => {
+      screen.getByTestId('chat-view-fire-order-keep').click()
+    })
+    expect(screen.getByTestId('chat-view-stub-order-keep')).toBeInTheDocument()
   })
 })

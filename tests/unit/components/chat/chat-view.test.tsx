@@ -13,6 +13,10 @@ vi.mock('@/hooks/use-messages', () => ({
   useMessages: vi.fn(),
 }))
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+}))
+
 import { ChatView } from '@/components/chat/chat-view'
 import { useMessages } from '@/hooks/use-messages'
 
@@ -33,6 +37,7 @@ const CONVERSATION: Conversation = {
   orderer_id: ORDERER_ID,
   swiper_id: SWIPER_ID,
   swiper_full_name: 'Alex Smith',
+  swiper_assigned_at: null,
   created_at: '2026-04-01T10:00:00Z',
 }
 
@@ -116,11 +121,25 @@ describe('ChatView', () => {
     expect(screen.getByText(/successfully placed order/i)).toBeInTheDocument()
   })
 
-  it('input is disabled when no conversation exists', () => {
+  it('input is disabled when order is open and no conversation exists', () => {
     mockMessages({ conversation: null })
     renderView({ currentUserId: ORDERER_ID, orderStatus: 'open' })
-    const input = screen.getByPlaceholderText('Conversation closed')
+    const input = screen.getByTestId('chat-input-waiting')
     expect(input).toBeDisabled()
+  })
+
+  it('input is disabled when order has reverted to open after un-accept (conversation still present)', () => {
+    mockMessages({ conversation: CONVERSATION })
+    renderView({ currentUserId: ORDERER_ID, orderStatus: 'open' })
+    const input = screen.getByTestId('chat-input-waiting')
+    expect(input).toBeDisabled()
+  })
+
+  it('input is enabled while in_progress', () => {
+    mockMessages({ conversation: CONVERSATION })
+    renderView({ currentUserId: ORDERER_ID, orderStatus: 'in_progress' })
+    const input = screen.getByTestId('chat-input-active')
+    expect(input).not.toBeDisabled()
   })
 
   // --- Status notification: orderer + in_progress ---
@@ -153,7 +172,7 @@ describe('ChatView', () => {
     renderView({ currentUserId: SWIPER_ID, orderStatus: 'in_progress' })
     expect(
       screen.getByText(
-        `You've successfully accepted order #${SHORT_ID}! Take a picture of where you left the order to complete the order.`
+        `You've successfully accepted order #${SHORT_ID}! To complete the order, upload a screenshot of the completed order on GrubHub. Let the user know which name to pick up under.`
       )
     ).toBeInTheDocument()
   })
@@ -203,6 +222,82 @@ describe('ChatView', () => {
     expect(screen.queryByText('Your Order is Ready!')).not.toBeInTheDocument()
   })
 
+  // --- Swiper clean-slate filter ---
+  // Each accept (initial + re-accept) bumps conversations.swiper_assigned_at.
+  // Swipers should not see messages older than that timestamp.
+
+  it('swiper does not see messages from before swiper_assigned_at', () => {
+    const ASSIGNED_AT = '2026-04-22T10:00:00Z'
+    const oldMessage = {
+      id: 'old-msg',
+      conversation_id: 'conv-1',
+      sender_id: ORDERER_ID,
+      body: 'pre-cancellation history',
+      message_type: 'text' as const,
+      sent_at: '2026-04-22T09:00:00Z',
+      expires_at: '2026-04-29T09:00:00Z',
+      image_url: null,
+      temp_id: null,
+    }
+    const newMessage = {
+      id: 'new-msg',
+      conversation_id: 'conv-1',
+      sender_id: ORDERER_ID,
+      body: 'after re-accept',
+      message_type: 'text' as const,
+      sent_at: '2026-04-22T10:30:00Z',
+      expires_at: '2026-04-29T10:30:00Z',
+      image_url: null,
+      temp_id: null,
+    }
+    mockMessages({
+      conversation: { ...CONVERSATION, swiper_assigned_at: ASSIGNED_AT },
+      messages: [oldMessage, newMessage],
+    })
+    renderView({ currentUserId: SWIPER_ID, orderStatus: 'in_progress' })
+    expect(screen.queryByText('pre-cancellation history')).not.toBeInTheDocument()
+    expect(screen.getByText('after re-accept')).toBeInTheDocument()
+  })
+
+  it('does NOT render completion_photo as an inline chat bubble (CLAUDE.md spec)', () => {
+    const photoMsg = {
+      id: 'photo-x',
+      conversation_id: 'conv-1',
+      sender_id: SWIPER_ID,
+      body: null,
+      message_type: 'completion_photo' as const,
+      expires_at: '2026-05-01T00:00:00Z',
+      image_url: 'order-id/uuid.jpg',
+      sent_at: '2026-04-26T12:00:00Z',
+      temp_id: null,
+    }
+    mockMessages({ conversation: CONVERSATION, messages: [photoMsg] })
+    renderView({ currentUserId: ORDERER_ID, orderStatus: 'in_progress' })
+    // The chat thread should not surface the photo at all in non-completed states.
+    expect(screen.queryByRole('img', { name: /completion photo/i })).not.toBeInTheDocument()
+  })
+
+  it('orderer always sees full history regardless of swiper_assigned_at', () => {
+    const ASSIGNED_AT = '2026-04-22T10:00:00Z'
+    const oldMessage = {
+      id: 'old-msg',
+      conversation_id: 'conv-1',
+      sender_id: ORDERER_ID,
+      body: 'pre-cancellation history',
+      message_type: 'text' as const,
+      sent_at: '2026-04-22T09:00:00Z',
+      expires_at: '2026-04-29T09:00:00Z',
+      image_url: null,
+      temp_id: null,
+    }
+    mockMessages({
+      conversation: { ...CONVERSATION, swiper_assigned_at: ASSIGNED_AT },
+      messages: [oldMessage],
+    })
+    renderView({ currentUserId: ORDERER_ID, orderStatus: 'in_progress' })
+    expect(screen.getByText('pre-cancellation history')).toBeInTheDocument()
+  })
+
   // --- Refetch on completion transition ---
   // Why: the order status UPDATE arrives via chat-panel-provider's separate
   // realtime channel. The completion_photo INSERT arrives via useMessages's
@@ -210,16 +305,32 @@ describe('ChatView', () => {
   // fired (ChatView wasn't mounted, INSERT missed). Force a refetch on the
   // in_progress → completed transition so the orderer always sees the picture.
 
-  it('does not refetch when order is mounted in non-completed status', () => {
-    mockMessages({ conversation: CONVERSATION })
-    renderView({ currentUserId: ORDERER_ID, orderStatus: 'in_progress' })
+  it('does not refetch when order is mounted in open status', () => {
+    mockMessages({ conversation: null })
+    renderView({ currentUserId: ORDERER_ID, orderStatus: 'open' })
     expect(REFETCH).not.toHaveBeenCalled()
   })
 
-  it('refetches messages once when orderStatus transitions to completed', () => {
+  it('refetches once when mounted in_progress (covers re-accept after un-accept)', () => {
     mockMessages({ conversation: CONVERSATION })
-    const { rerender } = renderView({ currentUserId: ORDERER_ID, orderStatus: 'in_progress' })
+    renderView({ currentUserId: ORDERER_ID, orderStatus: 'in_progress' })
+    expect(REFETCH).toHaveBeenCalledTimes(1)
+  })
+
+  it('refetches once when transitioning open → in_progress, and once again on → completed', () => {
+    mockMessages({ conversation: CONVERSATION })
+    const { rerender } = renderView({ currentUserId: ORDERER_ID, orderStatus: 'open' })
     expect(REFETCH).not.toHaveBeenCalled()
+
+    rerender(
+      <ChatView
+        orderId={ORDER_ID}
+        eateryName={EATERY_NAME}
+        currentUserId={ORDERER_ID}
+        orderStatus="in_progress"
+      />
+    )
+    expect(REFETCH).toHaveBeenCalledTimes(1)
 
     rerender(
       <ChatView
@@ -229,7 +340,7 @@ describe('ChatView', () => {
         orderStatus="completed"
       />
     )
-    expect(REFETCH).toHaveBeenCalledTimes(1)
+    expect(REFETCH).toHaveBeenCalledTimes(2)
 
     // Re-render again with the same completed status — must not refetch again
     rerender(
@@ -240,7 +351,7 @@ describe('ChatView', () => {
         orderStatus="completed"
       />
     )
-    expect(REFETCH).toHaveBeenCalledTimes(1)
+    expect(REFETCH).toHaveBeenCalledTimes(2)
   })
 
   it('refetches when mounted directly in completed state (covers fresh-mount race)', () => {

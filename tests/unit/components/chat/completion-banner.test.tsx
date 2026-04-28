@@ -7,6 +7,19 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+
+const mockRouterRefresh = vi.fn()
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: mockRouterRefresh }),
+}))
+
+// Bypass the real canvas-based normalizer; jsdom can't decode the fake File
+// blobs the tests construct. Tests below cover the upload + status PATCH
+// state machine, not the normalizer (which has its own coverage).
+vi.mock('@/lib/image/normalize', () => ({
+  normalizeImage: async (file: File) => ({ ok: true, file }),
+}))
+
 import { CompletionBanner } from '@/components/chat/completion-banner'
 
 const ORDER_ID = '00000000-0000-4000-8000-000000000099'
