@@ -23,12 +23,6 @@ vi.mock('@/components/chat-panel', () => ({
   }),
 }))
 
-vi.mock('@/components/order/screenshot-gallery', () => ({
-  ScreenshotGallery: ({ urls }: { urls: string[] }) => (
-    <div data-testid="swiper-screenshot-gallery" data-count={urls.length} />
-  ),
-}))
-
 vi.mock('next/image', () => ({
   default: ({ alt }: { alt: string }) => <span data-stub-img={alt} />,
 }))

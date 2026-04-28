@@ -12,6 +12,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getAuthenticatedUser } from '@/lib/api/helpers'
+import { signCartScreenshotPaths } from '@/lib/storage/sign-screenshots'
 import { PendingOrdersList, type PendingOrder } from './pending-orders-list'
 
 /**
@@ -45,13 +46,17 @@ export default async function PendingOrdersPage() {
       .is('swiper_id', null)
       .eq('school_id', profile.school_id)
       .order('created_at', { ascending: true })
-    orders = (data ?? []).map((row) => ({
-      id: row.id,
-      subtotal_cents: row.subtotal_cents,
-      restaurant_name: row.restaurant_name,
-      cart_screenshot_urls: (row.cart_screenshot_urls as string[]) ?? [],
-      created_at: row.created_at,
-    }))
+    orders = await Promise.all(
+      (data ?? []).map(async (row) => ({
+        id: row.id,
+        subtotal_cents: row.subtotal_cents,
+        restaurant_name: row.restaurant_name,
+        cart_screenshot_urls: await signCartScreenshotPaths(
+          (row.cart_screenshot_urls as string[] | null) ?? []
+        ),
+        created_at: row.created_at,
+      }))
+    )
   }
 
   return (

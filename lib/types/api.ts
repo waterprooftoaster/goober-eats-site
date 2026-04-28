@@ -85,6 +85,16 @@ export const screenshotUploadUrlSchema = z.object({
 
 export type ScreenshotUploadUrlInput = z.infer<typeof screenshotUploadUrlSchema>
 
+// Body for POST /api/cart-screenshots/sign.
+// The orderer cannot read pre-payment paths via Storage RLS (no orders row
+// exists yet), so this server-side endpoint mints signed URLs for the
+// /checkout preview using the service client.
+export const screenshotSignSchema = z.object({
+  paths: z.array(z.string().regex(SCREENSHOT_PATH_RE)).min(1).max(5),
+})
+
+export type ScreenshotSignInput = z.infer<typeof screenshotSignSchema>
+
 export const updateProfileSchema = z
   .object({
     school_id: z.string().uuid().optional(),

@@ -9,13 +9,13 @@
  *   the S03 <Modal> primitive (focus-trap + Escape + return-focus).
  *   Called by: app/swiper/orders/page.tsx
  * @dependencies components/chat-panel, components/order/order-card,
- *   components/order/screenshot-gallery, components/ui/{modal,button,surface}
+ *   components/order/cart-screenshot, components/ui/{modal,button,surface}
  */
 
 import { useState } from 'react'
 import { useChatPanel } from '@/components/chat-panel'
 import { OrderCard, formatDollars } from '@/components/order/order-card'
-import { ScreenshotGallery } from '@/components/order/screenshot-gallery'
+import { CartScreenshot } from '@/components/order/cart-screenshot'
 import { Modal, ModalContent, ModalTitle, ModalDescription } from '@/components/ui/modal'
 import { Button } from '@/components/ui/button'
 import { Surface } from '@/components/ui/surface'
@@ -146,16 +146,22 @@ export function PendingOrdersList({ orders: initialOrders }: Props) {
         {selectedOrder && (
           <ModalContent
             data-testid="swiper-order-detail-modal"
-            className="max-w-lg gap-5"
+            className="w-[calc(100vw-24px)] gap-4 sm:w-full sm:max-w-md"
           >
             <ModalTitle className="pr-6 text-xl">
               {selectedOrder.restaurant_name}
             </ModalTitle>
             <ModalDescription className="sr-only">
-              Review the cart screenshots and total for this order before accepting.
+              Review the cart screenshot and total for this order before accepting.
             </ModalDescription>
 
-            <ScreenshotGallery urls={selectedOrder.cart_screenshot_urls} />
+            {selectedOrder.cart_screenshot_urls[0] && (
+              <CartScreenshot
+                src={selectedOrder.cart_screenshot_urls[0]}
+                alt="Cart screenshot"
+                testid="swiper-order-screenshot"
+              />
+            )}
 
             <div className="flex flex-col gap-1.5 border-t border-border pt-4">
               <div className="flex items-baseline justify-between">

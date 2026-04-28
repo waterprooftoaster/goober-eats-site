@@ -7,9 +7,10 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const { mockGetUser, mockFrom } = vi.hoisted(() => ({
+const { mockGetUser, mockFrom, mockSignCartScreenshotPaths } = vi.hoisted(() => ({
   mockGetUser: vi.fn(),
   mockFrom: vi.fn(),
+  mockSignCartScreenshotPaths: vi.fn(),
 }))
 
 vi.mock('@/lib/supabase/server', () => ({
@@ -17,6 +18,10 @@ vi.mock('@/lib/supabase/server', () => ({
     auth: { getUser: mockGetUser },
     from: mockFrom,
   })),
+}))
+
+vi.mock('@/lib/storage/sign-screenshots', () => ({
+  signCartScreenshotPaths: mockSignCartScreenshotPaths,
 }))
 
 import { GET } from '@/app/api/swiper/pending/route'
@@ -38,6 +43,9 @@ const NYU_SCHOOL_ID = '00000000-0000-4000-8000-000000000aaa'
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockSignCartScreenshotPaths.mockImplementation(async (paths: string[]) =>
+    paths.map((p) => `https://signed.test/${p}`)
+  )
 })
 
 describe('GET /api/swiper/pending', () => {
@@ -82,13 +90,14 @@ describe('GET /api/swiper/pending', () => {
     expect(ordersChain.order).toHaveBeenCalledWith('created_at', { ascending: true })
   })
 
-  it('returns order rows with new fields (restaurant_name, cart_screenshot_urls)', async () => {
+  it('returns order rows with cart_screenshot_urls replaced by signed URLs', async () => {
     mockGetUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null })
+    const path = 'pre-checkout/ABCdef1234/00000000-0000-4000-8000-000000000010.png'
     const orders = [
       {
         id: 'order-1',
         restaurant_name: 'Chipotle',
-        cart_screenshot_urls: ['pre-checkout/ABCdef1234/00000000-0000-4000-8000-000000000010.png'],
+        cart_screenshot_urls: [path],
         subtotal_cents: 2500,
         created_at: '2026-04-22T00:00:00Z',
       },
@@ -99,10 +108,8 @@ describe('GET /api/swiper/pending', () => {
 
     const res = await GET()
     const body = await res.json()
-    expect(body).toEqual(orders)
-    expect(body[0]).toHaveProperty('restaurant_name')
-    expect(body[0]).toHaveProperty('cart_screenshot_urls')
-    expect(body[0]).not.toHaveProperty('eatery_id')
-    expect(body[0]).not.toHaveProperty('items')
+    expect(body[0].restaurant_name).toBe('Chipotle')
+    expect(body[0].cart_screenshot_urls).toEqual([`https://signed.test/${path}`])
+    expect(mockSignCartScreenshotPaths).toHaveBeenCalledWith([path])
   })
 })

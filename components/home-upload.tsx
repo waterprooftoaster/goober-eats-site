@@ -8,7 +8,8 @@
  *   path is handed off via sessionStorage, and the user is navigated to
  *   /checkout.
  *   Called by: app/page.tsx (authenticated branch)
- * @dependencies lib/supabase/client.ts, components/ui/{button,surface}
+ * @dependencies lib/supabase/client.ts, lib/image/normalize.ts,
+ *   components/ui/{button,surface}
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -18,6 +19,7 @@ import { Button } from '@/components/ui/button'
 import { Surface } from '@/components/ui/surface'
 import { createClient } from '@/lib/supabase/client'
 import { PENDING_SCHOOL_ID_KEY, PENDING_SCREENSHOTS_KEY } from '@/lib/constants'
+import { normalizeImage } from '@/lib/image/normalize'
 
 type Stage = 'idle' | 'selected' | 'uploading' | 'error'
 
@@ -82,13 +84,20 @@ export default function HomeUpload() {
                 if (!confirmed.session) throw new Error('Session did not initialize. Please try again.')
             }
 
-            const ext = extractExtension(file.name)
+            const result = await normalizeImage(file)
+            if (!result.ok) {
+                setError('Could not read that image. Try saving it as JPEG or PNG.')
+                setStage('selected')
+                return
+            }
+            const upload = result.file
+            const ext = extractExtension(upload.name)
             if (!ext) throw new Error('File type not supported. Use PNG, JPEG, WebP, HEIC, or HEIF.')
 
             const signRes = await fetch('/api/cart-screenshots/upload-url', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content_type: file.type, file_extension: ext }),
+                body: JSON.stringify({ content_type: upload.type, file_extension: ext }),
             })
             if (!signRes.ok) {
                 const body = await signRes.json().catch(() => ({}))
@@ -98,8 +107,8 @@ export default function HomeUpload() {
 
             const putRes = await fetch(signed.signed_url, {
                 method: 'PUT',
-                body: file,
-                headers: { 'Content-Type': file.type },
+                body: upload,
+                headers: { 'Content-Type': upload.type },
             })
             if (!putRes.ok) throw new Error('Upload failed. Please try again.')
 
@@ -129,27 +138,42 @@ export default function HomeUpload() {
             </header>
 
             <div className="flex flex-col gap-4">
-                <Surface
-                    tone="subtle"
-                    padding="none"
-                    data-testid="home-dropzone"
-                    onClick={() => !isUploading && inputRef.current?.click()}
-                    className="relative aspect-square w-full max-w-md cursor-pointer overflow-hidden rounded-2xl border-2 border-dashed border-border transition-colors hover:border-foreground/30 motion-reduce:transition-none"
-                >
-                    {preview ? (
-                        // eslint-disable-next-line @next/next/no-img-element
+                {preview ? (
+                    <div
+                        role="button"
+                        tabIndex={0}
+                        data-testid="home-dropzone"
+                        aria-label="Replace cart screenshot"
+                        onClick={() => !isUploading && inputRef.current?.click()}
+                        onKeyDown={(e) => {
+                            if (!isUploading && (e.key === 'Enter' || e.key === ' ')) {
+                                e.preventDefault()
+                                inputRef.current?.click()
+                            }
+                        }}
+                        className="cursor-pointer rounded-lg transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 motion-reduce:transition-none"
+                    >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                             src={preview}
                             alt="Cart screenshot preview"
-                            className="h-full w-full object-cover"
+                            className="block w-full max-w-md aspect-[9/16] rounded-lg border border-border bg-muted/40 object-contain"
                         />
-                    ) : (
+                    </div>
+                ) : (
+                    <Surface
+                        tone="subtle"
+                        padding="none"
+                        data-testid="home-dropzone"
+                        onClick={() => !isUploading && inputRef.current?.click()}
+                        className="relative aspect-square w-full max-w-md cursor-pointer overflow-hidden rounded-2xl border-2 border-dashed border-border transition-colors hover:border-foreground/30 motion-reduce:transition-none"
+                    >
                         <div className="flex h-full flex-col items-start justify-end gap-2 p-6 text-muted-foreground">
                             <ImagePlus className="h-8 w-8" aria-hidden />
                             <span className="text-sm">Tap to upload your cart screenshot.</span>
                         </div>
-                    )}
-                </Surface>
+                    </Surface>
+                )}
 
                 <div
                     data-testid="home-upload-tips"

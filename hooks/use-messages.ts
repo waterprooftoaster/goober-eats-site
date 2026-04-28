@@ -311,7 +311,23 @@ function mergeMessages(existing: OptimisticMessage[], incoming: Message[]): Opti
       }
     }
     if (replaced) continue
-    if (result.some((m) => m.id === msg.id)) continue
+    const idx = result.findIndex((m) => m.id === msg.id)
+    if (idx >= 0) {
+      // Race-aware upgrade: a completion_photo's image_url is stored in the
+      // DB as a raw storage path; the API refetch returns it as a signed URL
+      // (lib/storage/sign-screenshots.ts). Realtime delivers the raw path.
+      // Whichever wave arrives first should not be downgraded by the other.
+      // Replace only when the incoming row carries a signed URL (http(s)://)
+      // and the existing one does not.
+      const existingUrl = result[idx].image_url ?? ''
+      const incomingUrl = msg.image_url ?? ''
+      const incomingIsSigned = /^https?:\/\//.test(incomingUrl)
+      const existingIsSigned = /^https?:\/\//.test(existingUrl)
+      if (incomingIsSigned && !existingIsSigned) {
+        result[idx] = { ...msg }
+      }
+      continue
+    }
     result.push(msg)
   }
   return result

@@ -11,6 +11,7 @@ import { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { apiError, apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
+import { signCompletionPhotoPath } from '@/lib/storage/sign-screenshots'
 
 const uuidSchema = z.string().uuid()
 const ALLOWED_TYPES = ['image/jpeg', 'image/webp'] as const
@@ -76,10 +77,6 @@ export async function POST(
     return apiError('Failed to upload photo', 500)
   }
 
-  const { data: { publicUrl } } = supabase.storage
-    .from('completion-photos')
-    .getPublicUrl(path)
-
   const { data: message, error: msgError } = await supabase
     .from('messages')
     .insert({
@@ -87,7 +84,7 @@ export async function POST(
       sender_id: user.id,
       body: null,
       message_type: 'completion_photo',
-      image_url: publicUrl,
+      image_url: path,
     })
     .select()
     .single()
@@ -96,5 +93,6 @@ export async function POST(
     return apiError('Failed to save message', 500)
   }
 
-  return apiSuccess(message, 201)
+  const signedUrl = await signCompletionPhotoPath(message.image_url)
+  return apiSuccess({ ...message, image_url: signedUrl ?? message.image_url }, 201)
 }
