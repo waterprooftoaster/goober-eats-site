@@ -62,7 +62,7 @@ function HeroSection({ schools }: { schools: School[] }) {
                     can be feeding you.
                 </h1>
                 <p className="text-base md:text-lg text-muted-foreground max-w-[54ch] mb-10 leading-relaxed">
-                    We'll pair you with a student who&rsquo;s got extra meal swipes. You
+                    We'll pair you with a student who&rsquo;s got extra meal swipes or dining dollars. You
                     get a discount, they earn &mdash; it&rsquo;s a win-win.
                 </p>
                 <div className="max-w-[360px]">
@@ -99,17 +99,17 @@ function HowItWorks() {
                     <Step
                         n="01"
                         title="Snap your cart"
-                        body="Go on the GrubHub "
+                        body="Go on the GrubHub app for your school, screenshot your cart and make sure total price and menu choices are clear and visible."
                     />
                     <Step
                         n="02"
                         title="Drop it in"
-                        body="Upload it here on Goober and tell us what you&rsquo;d like to pay."
+                        body="Upload it here and enter the total of your order, we will automatically apply the discount from your GrubHub total."
                     />
                     <Step
                         n="03"
-                        title="Eat"
-                        body="A student at your school grabs the order with their meal plan and brings it your way."
+                        title="Enjoy!"
+                        body="A student at your school will complete the order using their meal swipes or dining dollars, hang tight!."
                     />
                 </ol>
             </div>
