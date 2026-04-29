@@ -268,6 +268,29 @@ describe('POST /api/stripe/webhooks', () => {
       expect(res.status).toBe(200)
       expect(mockServiceFrom).toHaveBeenCalledTimes(4)
     })
+
+    it('returns 200 (no Stripe retry) when orders.insert fails with a permanent constraint error', async () => {
+      // 1. payments idempotency → none
+      // 2. orders.insert → 23514 check-constraint violation (permanent)
+      // 3. orders.select → no orphan exists (the constraint blocked the insert)
+      mockServiceFrom
+        .mockReturnValueOnce(dbResult({ data: null }))
+        .mockReturnValueOnce(dbResult({ data: null, error: { code: '23514', message: 'check constraint' } }))
+        .mockReturnValueOnce(dbResult({ data: null }))
+
+      const res = await POST(buildSignedRequest(guestPiEvent()))
+      expect(res.status).toBe(200)
+    })
+
+    it('returns 500 (retry) when orders.insert fails with a non-permanent error', async () => {
+      mockServiceFrom
+        .mockReturnValueOnce(dbResult({ data: null }))
+        .mockReturnValueOnce(dbResult({ data: null, error: { code: '08006', message: 'connection failure' } }))
+        .mockReturnValueOnce(dbResult({ data: null }))
+
+      const res = await POST(buildSignedRequest(guestPiEvent()))
+      expect(res.status).toBe(500)
+    })
   })
 
   describe('payment_intent.succeeded metadata validation', () => {
@@ -367,6 +390,69 @@ describe('POST /api/stripe/webhooks', () => {
         )
       )
       expect(res.status).toBe(200)
+    })
+
+    it('marks stripe_accounts.suspended when requirements.disabled_reason starts with rejected.', async () => {
+      const stripeAccountsUpdate = dbResult({ data: null, error: null })
+      let updateCallCount = 0
+      mockServiceFrom.mockImplementation((table: string) => {
+        if (table === 'stripe_accounts') {
+          updateCallCount += 1
+          if (updateCallCount === 1) {
+            // first hit: lookup row
+            return dbResult({ data: { id: 'sa-1', user_id: ACCT_USER_ID } })
+          }
+          // subsequent hits: the suspension UPDATE
+          return stripeAccountsUpdate
+        }
+        return dbResult()
+      })
+
+      const res = await POST(
+        buildSignedRequest(
+          makeEvent('account.updated', {
+            id: 'acct_test_suspend',
+            details_submitted: true,
+            charges_enabled: false,
+            requirements: { disabled_reason: 'rejected.fraud' },
+          })
+        )
+      )
+      expect(res.status).toBe(200)
+      expect(stripeAccountsUpdate.update).toHaveBeenCalledWith(
+        expect.objectContaining({ suspended: true })
+      )
+    })
+
+    it('does NOT suspend on transient disabled_reason (e.g. requirements.past_due)', async () => {
+      const calls: Array<{ table: string; chain: ReturnType<typeof dbResult> }> = []
+      mockServiceFrom.mockImplementation((table: string) => {
+        const chain =
+          table === 'stripe_accounts'
+            ? dbResult({ data: { id: 'sa-1', user_id: ACCT_USER_ID } })
+            : dbResult()
+        calls.push({ table, chain })
+        return chain
+      })
+
+      const res = await POST(
+        buildSignedRequest(
+          makeEvent('account.updated', {
+            id: 'acct_test_past_due',
+            details_submitted: true,
+            charges_enabled: true,
+            requirements: { disabled_reason: 'requirements.past_due' },
+          })
+        )
+      )
+      expect(res.status).toBe(200)
+      // No call should have been made with { suspended: true } in update
+      for (const { chain } of calls) {
+        const update = chain.update as ReturnType<typeof vi.fn>
+        for (const updateCall of update.mock.calls) {
+          expect(updateCall[0]).not.toHaveProperty('suspended')
+        }
+      }
     })
   })
 

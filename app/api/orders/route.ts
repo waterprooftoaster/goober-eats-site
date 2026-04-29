@@ -8,7 +8,7 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { apiError, apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
-import { signCartScreenshotPaths } from '@/lib/storage/sign-screenshots'
+import { signCartScreenshotPathsBatch } from '@/lib/storage/sign-screenshots'
 
 /**
  * Lists orders for the authenticated user, with optional role and status filters.
@@ -46,13 +46,17 @@ export async function GET(request: NextRequest) {
 
   if (error) return apiError('Failed to fetch orders', 500)
 
-  const signed = await Promise.all(
-    (orders ?? []).map(async (row) => ({
-      ...row,
-      cart_screenshot_urls: await signCartScreenshotPaths(
-        (row.cart_screenshot_urls as string[] | null) ?? []
-      ),
-    }))
+  // Single batched sign call across every row's screenshot paths, then
+  // regroup in input order. Avoids the prior N storage RPCs per page load.
+  const allPaths = (orders ?? []).flatMap(
+    (row) => (row.cart_screenshot_urls as string[] | null) ?? []
   )
+  const urlByPath = await signCartScreenshotPathsBatch(allPaths)
+  const signed = (orders ?? []).map((row) => ({
+    ...row,
+    cart_screenshot_urls: ((row.cart_screenshot_urls as string[] | null) ?? [])
+      .map((p) => urlByPath.get(p))
+      .filter((u): u is string => typeof u === 'string'),
+  }))
   return apiSuccess(signed)
 }

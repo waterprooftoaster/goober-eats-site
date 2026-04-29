@@ -7,10 +7,10 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const { mockGetUser, mockFrom, mockSignCartScreenshotPaths } = vi.hoisted(() => ({
+const { mockGetUser, mockFrom, mockSignBatch } = vi.hoisted(() => ({
   mockGetUser: vi.fn(),
   mockFrom: vi.fn(),
-  mockSignCartScreenshotPaths: vi.fn(),
+  mockSignBatch: vi.fn(),
 }))
 
 vi.mock('@/lib/supabase/server', () => ({
@@ -21,7 +21,7 @@ vi.mock('@/lib/supabase/server', () => ({
 }))
 
 vi.mock('@/lib/storage/sign-screenshots', () => ({
-  signCartScreenshotPaths: mockSignCartScreenshotPaths,
+  signCartScreenshotPathsBatch: mockSignBatch,
 }))
 
 import { GET } from '@/app/api/swiper/pending/route'
@@ -41,11 +41,18 @@ function dbResult(result: { data?: unknown; error?: unknown } = { data: null, er
 const USER_ID = '00000000-0000-4000-8000-000000000001'
 const NYU_SCHOOL_ID = '00000000-0000-4000-8000-000000000aaa'
 
+/** Absorbs the lib/api/helpers.ts:getAuthenticatedUser suspension SELECT. */
+function primeSuspensionMock(): void {
+  mockFrom.mockReturnValueOnce(dbResult({ data: null }))
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
-  mockSignCartScreenshotPaths.mockImplementation(async (paths: string[]) =>
-    paths.map((p) => `https://signed.test/${p}`)
-  )
+  mockSignBatch.mockImplementation(async (paths: string[]) => {
+    const map = new Map<string, string>()
+    for (const p of paths) map.set(p, `https://signed.test/${p}`)
+    return map
+  })
 })
 
 describe('GET /api/swiper/pending', () => {
@@ -57,6 +64,7 @@ describe('GET /api/swiper/pending', () => {
 
   it('returns 403 when user is not a swiper', async () => {
     mockGetUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null })
+    primeSuspensionMock()
     mockFrom.mockReturnValueOnce(
       dbResult({ data: { is_swiper: false, school_id: NYU_SCHOOL_ID } })
     )
@@ -66,6 +74,7 @@ describe('GET /api/swiper/pending', () => {
 
   it('returns empty array when swiper has no school_id', async () => {
     mockGetUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null })
+    primeSuspensionMock()
     mockFrom.mockReturnValueOnce(
       dbResult({ data: { is_swiper: true, school_id: null } })
     )
@@ -76,6 +85,7 @@ describe('GET /api/swiper/pending', () => {
 
   it('queries orders with status=open, swiper_id=null, school_id=profile.school_id', async () => {
     mockGetUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null })
+    primeSuspensionMock()
     const profileChain = dbResult({ data: { is_swiper: true, school_id: NYU_SCHOOL_ID } })
     const ordersChain = dbResult({ data: [] })
     mockFrom.mockReturnValueOnce(profileChain).mockReturnValueOnce(ordersChain)
@@ -92,6 +102,7 @@ describe('GET /api/swiper/pending', () => {
 
   it('returns order rows with cart_screenshot_urls replaced by signed URLs', async () => {
     mockGetUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null })
+    primeSuspensionMock()
     const path = 'pre-checkout/ABCdef1234/00000000-0000-4000-8000-000000000010.png'
     const orders = [
       {
@@ -110,6 +121,6 @@ describe('GET /api/swiper/pending', () => {
     const body = await res.json()
     expect(body[0].restaurant_name).toBe('Chipotle')
     expect(body[0].cart_screenshot_urls).toEqual([`https://signed.test/${path}`])
-    expect(mockSignCartScreenshotPaths).toHaveBeenCalledWith([path])
+    expect(mockSignBatch).toHaveBeenCalledWith([path])
   })
 })

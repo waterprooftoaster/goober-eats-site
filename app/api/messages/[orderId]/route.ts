@@ -9,7 +9,7 @@ import { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { apiError, apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
-import { signCompletionPhotoPath } from '@/lib/storage/sign-screenshots'
+import { signCompletionPhotoPathsBatch } from '@/lib/storage/sign-screenshots'
 
 const uuidSchema = z.string().uuid()
 
@@ -57,12 +57,16 @@ export async function GET(
   ])
 
   const enriched = { ...conversation, swiper_full_name: swiperProfile?.full_name ?? null }
-  const signedMessages = await Promise.all(
-    (messages ?? []).map(async (m) => {
-      if (m.message_type !== 'completion_photo' || !m.image_url) return m
-      const signed = await signCompletionPhotoPath(m.image_url)
-      return { ...m, image_url: signed ?? m.image_url }
-    })
-  )
+
+  // Single batched signing call for every completion-photo path in the
+  // conversation; replaces the prior N+1 Promise.all(map) pattern.
+  const completionPaths = (messages ?? [])
+    .filter((m) => m.message_type === 'completion_photo' && m.image_url)
+    .map((m) => m.image_url as string)
+  const urlByPath = await signCompletionPhotoPathsBatch(completionPaths)
+  const signedMessages = (messages ?? []).map((m) => {
+    if (m.message_type !== 'completion_photo' || !m.image_url) return m
+    return { ...m, image_url: urlByPath.get(m.image_url) ?? m.image_url }
+  })
   return apiSuccess({ conversation: enriched, messages: signedMessages })
 }

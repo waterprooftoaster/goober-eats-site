@@ -159,6 +159,36 @@ describe('<CurrentOrdersList />', () => {
     )
   })
 
+  it('updates the rendered status when onStatusChange fires even if the provider never tracks the order (swiper case)', () => {
+    // Swiper-side orders are never in panelOrders (chat-panel-provider's
+    // loadActiveOrders + realtime filter target orderer_id only), so the
+    // provider can't be the source of truth for swipers. ChatView's
+    // onStatusChange must still be honored locally so the swiper's UI
+    // transitions to OrderCompletedView immediately on completion.
+    mockPanelState.orders = {} // provider has no entry — swiper case
+    render(
+      <CurrentOrdersList
+        orders={[buildRow('order-swiper', 'in_progress')]}
+        currentUserId={USER_ID}
+      />
+    )
+    expect(screen.getByTestId('chat-view-stub-order-swiper')).toHaveAttribute(
+      'data-status',
+      'in_progress'
+    )
+    act(() => {
+      screen.getByTestId('chat-view-fire-order-swiper').click()
+    })
+    expect(screen.getByTestId('chat-view-stub-order-swiper')).toHaveAttribute(
+      'data-status',
+      'completed'
+    )
+    expect(screen.getByTestId('current-orders-status-badge')).toHaveAttribute(
+      'data-status',
+      'completed'
+    )
+  })
+
   it('shows a dismiss button only for completed orders and removes the card on click', () => {
     mockPanelState.orders = {
       'order-done': { status: 'completed' },

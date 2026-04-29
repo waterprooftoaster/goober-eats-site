@@ -43,21 +43,23 @@ export async function PATCH(
     return apiError('Cannot accept your own order', 403)
   }
 
-  const { data: stripeAccount } = await supabase
-    .from('stripe_accounts')
-    .select('onboarding_complete')
-    .eq('user_id', user.id)
-    .single()
+  // Stripe onboarding + profile checks are independent — fire concurrently.
+  const [{ data: stripeAccount }, { data: profile }] = await Promise.all([
+    supabase
+      .from('stripe_accounts')
+      .select('onboarding_complete')
+      .eq('user_id', user.id)
+      .single(),
+    supabase
+      .from('profiles')
+      .select('is_swiper, school_id, full_name')
+      .eq('id', user.id)
+      .single(),
+  ])
 
   if (!stripeAccount?.onboarding_complete) {
     return apiError('Stripe onboarding must be completed first', 403)
   }
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('is_swiper, school_id, full_name')
-    .eq('id', user.id)
-    .single()
 
   if (!profile?.is_swiper) {
     return apiError('You must be a registered swiper to accept orders', 403)

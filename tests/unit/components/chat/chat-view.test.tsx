@@ -139,6 +139,30 @@ describe('ChatView', () => {
     expect(input).toBeDisabled()
   })
 
+  // --- Un-accept pseudo-message (open status with a conversation whose swiper_id is null) ---
+
+  it('orderer sees un-accept pseudo-message when order reverted to open after un-accept', () => {
+    mockMessages({
+      conversation: { ...CONVERSATION, swiper_id: null, swiper_assigned_at: null },
+    })
+    renderView({ currentUserId: ORDERER_ID, orderStatus: 'open' })
+    expect(screen.getByTestId('chat-pseudo-swiper-unavailable')).toHaveTextContent(
+      'Swiper is no longer available. Finding you another swiper.'
+    )
+  })
+
+  it('orderer does NOT see un-accept pseudo-message on a freshly placed order (no conversation)', () => {
+    mockMessages({ conversation: null })
+    renderView({ currentUserId: ORDERER_ID, orderStatus: 'open' })
+    expect(screen.queryByTestId('chat-pseudo-swiper-unavailable')).not.toBeInTheDocument()
+  })
+
+  it('orderer does NOT see un-accept pseudo-message while in_progress (a swiper is currently assigned)', () => {
+    mockMessages({ conversation: CONVERSATION })
+    renderView({ currentUserId: ORDERER_ID, orderStatus: 'in_progress' })
+    expect(screen.queryByTestId('chat-pseudo-swiper-unavailable')).not.toBeInTheDocument()
+  })
+
   it('input is enabled while in_progress', () => {
     mockMessages({ conversation: CONVERSATION })
     renderView({ currentUserId: ORDERER_ID, orderStatus: 'in_progress' })

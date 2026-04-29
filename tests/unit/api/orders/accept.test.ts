@@ -58,11 +58,13 @@ async function callPatch(): Promise<Response> {
 }
 
 function setupEligibleSwiper(schoolId: string) {
-  // Server client chain:
+  // Server client chain (post-Phase-2):
+  //   0. stripe_accounts.select (suspension gate inside getAuthenticatedUser)
   //   1. orders.select (order row)
-  //   2. stripe_accounts.select
+  //   2. stripe_accounts.select (onboarding gate)
   //   3. profiles.select
   mockServerFrom.mockReset()
+  primeSuspensionMock()
   mockServerFrom
     .mockReturnValueOnce(
       dbResult({
@@ -81,6 +83,11 @@ function setupEligibleSwiper(schoolId: string) {
     )
 }
 
+/** Absorbs the lib/api/helpers.ts:getAuthenticatedUser suspension SELECT. */
+function primeSuspensionMock(): void {
+  mockServerFrom.mockReturnValueOnce(dbResult({ data: null }))
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   mockGetUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null })
@@ -97,12 +104,14 @@ describe('PATCH /api/orders/[id]/accept', () => {
   })
 
   it('returns 404 when order not found', async () => {
+    primeSuspensionMock()
     mockServerFrom.mockReturnValueOnce(dbResult({ data: null }))
     const res = await callPatch()
     expect(res.status).toBe(404)
   })
 
   it('returns 409 when order is already claimed', async () => {
+    primeSuspensionMock()
     mockServerFrom.mockReturnValueOnce(
       dbResult({
         data: {
@@ -129,6 +138,7 @@ describe('PATCH /api/orders/[id]/accept', () => {
   })
 
   it('returns 403 when swiper has no Stripe onboarding', async () => {
+    primeSuspensionMock()
     mockServerFrom
       .mockReturnValueOnce(
         dbResult({
@@ -141,12 +151,17 @@ describe('PATCH /api/orders/[id]/accept', () => {
           },
         })
       )
+      // stripe_accounts + profiles run concurrently via Promise.all; mock both.
       .mockReturnValueOnce(dbResult({ data: { onboarding_complete: false } }))
+      .mockReturnValueOnce(
+        dbResult({ data: { is_swiper: true, school_id: NYU_SCHOOL_ID, full_name: 'Alex' } })
+      )
     const res = await callPatch()
     expect(res.status).toBe(403)
   })
 
   it('returns 403 when the swiper attempts to accept their own order', async () => {
+    primeSuspensionMock()
     mockServerFrom.mockReturnValueOnce(
       dbResult({
         data: {

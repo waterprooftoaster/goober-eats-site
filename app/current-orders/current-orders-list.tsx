@@ -46,8 +46,15 @@ export function CurrentOrdersList({ orders, currentUserId }: Props) {
   // the next mount re-runs the server query (`['open', 'in_progress']`) which
   // drops the row.
   const [removedIds, setRemovedIds] = useState<Set<string>>(new Set())
+  // Local mirror of swiper-driven status changes. The chat-panel-provider's
+  // loadActiveOrders + realtime subscription filter on orderer_id, so for
+  // orders the user is *swiping* (not ordering) panelOrders never carries an
+  // entry and updateOrderStatus is a no-op. Without this, marking complete
+  // leaves the UI stuck on the in_progress banner until a refresh.
+  const [localStatuses, setLocalStatuses] = useState<Record<string, OrderStatus>>({})
 
   function handleStatusChange(orderId: string, status: OrderStatus) {
+    setLocalStatuses((prev) => (prev[orderId] === status ? prev : { ...prev, [orderId]: status }))
     updateOrderStatus(orderId, status)
     if (status === 'open' || status === 'cancelled') {
       setRemovedIds((prev) => {
@@ -68,14 +75,18 @@ export function CurrentOrdersList({ orders, currentUserId }: Props) {
     })
   }
 
-  // Resolve the live status from the chat-panel-provider when available — the
-  // provider subscribes to realtime UPDATEs and is also the sink for
-  // handleStatusChange above, so it reflects the swiper marking complete /
-  // un-accepting and the orderer's view of those events. Server-fetched
-  // status is the fallback for the brief window before loadActiveOrders runs.
+  // Status resolution priority:
+  //   1. localStatuses — covers swiper-side completes/un-accepts that the
+  //      chat-panel-provider doesn't track (its filter targets orderer_id).
+  //   2. panelOrders — orderer-side: realtime UPDATE feed + provider sink for
+  //      handleStatusChange propagated from other tabs/contexts.
+  //   3. server-fetched o.status — the SSR baseline before either updates.
   const visibleOrders = orders
     .filter((o) => !removedIds.has(o.id))
-    .map((o) => ({ ...o, status: panelOrders[o.id]?.status ?? o.status }))
+    .map((o) => ({
+      ...o,
+      status: localStatuses[o.id] ?? panelOrders[o.id]?.status ?? o.status,
+    }))
 
   if (visibleOrders.length === 0) {
     return (

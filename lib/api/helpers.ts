@@ -24,6 +24,23 @@ export async function getAuthenticatedUser(supabase: SupabaseClient) {
     error,
   } = await supabase.auth.getUser()
   if (error || !user) return null
+
+  // Suspension gate: when Stripe permanently terminates the connected account
+  // (requirements.disabled_reason starts with 'rejected.'), the webhook flips
+  // stripe_accounts.suspended. Force-signout and treat as unauthenticated.
+  // Non-swipers have no stripe_accounts row → maybeSingle returns null → pass
+  // through. Cost: one indexed single-row SELECT per authenticated API call.
+  const { data: stripeAccount } = await supabase
+    .from('stripe_accounts')
+    .select('suspended')
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  if ((stripeAccount as { suspended?: boolean } | null)?.suspended === true) {
+    await supabase.auth.signOut()
+    return null
+  }
+
   return user
 }
 

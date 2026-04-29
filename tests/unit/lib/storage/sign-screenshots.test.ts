@@ -24,7 +24,9 @@ vi.mock('@/lib/supabase/service', () => ({
 
 import {
   signCartScreenshotPaths,
+  signCartScreenshotPathsBatch,
   signCompletionPhotoPath,
+  signCompletionPhotoPathsBatch,
   CART_SCREENSHOT_SIGN_TTL_SECONDS,
 } from '@/lib/storage/sign-screenshots'
 
@@ -81,6 +83,71 @@ describe('signCartScreenshotPaths', () => {
 
     const result = await signCartScreenshotPaths(['a.jpg'])
     expect(result).toEqual([])
+  })
+})
+
+describe('signCartScreenshotPathsBatch', () => {
+  it('returns an empty Map for empty input and skips the storage call', async () => {
+    const result = await signCartScreenshotPathsBatch([])
+    expect(result.size).toBe(0)
+    expect(mockCreateSignedUrls).not.toHaveBeenCalled()
+  })
+
+  it('returns a Map keyed by path → signed URL on success', async () => {
+    mockCreateSignedUrls.mockResolvedValueOnce({
+      data: [
+        { path: 'a.jpg', signedUrl: 'https://signed/a', error: null },
+        { path: 'b.jpg', signedUrl: 'https://signed/b', error: null },
+      ],
+      error: null,
+    })
+    const result = await signCartScreenshotPathsBatch(['a.jpg', 'b.jpg'])
+    expect(result.get('a.jpg')).toBe('https://signed/a')
+    expect(result.get('b.jpg')).toBe('https://signed/b')
+    expect(result.size).toBe(2)
+  })
+
+  it('omits entries whose URL is missing instead of emitting empty values', async () => {
+    mockCreateSignedUrls.mockResolvedValueOnce({
+      data: [
+        { path: 'a.jpg', signedUrl: 'https://signed/a', error: null },
+        { path: 'b.jpg', signedUrl: null, error: 'gone' },
+      ],
+      error: null,
+    })
+    const result = await signCartScreenshotPathsBatch(['a.jpg', 'b.jpg'])
+    expect(result.get('a.jpg')).toBe('https://signed/a')
+    expect(result.has('b.jpg')).toBe(false)
+  })
+
+  it('returns an empty Map when the storage call fails', async () => {
+    mockCreateSignedUrls.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'boom' },
+    })
+    const result = await signCartScreenshotPathsBatch(['a.jpg'])
+    expect(result.size).toBe(0)
+  })
+})
+
+describe('signCompletionPhotoPathsBatch', () => {
+  it('returns an empty Map for empty input', async () => {
+    const result = await signCompletionPhotoPathsBatch([])
+    expect(result.size).toBe(0)
+    expect(mockCreateSignedUrls).not.toHaveBeenCalled()
+  })
+
+  it('returns a Map keyed by path → signed URL on success', async () => {
+    mockCreateSignedUrls.mockResolvedValueOnce({
+      data: [
+        { path: 'order-1/p1.jpg', signedUrl: 'https://signed/p1', error: null },
+        { path: 'order-1/p2.jpg', signedUrl: 'https://signed/p2', error: null },
+      ],
+      error: null,
+    })
+    const result = await signCompletionPhotoPathsBatch(['order-1/p1.jpg', 'order-1/p2.jpg'])
+    expect(result.get('order-1/p1.jpg')).toBe('https://signed/p1')
+    expect(result.get('order-1/p2.jpg')).toBe('https://signed/p2')
   })
 })
 

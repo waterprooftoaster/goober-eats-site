@@ -538,26 +538,6 @@ ALTER TABLE ONLY "public"."stripe_accounts"
 
 
 
-CREATE POLICY "Anon orderers can send messages" ON "public"."messages" FOR INSERT TO "authenticated" WITH CHECK ((("auth"."uid"() = "sender_id") AND (EXISTS ( SELECT 1
-   FROM ("public"."conversations" "c"
-     JOIN "public"."orders" "o" ON (("o"."id" = "c"."order_id")))
-  WHERE (("c"."id" = "messages"."conversation_id") AND ("o"."anon_user_id" = "auth"."uid"()))))));
-
-
-
-CREATE POLICY "Anon orderers can view their conversations" ON "public"."conversations" FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
-   FROM "public"."orders" "o"
-  WHERE (("o"."id" = "conversations"."order_id") AND ("o"."anon_user_id" = "auth"."uid"())))));
-
-
-
-CREATE POLICY "Anon orderers can view their messages" ON "public"."messages" FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
-   FROM ("public"."conversations" "c"
-     JOIN "public"."orders" "o" ON (("o"."id" = "c"."order_id")))
-  WHERE (("c"."id" = "messages"."conversation_id") AND ("o"."anon_user_id" = "auth"."uid"())))));
-
-
-
 CREATE POLICY "Participants can mark messages read" ON "public"."messages" FOR UPDATE TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM "public"."conversations" "c"
   WHERE (("c"."id" = "messages"."conversation_id") AND ((( SELECT "auth"."uid"() AS "uid") = "c"."orderer_id") OR (( SELECT "auth"."uid"() AS "uid") = "c"."swiper_id")))))) WITH CHECK ((EXISTS ( SELECT 1
@@ -566,15 +546,28 @@ CREATE POLICY "Participants can mark messages read" ON "public"."messages" FOR U
 
 
 
-CREATE POLICY "Participants can send messages" ON "public"."messages" FOR INSERT TO "authenticated" WITH CHECK (((( SELECT "auth"."uid"() AS "uid") = "sender_id") AND (EXISTS ( SELECT 1
+-- Merged: covers both authenticated participants (orderer/swiper) and anon
+-- orderers (orders.anon_user_id) so a single permissive policy services both
+-- paths. Equivalent to the prior pair "Anon orderers can send messages" +
+-- "Participants can send messages".
+CREATE POLICY "Participants can send messages" ON "public"."messages" FOR INSERT TO "authenticated" WITH CHECK (((( SELECT "auth"."uid"() AS "uid") = "sender_id") AND ((EXISTS ( SELECT 1
    FROM "public"."conversations" "c"
-  WHERE (("c"."id" = "messages"."conversation_id") AND ((( SELECT "auth"."uid"() AS "uid") = "c"."orderer_id") OR (( SELECT "auth"."uid"() AS "uid") = "c"."swiper_id")))))));
+  WHERE (("c"."id" = "messages"."conversation_id") AND ((( SELECT "auth"."uid"() AS "uid") = "c"."orderer_id") OR (( SELECT "auth"."uid"() AS "uid") = "c"."swiper_id"))))) OR (EXISTS ( SELECT 1
+   FROM ("public"."conversations" "c"
+     JOIN "public"."orders" "o" ON (("o"."id" = "c"."order_id")))
+  WHERE (("c"."id" = "messages"."conversation_id") AND ("o"."anon_user_id" = ( SELECT "auth"."uid"() AS "uid"))))))));
 
 
 
-CREATE POLICY "Participants can view messages" ON "public"."messages" FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
+-- Merged: covers both authenticated participants and anon orderers. Equivalent
+-- to the prior pair "Anon orderers can view their messages" + "Participants
+-- can view messages".
+CREATE POLICY "Participants can view messages" ON "public"."messages" FOR SELECT TO "authenticated" USING (((EXISTS ( SELECT 1
    FROM "public"."conversations" "c"
-  WHERE (("c"."id" = "messages"."conversation_id") AND ((( SELECT "auth"."uid"() AS "uid") = "c"."orderer_id") OR (( SELECT "auth"."uid"() AS "uid") = "c"."swiper_id"))))));
+  WHERE (("c"."id" = "messages"."conversation_id") AND ((( SELECT "auth"."uid"() AS "uid") = "c"."orderer_id") OR (( SELECT "auth"."uid"() AS "uid") = "c"."swiper_id"))))) OR (EXISTS ( SELECT 1
+   FROM ("public"."conversations" "c"
+     JOIN "public"."orders" "o" ON (("o"."id" = "c"."order_id")))
+  WHERE (("c"."id" = "messages"."conversation_id") AND ("o"."anon_user_id" = ( SELECT "auth"."uid"() AS "uid")))))));
 
 
 
@@ -582,7 +575,13 @@ CREATE POLICY "Swiper can create conversation on accept" ON "public"."conversati
 
 
 
-CREATE POLICY "Users can view their conversations" ON "public"."conversations" FOR SELECT TO "authenticated" USING (((( SELECT "auth"."uid"() AS "uid") = "orderer_id") OR (( SELECT "auth"."uid"() AS "uid") = "swiper_id")));
+-- Merged: covers both authenticated participants (orderer/swiper) and anon
+-- orderers (via orders.anon_user_id). Equivalent to the prior pair
+-- "Anon orderers can view their conversations" + "Users can view their
+-- conversations".
+CREATE POLICY "Users can view their conversations" ON "public"."conversations" FOR SELECT TO "authenticated" USING (((( SELECT "auth"."uid"() AS "uid") = "orderer_id") OR (( SELECT "auth"."uid"() AS "uid") = "swiper_id") OR (EXISTS ( SELECT 1
+   FROM "public"."orders" "o"
+  WHERE (("o"."id" = "conversations"."order_id") AND ("o"."anon_user_id" = ( SELECT "auth"."uid"() AS "uid")))))));
 
 
 

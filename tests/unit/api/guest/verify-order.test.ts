@@ -51,7 +51,6 @@ function makeRequest(piId?: string): NextRequest {
 beforeEach(() => {
   vi.clearAllMocks()
   mockServiceFrom.mockReset()
-  vi.useFakeTimers()
 })
 
 afterEach(() => {
@@ -71,17 +70,6 @@ describe('GET /api/guest/verify-order', () => {
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.error).toMatch(/invalid/i)
-  })
-
-  it('returns 404 when no order found for that pi_id', async () => {
-    mockServiceFrom.mockReturnValue(dbResult(null))
-
-    const p = GET(makeRequest(VALID_PI_ID))
-    await vi.runAllTimersAsync()
-    const res = await p
-    expect(res.status).toBe(404)
-    const body = await res.json()
-    expect(body.error).toMatch(/not found/i)
   })
 
   it('redirects with httpOnly cookie on success', async () => {
@@ -105,40 +93,29 @@ describe('GET /api/guest/verify-order', () => {
     expect(setCookie).not.toContain('/order/guest/')
   })
 
-  it('does not set cookie when order is not found', async () => {
-    mockServiceFrom.mockReturnValue(dbResult(null))
+  it('renders a waiting HTML page with meta-refresh when the order is not yet in DB', async () => {
+    mockServiceFrom.mockReturnValueOnce(dbResult(null))
 
-    const p = GET(makeRequest(VALID_PI_ID))
-    await vi.runAllTimersAsync()
-    const res = await p
+    const res = await GET(makeRequest(VALID_PI_ID))
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toContain('text/html')
+    const html = await res.text()
+    // Browser-driven retry — meta refresh back to the same endpoint
+    expect(html).toMatch(/<meta\s+http-equiv=["']refresh["']/i)
+    expect(html).toContain(`pi_id=${VALID_PI_ID}`)
+    // Server function must NOT loop — exactly one DB hit per call
+    expect(mockServiceFrom).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not set the guest cookie on the waiting page', async () => {
+    mockServiceFrom.mockReturnValueOnce(dbResult(null))
+
+    const res = await GET(makeRequest(VALID_PI_ID))
     expect(res.headers.get('set-cookie')).toBeNull()
   })
 
-  it('retries and succeeds when order appears on 2nd attempt', async () => {
-    mockServiceFrom
-      .mockReturnValueOnce(dbResult(null))
-      .mockReturnValue(dbResult({ id: VALID_ORDER_ID, guest_access_token: VALID_TOKEN }))
-
-    const p = GET(makeRequest(VALID_PI_ID))
-    await vi.runAllTimersAsync()
-    const res = await p
-
-    expect(res.status).toBe(307)
-    expect(mockServiceFrom).toHaveBeenCalledTimes(2)
-  })
-
-  it('queries DB MAX_ATTEMPTS times before returning 404', async () => {
-    mockServiceFrom.mockReturnValue(dbResult(null))
-
-    const p = GET(makeRequest(VALID_PI_ID))
-    await vi.runAllTimersAsync()
-    const res = await p
-
-    expect(res.status).toBe(404)
-    expect(mockServiceFrom).toHaveBeenCalledTimes(5)
-  })
-
-  it('returns 500 immediately when Supabase query errors', async () => {
+  it('returns 500 when Supabase query errors', async () => {
     mockServiceFrom.mockReturnValue(
       dbResult(null, { message: 'permission denied', code: '42501' })
     )
@@ -158,15 +135,6 @@ describe('GET /api/guest/verify-order', () => {
     expect(res.status).toBe(403)
     const body = await res.json()
     expect(body.error).toMatch(/not a guest order/i)
-    expect(mockServiceFrom).toHaveBeenCalledTimes(1)
-  })
-
-  it('does not retry when Supabase returns a query error', async () => {
-    mockServiceFrom.mockReturnValue(
-      dbResult(null, { message: 'permission denied', code: '42501' })
-    )
-
-    await GET(makeRequest(VALID_PI_ID))
     expect(mockServiceFrom).toHaveBeenCalledTimes(1)
   })
 })

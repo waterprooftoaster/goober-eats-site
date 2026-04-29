@@ -65,7 +65,7 @@ export async function resolvePrincipal(
 
   const { data: stripeAccount } = await supabase
     .from('stripe_accounts')
-    .select('onboarding_complete')
+    .select('onboarding_complete, suspended')
     .eq('user_id', user.id)
     .maybeSingle()
 
@@ -73,7 +73,17 @@ export async function resolvePrincipal(
     return { kind: 'authed_orderer', userId: user.id, schoolId }
   }
 
-  const onboardingComplete = (stripeAccount as { onboarding_complete: boolean }).onboarding_complete
+  const account = stripeAccount as { onboarding_complete: boolean; suspended?: boolean }
+
+  // Suspension gate: Stripe has permanently terminated this connected account.
+  // Force-signout and downgrade to anon so server-rendered surfaces stop showing
+  // swiper state on the next request cycle.
+  if (account.suspended === true) {
+    await supabase.auth.signOut()
+    return { kind: 'anon' }
+  }
+
+  const onboardingComplete = account.onboarding_complete
 
   // Full swiper variant requires non-null schoolId (master plan §10 type shape).
   // If onboarding is reportedly complete but schoolId is missing, downgrade to pre_stripe.

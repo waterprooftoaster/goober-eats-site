@@ -36,6 +36,10 @@ export async function GET(request: NextRequest) {
   // when a rate-limiting infrastructure is in place to prevent bulk enumeration.
   const deadline = new Promise((r) => setTimeout(r, 300))
 
+  // Service client: the check_email_exists RPC inspects auth.users, which is
+  // not exposed to the anon role under default Supabase RLS. The RPC itself
+  // is SECURITY DEFINER and accepts only an email arg, so the bypass is
+  // narrowly scoped to "does this email exist?"
   const serviceClient = createServiceClient()
   const [result] = await Promise.all([
     serviceClient.rpc('check_email_exists', { lookup_email: parsed.data.email }),
