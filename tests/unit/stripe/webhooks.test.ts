@@ -448,7 +448,8 @@ describe('POST /api/stripe/webhooks', () => {
       expect(res.status).toBe(200)
       // No call should have been made with { suspended: true } in update
       for (const { chain } of calls) {
-        for (const updateCall of chain.update.mock.calls) {
+        const update = chain.update as ReturnType<typeof vi.fn>
+        for (const updateCall of update.mock.calls) {
           expect(updateCall[0]).not.toHaveProperty('suspended')
         }
       }
