@@ -1,13 +1,11 @@
 /**
  * @file layout.tsx
  * @description Root layout. Resolves the principal once via the §10 helper,
- *   passes server-derived booleans down into Header / Banner / SwiperOrders
- *   Button. Mounts ChatPanelProvider + ChatPanel (no parallel slots — see
- *   master plan §Decisions locked + 02-routes.md ADR-1). pendingOrderCount
- *   filters by school_id (catalog GLOBAL-SWIPER-BADGE).
+ *   passes server-derived booleans into Header / Banner / BottomDock.
+ *   pendingOrderCount filters by school_id (catalog GLOBAL-SWIPER-BADGE).
  *   Called by: Next.js App Router (wraps all routes)
  * @dependencies @/lib/auth/resolve-principal, @/lib/supabase/server,
- *   @/components/{header,banner,swiper-orders-button,chat-panel}
+ *   @/components/{header,banner,chat-panel,bottom-dock}
  */
 
 import type { Metadata } from "next"
@@ -16,8 +14,8 @@ import "./globals.css"
 import { bricolageGrotesque, figtree } from "./fonts"
 import { Header } from "@/components/header"
 import { Banner } from "@/components/banner"
-import { SwiperOrdersButton } from "@/components/swiper-orders-button"
-import { ChatPanelProvider, ChatPanel } from "@/components/chat-panel"
+import { ChatPanelProvider } from "@/components/chat-panel"
+import { BottomDock } from "@/components/bottom-dock"
 import { createClient } from "@/lib/supabase/server"
 import { resolvePrincipal, type Principal } from "@/lib/auth/resolve-principal"
 
@@ -61,9 +59,8 @@ export default async function RootLayout({
           {(isLoggedIn || pathname !== '/') && (
             <Banner isSwiper={isSwiper} isLoggedIn={isLoggedIn} />
           )}
-          <main className="px-6">{children}</main>
-          <SwiperOrdersButton isSwiper={isSwiper} pendingOrderCount={pendingOrderCount} />
-          <ChatPanel currentUserId={userId} />
+          <main className="px-6 pb-24">{children}</main>
+          <BottomDock isSwiper={isSwiper} pendingOrderCount={pendingOrderCount} />
         </ChatPanelProvider>
       </body>
     </html>

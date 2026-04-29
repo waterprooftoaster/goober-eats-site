@@ -84,7 +84,7 @@ export function ChatPanelProvider({ userId, children }: Props) {
         }
         return {
           ...prev,
-          [orderId]: { orderId, status, eateryName, conversationId, isExpanded: true },
+          [orderId]: { orderId, status, eateryName, conversationId },
         }
       })
     },
@@ -100,14 +100,6 @@ export function ChatPanelProvider({ userId, children }: Props) {
       const next = { ...prev }
       delete next[orderId]
       return next
-    })
-  }, [])
-
-  const toggleMinimize = useCallback((orderId: string) => {
-    setOrders((prev) => {
-      const entry = prev[orderId]
-      if (!entry) return prev
-      return { ...prev, [orderId]: { ...entry, isExpanded: !entry.isExpanded } }
     })
   }, [])
 
@@ -239,7 +231,6 @@ export function ChatPanelProvider({ userId, children }: Props) {
         orders,
         openPanel,
         closePanel,
-        toggleMinimize,
         updateOrderStatus,
       }}
     >

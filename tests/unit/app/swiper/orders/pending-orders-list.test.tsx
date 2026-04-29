@@ -17,7 +17,6 @@ vi.mock('@/components/chat-panel', () => ({
   useChatPanel: () => ({
     openPanel: openPanelMock,
     closePanel: vi.fn(),
-    toggleMinimize: vi.fn(),
     updateOrderStatus: vi.fn(),
     orders: {},
   }),

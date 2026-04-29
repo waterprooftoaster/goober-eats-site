@@ -8,8 +8,10 @@
  *   components/cover-page.tsx, components/home-upload.tsx
  */
 
+import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { getAuthenticatedUser } from '@/lib/api/helpers'
+import { resolvePrincipal } from '@/lib/auth/resolve-principal'
 import CoverPage from '@/components/cover-page'
 import HomeUpload from '@/components/home-upload'
 import { HomeRefresh } from './home-refresh'
@@ -33,10 +35,22 @@ export default async function HomePage() {
       .eq('id', user.id)
       .maybeSingle()
     if (profile?.school_id) {
+      const principal = await resolvePrincipal(supabase, await cookies())
+      const isSwiper =
+        principal.kind === 'authed_swiper' || principal.kind === 'authed_swiper_pre_stripe'
+      let pendingOrderCount = 0
+      if (principal.kind === 'authed_swiper') {
+        const { count } = await supabase
+          .from('orders')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'open')
+          .eq('school_id', principal.schoolId)
+        pendingOrderCount = count ?? 0
+      }
       return (
         <>
           <HomeRefresh />
-          <HomeUpload />
+          <HomeUpload isSwiper={isSwiper} pendingOrderCount={pendingOrderCount} />
         </>
       )
     }

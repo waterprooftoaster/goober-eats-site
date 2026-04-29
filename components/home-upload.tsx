@@ -17,6 +17,7 @@ import { useRouter } from 'next/navigation'
 import { ImagePlus, Lightbulb } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Surface } from '@/components/ui/surface'
+import { DesktopUploadDock } from '@/components/desktop-upload-dock'
 import { createClient } from '@/lib/supabase/client'
 import { PENDING_SCHOOL_ID_KEY, PENDING_SCREENSHOTS_KEY } from '@/lib/constants'
 import { normalizeImage } from '@/lib/image/normalize'
@@ -26,7 +27,12 @@ type Stage = 'idle' | 'selected' | 'uploading' | 'error'
 const ALLOWED_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'heic', 'heif'] as const
 type AllowedExtension = typeof ALLOWED_EXTENSIONS[number]
 
-export default function HomeUpload() {
+interface HomeUploadProps {
+  isSwiper?: boolean
+  pendingOrderCount?: number
+}
+
+export default function HomeUpload({ isSwiper = false, pendingOrderCount = 0 }: HomeUploadProps) {
     const router = useRouter()
     const inputRef = useRef<HTMLInputElement>(null)
     const [file, setFile] = useState<File | null>(null)
@@ -223,6 +229,8 @@ export default function HomeUpload() {
                     </p>
                 )}
             </div>
+
+            <DesktopUploadDock isSwiper={isSwiper} pendingOrderCount={pendingOrderCount} />
         </main>
     )
 }
