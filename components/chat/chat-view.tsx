@@ -8,23 +8,26 @@
  * @dependencies hooks/use-messages.ts, components/chat/chat-thread.tsx, components/chat/chat-input.tsx
  */
 
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMessages, type OptimisticMessage } from '@/hooks/use-messages'
 import { ChatThread } from '@/components/chat/chat-thread'
 import { ChatInput } from '@/components/chat/chat-input'
 import { CompletionBanner } from '@/components/chat/completion-banner'
 import { OrderCompletedView } from '@/components/chat/order-completion-notice'
+import CartScreenshotLightbox from '@/components/chat/cart-screenshot-lightbox'
 import type { Conversation } from '@/lib/types/messaging'
 import type { OrderStatus } from '@/lib/types/database'
 
 export interface PseudoMessage {
     text: string
     testid?: string
+    action?: { label: string; onClick: () => void }
 }
 
 interface CoreProps {
     orderId: string
     eateryName: string
+    cartScreenshotUrl: string | null
     messages: OptimisticMessage[]
     conversation: Conversation | null
     currentUserId: string | null
@@ -53,6 +56,7 @@ interface CoreProps {
 function ChatViewCore({
     orderId,
     eateryName,
+    cartScreenshotUrl,
     messages,
     conversation,
     currentUserId,
@@ -64,6 +68,9 @@ function ChatViewCore({
     onStatusChange,
 }: CoreProps) {
     const messagesEndRef = useRef<HTMLDivElement>(null)
+    const [lightboxOpen, setLightboxOpen] = useState(false)
+    const openLightbox = useCallback(() => setLightboxOpen(true), [])
+    const closeLightbox = useCallback(() => setLightboxOpen(false), [])
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -101,7 +108,15 @@ function ChatViewCore({
         )
     }
 
-    const statusMessages = getStatusMessages(orderStatus, orderId, eateryName, conversation, currentUserId)
+    const statusMessages = getStatusMessages(
+        orderStatus,
+        orderId,
+        eateryName,
+        conversation,
+        currentUserId,
+        cartScreenshotUrl,
+        openLightbox
+    )
     // Per CLAUDE.md spec: chat bubbles render text messages only; completion_photo
     // is surfaced exclusively through OrderCompletedView (above) and is never an
     // inline bubble in the thread.
@@ -127,6 +142,13 @@ function ChatViewCore({
                 disabled={orderStatus !== 'in_progress'}
                 disabledPlaceholder="Waiting on a swiper. Hang Tight!"
             />
+            {cartScreenshotUrl && (
+                <CartScreenshotLightbox
+                    open={lightboxOpen}
+                    onClose={closeLightbox}
+                    url={cartScreenshotUrl}
+                />
+            )}
         </div>
     )
 }
@@ -134,6 +156,12 @@ function ChatViewCore({
 interface Props {
     orderId: string
     eateryName: string
+    /**
+     * First cart screenshot URL on the order, used to power the swiper-side
+     * "View cart screenshot" lightbox. Null when no screenshot is available
+     * (legacy orders, data integrity fallback).
+     */
+    cartScreenshotUrl: string | null
     currentUserId: string | null
     orderStatus: OrderStatus
     /**
@@ -156,7 +184,7 @@ interface Props {
  * @param onStatusChange - Optional callback when the swiper transitions the order status
  * @called-by components/chat-panel/chat-panel.tsx, app/current-orders/current-orders-list.tsx
  */
-export function ChatView({ orderId, eateryName, currentUserId, orderStatus, conversationId, onStatusChange }: Props) {
+export function ChatView({ orderId, eateryName, cartScreenshotUrl, currentUserId, orderStatus, conversationId, onStatusChange }: Props) {
     const { messages, conversation, isLoading, error, sendMessage, appendOptimistic, markFailed, markPending, refetch } =
         useMessages({ orderId, conversationId })
 
@@ -214,6 +242,7 @@ export function ChatView({ orderId, eateryName, currentUserId, orderStatus, conv
         <ChatViewCore
             orderId={orderId}
             eateryName={eateryName}
+            cartScreenshotUrl={cartScreenshotUrl}
             messages={messages}
             conversation={conversation}
             currentUserId={currentUserId}
@@ -256,11 +285,15 @@ function filterMessagesForViewer(
 /**
  * Returns the ordered list of pinned status pseudo-message texts for the given role + state.
  * Orderers in in_progress see both the placed-order and preparing messages stacked.
+ * Swipers in in_progress see three messages: accepted confirmation, a view-cart bubble
+ * with a button that opens the cart-screenshot lightbox, and completion instructions.
  * @param orderStatus - Current order status
  * @param orderId - Full order UUID (sliced to 8 chars for display)
  * @param eateryName - Name of the eatery for the order
  * @param conversation - Current conversation row, or null if order is open
  * @param currentUserId - Authenticated user ID, or null for guests
+ * @param cartScreenshotUrl - First cart screenshot URL (drives the swiper view-cart action)
+ * @param onViewCartScreenshot - Click handler that opens the lightbox
  * @called-by ChatViewCore
  */
 function getStatusMessages(
@@ -268,7 +301,9 @@ function getStatusMessages(
     orderId: string,
     eateryName: string,
     conversation: Conversation | null,
-    currentUserId: string | null
+    currentUserId: string | null,
+    cartScreenshotUrl: string | null,
+    onViewCartScreenshot: () => void
 ): PseudoMessage[] {
     const shortId = orderId.slice(0, 8)
     // conversation is null in 'open' state, so swiper_id check resolves to false
@@ -290,7 +325,21 @@ function getStatusMessages(
     }
     if (orderStatus === 'in_progress' && isSwiper) {
         return [
-            { text: `You've successfully accepted order #${shortId}! To complete the order, upload a screenshot of the completed order on GrubHub. Let the user know which name to pick up under.`, testid: 'chat-pseudo-in-progress' },
+            {
+                text: `You've accepted order #${shortId} at ${eateryName}! Place the order as detailed in the screenshot.`,
+                testid: 'chat-pseudo-accepted',
+            },
+            {
+                text: 'Click here to see the order again:',
+                testid: 'chat-pseudo-view-cart',
+                action: cartScreenshotUrl
+                    ? { label: 'View cart screenshot', onClick: onViewCartScreenshot }
+                    : undefined,
+            },
+            {
+                text: `Complete the order by uploading a screenshot of the 'Order placed' confirmation page on GrubHub. Be sure to let the orderer know what name to pick up under!`,
+                testid: 'chat-pseudo-instructions',
+            },
         ]
     }
     return []

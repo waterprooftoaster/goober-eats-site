@@ -11,6 +11,7 @@
  */
 
 import { useState } from 'react'
+import { X } from 'lucide-react'
 import { ChatView } from '@/components/chat/chat-view'
 import { useChatPanel } from '@/components/chat-panel'
 import { Surface } from '@/components/ui/surface'
@@ -21,6 +22,7 @@ interface CurrentOrderListItem {
   id: string
   status: OrderStatus
   restaurantName: string
+  cartScreenshotUrl: string | null
 }
 
 interface Props {
@@ -36,7 +38,7 @@ interface Props {
  * @called-by app/current-orders/page.tsx
  */
 export function CurrentOrdersList({ orders, currentUserId }: Props) {
-  const { updateOrderStatus } = useChatPanel()
+  const { orders: panelOrders, updateOrderStatus } = useChatPanel()
   // Locally-removed orders for instant UI feedback after un-accept / cancel.
   // We deliberately keep `completed` orders mounted so the swiper sees
   // OrderCompletedView (with the completion photo) until they navigate away;
@@ -56,7 +58,23 @@ export function CurrentOrdersList({ orders, currentUserId }: Props) {
     }
   }
 
-  const visibleOrders = orders.filter((o) => !removedIds.has(o.id))
+  function handleDismiss(orderId: string) {
+    setRemovedIds((prev) => {
+      if (prev.has(orderId)) return prev
+      const next = new Set(prev)
+      next.add(orderId)
+      return next
+    })
+  }
+
+  // Resolve the live status from the chat-panel-provider when available — the
+  // provider subscribes to realtime UPDATEs and is also the sink for
+  // handleStatusChange above, so it reflects the swiper marking complete /
+  // un-accepting and the orderer's view of those events. Server-fetched
+  // status is the fallback for the brief window before loadActiveOrders runs.
+  const visibleOrders = orders
+    .filter((o) => !removedIds.has(o.id))
+    .map((o) => ({ ...o, status: panelOrders[o.id]?.status ?? o.status }))
 
   if (visibleOrders.length === 0) {
     return (
@@ -90,14 +108,28 @@ export function CurrentOrdersList({ orders, currentUserId }: Props) {
                 #{order.id.slice(0, 8)}
               </span>
             </div>
-            <StatusBadge status={order.status} />
+            <div className="flex items-center gap-2">
+              <StatusBadge status={order.status} />
+              {order.status === 'completed' && (
+                <button
+                  type="button"
+                  onClick={() => handleDismiss(order.id)}
+                  data-testid="current-orders-dismiss-button"
+                  aria-label="Dismiss completed order"
+                  className="-mr-1 inline-flex size-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                >
+                  <X className="size-4" />
+                </button>
+              )}
+            </div>
           </header>
-          <div className="flex min-h-[26rem] flex-col">
+          <div className={cn('flex flex-col', order.status !== 'completed' && 'h-[26rem]')}>
             <ChatView
               orderId={order.id}
               currentUserId={currentUserId}
               orderStatus={order.status}
               eateryName={order.restaurantName}
+              cartScreenshotUrl={order.cartScreenshotUrl}
               onStatusChange={(status) => handleStatusChange(order.id, status)}
             />
           </div>
