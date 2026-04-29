@@ -97,7 +97,7 @@ The only differences:
 - **Guest**: `guest_name` in Stripe metadata, `orderer_id` is NULL, `guest_access_token` (random UUID) stored on the order
 - **Auth**: `orderer_id` in Stripe metadata, no `guest_name`, no `guest_access_token`
 
-Guests access their order chat via `app/api/guest/` routes (`/verify-order`, `/messages`, `/messages/[orderId]`). Authentication uses a `guest_order_token_{orderId}` cookie set at checkout return and validated by `lib/api/guest-auth.ts:validateGuestOrder`.
+Guests access their order via `app/api/guest/` routes — `verify-order` (sets the `guest_order_token_{orderId}` cookie + redirects on success; renders a meta-refresh waiting page while the Stripe webhook is still in flight) and `orders/[orderId]` (reads the order row). Chat messages use the unified `app/api/messages/[orderId]` route, gated by the same cookie via `lib/api/guest-auth.ts:validateGuestOrder`.
 
 When a swiper completes any order, `lib/stripe/transfer.ts` creates a Stripe Transfer from the platform to the swiper's connected account.
 
