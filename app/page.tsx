@@ -5,11 +5,14 @@
  *   Gating is a server-component branch — no middleware redirect, no client check.
  *   Called by: Next.js routing (/)
  * @dependencies lib/supabase/server.ts, lib/api/helpers.ts,
- *   components/cover-page.tsx, components/home-upload.tsx
+ *   lib/auth/resolve-principal.ts, components/cover-page.tsx,
+ *   components/home-upload.tsx
  */
 
+import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { getAuthenticatedUser } from '@/lib/api/helpers'
+import { resolvePrincipal } from '@/lib/auth/resolve-principal'
 import CoverPage from '@/components/cover-page'
 import HomeUpload from '@/components/home-upload'
 
@@ -32,7 +35,19 @@ export default async function HomePage() {
       .eq('id', user.id)
       .maybeSingle()
     if (profile?.school_id) {
-      return <HomeUpload />
+      const principal = await resolvePrincipal(supabase, await cookies())
+      const isSwiper =
+        principal.kind === 'authed_swiper' || principal.kind === 'authed_swiper_pre_stripe'
+      let pendingOrderCount = 0
+      if (principal.kind === 'authed_swiper') {
+        const { count } = await supabase
+          .from('orders')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'open')
+          .eq('school_id', principal.schoolId)
+        pendingOrderCount = count ?? 0
+      }
+      return <HomeUpload isSwiper={isSwiper} pendingOrderCount={pendingOrderCount} />
     }
   }
 

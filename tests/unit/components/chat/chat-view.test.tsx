@@ -6,7 +6,7 @@
  */
 
 import { vi, describe, it, expect, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import type { Conversation } from '@/lib/types/messaging'
 
 vi.mock('@/hooks/use-messages', () => ({
@@ -65,6 +65,7 @@ function mockMessages(overrides: Partial<ReturnType<typeof useMessages>> = {}) {
 function renderView(props: {
   currentUserId: string | null
   orderStatus: Parameters<typeof ChatView>[0]['orderStatus']
+  cartScreenshotUrl?: string | null
 }) {
   return render(
     <ChatView
@@ -72,9 +73,12 @@ function renderView(props: {
       eateryName={EATERY_NAME}
       currentUserId={props.currentUserId}
       orderStatus={props.orderStatus}
+      cartScreenshotUrl={props.cartScreenshotUrl ?? null}
     />
   )
 }
+
+const CART_URL = 'https://example.com/cart.png'
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -167,14 +171,59 @@ describe('ChatView', () => {
 
   // --- Status notification: swiper + in_progress ---
 
-  it('swiper sees accepted-order pseudo-message in in_progress state', () => {
+  it('swiper sees three pseudo-messages (accepted, view-cart, instructions) in in_progress state', () => {
     mockMessages({ conversation: CONVERSATION })
-    renderView({ currentUserId: SWIPER_ID, orderStatus: 'in_progress' })
+    renderView({
+      currentUserId: SWIPER_ID,
+      orderStatus: 'in_progress',
+      cartScreenshotUrl: CART_URL,
+    })
+    expect(screen.getByTestId('chat-pseudo-accepted')).toHaveTextContent(
+      `You've accepted order #${SHORT_ID} at ${EATERY_NAME}! Place the order as detailed in the screenshot.`
+    )
+    expect(screen.getByTestId('chat-pseudo-view-cart')).toHaveTextContent(
+      'Click here to see the order again:'
+    )
+    expect(screen.getByTestId('chat-pseudo-instructions')).toHaveTextContent(
+      `Complete the order by uploading a screenshot of the 'Order placed' confirmation page on GrubHub. Be sure to let the orderer know what name to pick up under!`
+    )
+  })
+
+  it('swiper sees View cart screenshot button when cartScreenshotUrl is present', () => {
+    mockMessages({ conversation: CONVERSATION })
+    renderView({
+      currentUserId: SWIPER_ID,
+      orderStatus: 'in_progress',
+      cartScreenshotUrl: CART_URL,
+    })
     expect(
-      screen.getByText(
-        `You've successfully accepted order #${SHORT_ID}! To complete the order, upload a screenshot of the completed order on GrubHub. Let the user know which name to pick up under.`
-      )
+      screen.getByRole('button', { name: /view cart screenshot/i })
     ).toBeInTheDocument()
+  })
+
+  it('swiper does not see the View cart screenshot button when url is null', () => {
+    mockMessages({ conversation: CONVERSATION })
+    renderView({
+      currentUserId: SWIPER_ID,
+      orderStatus: 'in_progress',
+      cartScreenshotUrl: null,
+    })
+    expect(
+      screen.queryByRole('button', { name: /view cart screenshot/i })
+    ).not.toBeInTheDocument()
+  })
+
+  it('clicking View cart screenshot opens the lightbox dialog', () => {
+    mockMessages({ conversation: CONVERSATION })
+    renderView({
+      currentUserId: SWIPER_ID,
+      orderStatus: 'in_progress',
+      cartScreenshotUrl: CART_URL,
+    })
+    const dialog = screen.getByTestId('cart-screenshot-lightbox') as HTMLDialogElement
+    expect(dialog.open).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: /view cart screenshot/i }))
+    expect(dialog.open).toBe(true)
   })
 
   it('swiper sees CompletionBanner in in_progress state', () => {
@@ -326,6 +375,7 @@ describe('ChatView', () => {
       <ChatView
         orderId={ORDER_ID}
         eateryName={EATERY_NAME}
+        cartScreenshotUrl={null}
         currentUserId={ORDERER_ID}
         orderStatus="in_progress"
       />
@@ -336,6 +386,7 @@ describe('ChatView', () => {
       <ChatView
         orderId={ORDER_ID}
         eateryName={EATERY_NAME}
+        cartScreenshotUrl={null}
         currentUserId={ORDERER_ID}
         orderStatus="completed"
       />
@@ -347,6 +398,7 @@ describe('ChatView', () => {
       <ChatView
         orderId={ORDER_ID}
         eateryName={EATERY_NAME}
+        cartScreenshotUrl={null}
         currentUserId={ORDERER_ID}
         orderStatus="completed"
       />

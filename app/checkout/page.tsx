@@ -229,7 +229,8 @@ export default function CheckoutPage() {
                             Pay for your order.
                         </h1>
                         <p className="mt-2 text-sm text-muted-foreground">
-                            Once you pay, a swiper at your school picks it up.
+                            Make sure the total you enter matches the total in the screenshot!
+                            <br /> Or else a swiper most likely won't accept your order.
                         </p>
                     </header>
 

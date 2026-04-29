@@ -13,7 +13,6 @@ export interface OrderEntry {
   orderId: string
   status: OrderStatus
   eateryName: string
-  isExpanded: boolean
   /**
    * Pre-resolved conversation_id from the provider's loadActiveOrders LEFT JOIN.
    * Null when no conversation exists yet (status='open' before swiper accepts).
@@ -33,7 +32,6 @@ export interface ChatPanelState {
     conversationId?: string | null
   ) => void
   closePanel: (orderId: string) => void
-  toggleMinimize: (orderId: string) => void
   updateOrderStatus: (orderId: string, status: OrderStatus) => void
 }
 

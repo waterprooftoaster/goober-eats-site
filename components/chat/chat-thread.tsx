@@ -12,6 +12,7 @@
  */
 
 import type { RefObject } from 'react'
+import { Image as ImageIcon } from 'lucide-react'
 import type { OptimisticMessage } from '@/hooks/use-messages'
 import type { PseudoMessage } from '@/components/chat/chat-view'
 import { cn } from '@/lib/utils'
@@ -47,6 +48,17 @@ export function ChatThread({ pseudoMessages, messages, currentUserId, messagesEn
         >
           <div className="rounded-2xl rounded-bl-sm bg-secondary px-3 py-2 text-sm text-foreground">
             {pseudo.text}
+            {pseudo.action && (
+              <button
+                type="button"
+                onClick={pseudo.action.onClick}
+                data-testid="chat-pseudo-action-button"
+                className="mt-2 flex w-fit items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-xs font-medium text-background transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+              >
+                <ImageIcon className="h-4 w-4" aria-hidden />
+                {pseudo.action.label}
+              </button>
+            )}
           </div>
         </div>
       ))}

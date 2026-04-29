@@ -38,6 +38,12 @@ vi.mock('@/app/current-orders/current-orders-list', () => ({
   CurrentOrdersList: () => null,
 }))
 
+// sign-screenshots transitively imports `server-only`, which throws under
+// vitest's jsdom env. Stub the helper — these tests don't assert on URLs.
+vi.mock('@/lib/storage/sign-screenshots', () => ({
+  signCartScreenshotPaths: vi.fn().mockResolvedValue([]),
+}))
+
 import CurrentOrdersPage from '@/app/current-orders/page'
 
 describe('CurrentOrdersPage query', () => {
