@@ -175,18 +175,16 @@ async function seedUsers(schoolIds: SchoolIds): Promise<Record<string, string>> 
 
 /**
  * Returns the existing auth.users id for the email, creating the user if absent.
- * Uses the public /auth/v1/signup endpoint instead of supabase.auth.admin.* —
- * the local GoTrue container is configured for ES256-signed JWTs and rejects
- * the new sb_secret_ HS256 keys at admin endpoints, but accepts them at the
- * public signup endpoint where they're forwarded only as the apikey header.
+ * Tries the admin endpoint first (preferred — bypasses email-domain validation
+ * that hosted Supabase enforces, and creates pre-confirmed users). Falls back
+ * to the public /auth/v1/signup endpoint for local GoTrue containers that
+ * reject the configured service key at admin endpoints (HS256 sb_secret_ vs
+ * ES256-only local GoTrue).
  * @param email - Login email for the demo user
  * @param fullName - Display name
  * @returns Auth user UUID
  */
 async function getOrCreateAuthUser(email: string, fullName: string): Promise<string> {
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-  if (!anonKey) throw new Error('Missing NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY')
-
   // Fast path: if a profile already exists with this email, reuse its id.
   const { data: existingProfile } = await supabase
     .from('profiles')
@@ -195,7 +193,34 @@ async function getOrCreateAuthUser(email: string, fullName: string): Promise<str
     .maybeSingle()
   if (existingProfile?.id) return existingProfile.id
 
-  // Try signup; on "already registered" fall back to password sign-in.
+  // Preferred: admin createUser. Works on hosted Supabase (which rejects
+  // public signups for emails like @test.edu) and on local with HS256
+  // service_role JWTs.
+  const adminRes = await fetch(`${supabaseUrl}/auth/v1/admin/users`, {
+    method: 'POST',
+    headers: {
+      apikey: supabaseServiceKey,
+      Authorization: `Bearer ${supabaseServiceKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      email,
+      password: DEMO_PASSWORD,
+      email_confirm: true,
+      user_metadata: { full_name: fullName },
+    }),
+  })
+  if (adminRes.ok) {
+    const json = (await adminRes.json()) as { id?: string }
+    if (json.id) return json.id
+  }
+
+  // Fallback path for local GoTrue containers configured to reject sb_secret_
+  // HS256 keys at admin endpoints — they still accept them as apikey on the
+  // public signup endpoint.
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
+  if (!anonKey) throw new Error('Missing NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY')
+
   const signupRes = await fetch(`${supabaseUrl}/auth/v1/signup`, {
     method: 'POST',
     headers: { apikey: anonKey, 'Content-Type': 'application/json' },
@@ -216,8 +241,11 @@ async function getOrCreateAuthUser(email: string, fullName: string): Promise<str
     body: JSON.stringify({ email, password: DEMO_PASSWORD }),
   })
   if (!signinRes.ok) {
-    const body = await signinRes.text()
-    throw new Error(`signup+signin failed for ${email}: ${body}`)
+    const adminBody = await adminRes.text().catch(() => '')
+    const signinBody = await signinRes.text()
+    throw new Error(
+      `auth user create failed for ${email}: admin=${adminBody}; signin=${signinBody}`
+    )
   }
   const signinJson = (await signinRes.json()) as { user?: { id: string } }
   if (!signinJson.user?.id) {
