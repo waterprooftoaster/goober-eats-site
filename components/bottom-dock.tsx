@@ -42,7 +42,7 @@ export function BottomDock({ isSwiper, pendingOrderCount }: BottomDockProps) {
   return (
     <div
       data-testid="bottom-dock"
-      className="pointer-events-none fixed inset-x-3 bottom-3 z-40 flex items-stretch gap-2 pb-[env(safe-area-inset-bottom)]"
+      className="pointer-events-none fixed inset-x-6 bottom-3 z-40 flex items-stretch gap-2 pb-[env(safe-area-inset-bottom)]"
     >
       {isSwiper && (
         <div className="pointer-events-auto flex-shrink-0">

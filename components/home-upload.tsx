@@ -28,8 +28,8 @@ const ALLOWED_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'heic', 'heif'] as con
 type AllowedExtension = typeof ALLOWED_EXTENSIONS[number]
 
 interface HomeUploadProps {
-  isSwiper?: boolean
-  pendingOrderCount?: number
+    isSwiper?: boolean
+    pendingOrderCount?: number
 }
 
 export default function HomeUpload({ isSwiper = false, pendingOrderCount = 0 }: HomeUploadProps) {
@@ -139,7 +139,7 @@ export default function HomeUpload({ isSwiper = false, pendingOrderCount = 0 }: 
                     Order anywhere on campus, 40% off.
                 </h1>
                 <p className="mt-3 text-base text-muted-foreground">
-                    Screenshot your GrubHub cart. We'll pair you with a student who&rsquo;s got swipes.
+                    Screenshot a GrubHub cart, at any eatery that takes swipes or dining dollars. We'll pair you with a student with a meal plan.
                 </p>
             </header>
 
