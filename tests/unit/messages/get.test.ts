@@ -8,10 +8,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
 
-const { mockGetUser, mockFrom, mockSignCompletionPhotoPath } = vi.hoisted(() => ({
+const { mockGetUser, mockFrom, mockSignBatch } = vi.hoisted(() => ({
   mockGetUser: vi.fn(),
   mockFrom: vi.fn(),
-  mockSignCompletionPhotoPath: vi.fn(),
+  mockSignBatch: vi.fn(),
 }))
 
 vi.mock('@/lib/supabase/server', () => ({
@@ -22,7 +22,7 @@ vi.mock('@/lib/supabase/server', () => ({
 }))
 
 vi.mock('@/lib/storage/sign-screenshots', () => ({
-  signCompletionPhotoPath: mockSignCompletionPhotoPath,
+  signCompletionPhotoPathsBatch: mockSignBatch,
 }))
 
 import { GET } from '@/app/api/messages/[orderId]/route'
@@ -34,7 +34,11 @@ const CONV_ID = '00000000-0000-4000-8000-000000000002'
 beforeEach(() => {
   vi.clearAllMocks()
   mockGetUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null })
-  mockSignCompletionPhotoPath.mockImplementation(async (path: string) => `https://signed.test/${path}`)
+  mockSignBatch.mockImplementation(async (paths: string[]) => {
+    const map = new Map<string, string>()
+    for (const p of paths) map.set(p, `https://signed.test/${p}`)
+    return map
+  })
 })
 
 function makeReq() {
@@ -91,7 +95,7 @@ describe('GET /api/messages/[orderId]', () => {
     const systemMsg = body.messages.find((m: { id: string }) => m.id === 'm3')
     expect(systemMsg.image_url).toBeNull()
 
-    expect(mockSignCompletionPhotoPath).toHaveBeenCalledTimes(1)
-    expect(mockSignCompletionPhotoPath).toHaveBeenCalledWith(`${ORDER_ID}/uuid.jpg`)
+    expect(mockSignBatch).toHaveBeenCalledTimes(1)
+    expect(mockSignBatch).toHaveBeenCalledWith([`${ORDER_ID}/uuid.jpg`])
   })
 })

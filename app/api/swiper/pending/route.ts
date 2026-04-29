@@ -9,7 +9,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { apiError, apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
-import { signCartScreenshotPaths } from '@/lib/storage/sign-screenshots'
+import { signCartScreenshotPathsBatch } from '@/lib/storage/sign-screenshots'
 
 /**
  * Returns open, unaccepted orders for the active swiper's school, oldest first.
@@ -44,13 +44,16 @@ export async function GET() {
 
   if (error) return apiError('Failed to fetch pending orders', 500)
 
-  const signed = await Promise.all(
-    (orders ?? []).map(async (row) => ({
-      ...row,
-      cart_screenshot_urls: await signCartScreenshotPaths(
-        (row.cart_screenshot_urls as string[]) ?? []
-      ),
-    }))
+  // Batch every row's paths into one createSignedUrls RPC, then regroup.
+  const allPaths = (orders ?? []).flatMap(
+    (row) => (row.cart_screenshot_urls as string[]) ?? []
   )
+  const urlByPath = await signCartScreenshotPathsBatch(allPaths)
+  const signed = (orders ?? []).map((row) => ({
+    ...row,
+    cart_screenshot_urls: ((row.cart_screenshot_urls as string[]) ?? [])
+      .map((p) => urlByPath.get(p))
+      .filter((u): u is string => typeof u === 'string'),
+  }))
   return apiSuccess(signed)
 }

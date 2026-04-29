@@ -7,10 +7,10 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const { mockGetUser, mockFrom, mockSignCartScreenshotPaths } = vi.hoisted(() => ({
+const { mockGetUser, mockFrom, mockSignBatch } = vi.hoisted(() => ({
   mockGetUser: vi.fn(),
   mockFrom: vi.fn(),
-  mockSignCartScreenshotPaths: vi.fn(),
+  mockSignBatch: vi.fn(),
 }))
 
 vi.mock('@/lib/supabase/server', () => ({
@@ -21,7 +21,7 @@ vi.mock('@/lib/supabase/server', () => ({
 }))
 
 vi.mock('@/lib/storage/sign-screenshots', () => ({
-  signCartScreenshotPaths: mockSignCartScreenshotPaths,
+  signCartScreenshotPathsBatch: mockSignBatch,
 }))
 
 import { GET } from '@/app/api/swiper/pending/route'
@@ -48,9 +48,11 @@ function primeSuspensionMock(): void {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockSignCartScreenshotPaths.mockImplementation(async (paths: string[]) =>
-    paths.map((p) => `https://signed.test/${p}`)
-  )
+  mockSignBatch.mockImplementation(async (paths: string[]) => {
+    const map = new Map<string, string>()
+    for (const p of paths) map.set(p, `https://signed.test/${p}`)
+    return map
+  })
 })
 
 describe('GET /api/swiper/pending', () => {
@@ -119,6 +121,6 @@ describe('GET /api/swiper/pending', () => {
     const body = await res.json()
     expect(body[0].restaurant_name).toBe('Chipotle')
     expect(body[0].cart_screenshot_urls).toEqual([`https://signed.test/${path}`])
-    expect(mockSignCartScreenshotPaths).toHaveBeenCalledWith([path])
+    expect(mockSignBatch).toHaveBeenCalledWith([path])
   })
 })

@@ -8,10 +8,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
 
-const { mockGetUser, mockFrom, mockSignCartScreenshotPaths } = vi.hoisted(() => ({
+const { mockGetUser, mockFrom, mockSignBatch } = vi.hoisted(() => ({
   mockGetUser: vi.fn(),
   mockFrom: vi.fn(),
-  mockSignCartScreenshotPaths: vi.fn(),
+  mockSignBatch: vi.fn(),
 }))
 
 vi.mock('@/lib/supabase/server', () => ({
@@ -22,7 +22,7 @@ vi.mock('@/lib/supabase/server', () => ({
 }))
 
 vi.mock('@/lib/storage/sign-screenshots', () => ({
-  signCartScreenshotPaths: mockSignCartScreenshotPaths,
+  signCartScreenshotPathsBatch: mockSignBatch,
 }))
 
 import { GET } from '@/app/api/orders/route'
@@ -48,9 +48,11 @@ function primeSuspensionMock(): void {
 beforeEach(() => {
   vi.clearAllMocks()
   mockGetUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null })
-  mockSignCartScreenshotPaths.mockImplementation(async (paths: string[]) =>
-    paths.map((p) => `https://signed.test/${p}`)
-  )
+  mockSignBatch.mockImplementation(async (paths: string[]) => {
+    const map = new Map<string, string>()
+    for (const p of paths) map.set(p, `https://signed.test/${p}`)
+    return map
+  })
 })
 
 describe('GET /api/orders', () => {
