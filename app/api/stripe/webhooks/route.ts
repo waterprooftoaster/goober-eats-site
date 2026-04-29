@@ -163,7 +163,7 @@ async function handlePaymentIntentSucceeded(
       subtotal_cents: split.subtotalCents,
       total_cents: split.ordererPaysCents,
       guest_name: guestName,
-      guest_phone: null,
+      guest_email: null,
       guest_access_token: isGuest ? crypto.randomUUID() : null,
     })
     .select('id')

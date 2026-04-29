@@ -179,7 +179,7 @@ describe('PATCH /api/orders/[id]/accept', () => {
       subtotal_cents: 2500,
       total_cents: 1500,
       guest_name: null,
-      guest_phone: null,
+      guest_email: null,
       created_at: '2026-04-22T00:00:00Z',
       updated_at: '2026-04-22T00:00:00Z',
     }

@@ -34,7 +34,7 @@ export interface Order {
   subtotal_cents: number
   total_cents: number
   guest_name: string | null
-  guest_phone: string | null
+  guest_email: string | null
   guest_access_token: string | null
   anon_user_id: string | null
   created_at: string

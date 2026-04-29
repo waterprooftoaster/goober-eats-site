@@ -8,7 +8,7 @@ import { test, expect } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'node:crypto'
 
-const TEST_EMAIL = 'test@goobereats.test'
+const TEST_EMAIL = 'test@goobereats.edu'
 const GUEST_TOKEN = '00000000-0000-4000-8000-000000000042'
 const ORDER_SUBTOTAL_CENTS = 2500
 const ORDER_TOTAL_CENTS = 1500

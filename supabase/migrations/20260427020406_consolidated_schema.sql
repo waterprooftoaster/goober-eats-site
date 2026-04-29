@@ -210,7 +210,8 @@ CREATE TABLE IF NOT EXISTS "public"."conversations" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "order_id" "uuid" NOT NULL,
     "orderer_id" "uuid",
-    "swiper_id" "uuid" NOT NULL,
+    "swiper_id" "uuid",
+    "swiper_assigned_at" timestamp with time zone,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
 );
 
@@ -242,7 +243,7 @@ CREATE TABLE IF NOT EXISTS "public"."orders" (
     "status" "public"."order_status" DEFAULT 'open'::"public"."order_status" NOT NULL,
     "total_cents" integer NOT NULL,
     "guest_name" "text",
-    "guest_phone" "text",
+    "guest_email" "text",
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "stripe_payment_intent_id" "text",
@@ -3244,6 +3245,29 @@ VALUES
   ('cart-screenshots', 'cart-screenshots', false),
   ('completion-photos', 'completion-photos', false)
 ON CONFLICT (id) DO NOTHING;
+
+
+-- Self-delete RPC. Bypasses the GoTrue admin endpoint, which the local
+-- Supabase container rejects when called with the new sb_secret_ HS256 keys
+-- (the container is configured for ES256-signed JWTs). SECURITY DEFINER so
+-- it can reach into auth.users; gated on auth.uid() = target_id so callers
+-- can only delete their own account.
+CREATE OR REPLACE FUNCTION public.delete_user_account(target_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF auth.uid() IS NULL OR auth.uid() <> target_id THEN
+    RAISE EXCEPTION 'forbidden: can only delete own account';
+  END IF;
+  DELETE FROM auth.users WHERE id = target_id;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.delete_user_account(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.delete_user_account(uuid) TO authenticated;
 
 
 

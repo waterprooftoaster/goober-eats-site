@@ -55,3 +55,4 @@ supabase/.temp/
 /playwright-report/
 /.auth/
 /screenshots/
+/verification/

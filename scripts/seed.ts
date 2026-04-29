@@ -55,22 +55,22 @@ interface SchoolSpec {
 interface DemoUserSpec {
   email: string
   fullName: string
-  schoolSlug: 'nyu' | 'new-school'
+  schoolSlug: 'nyu' | 'tns'
   isSwiper: boolean
 }
 
 const SCHOOLS: SchoolSpec[] = [
   { slug: 'nyu', name: 'New York University' },
-  { slug: 'new-school', name: 'The New School' },
+  { slug: 'tns', name: 'The New School' },
 ]
 
-const DEMO_PASSWORD = 'GooberDemo!1'
+const DEMO_PASSWORD = 'goober123'
 
 const DEMO_USERS: DemoUserSpec[] = [
-  { email: 'nyu-orderer@goober.test', fullName: 'NYU Orderer', schoolSlug: 'nyu', isSwiper: false },
-  { email: 'nyu-swiper@goober.test', fullName: 'NYU Swiper', schoolSlug: 'nyu', isSwiper: true },
-  { email: 'new-school-orderer@goober.test', fullName: 'New School Orderer', schoolSlug: 'new-school', isSwiper: false },
-  { email: 'new-school-swiper@goober.test', fullName: 'New School Swiper', schoolSlug: 'new-school', isSwiper: true },
+  { email: 'nyuuser@test.edu', fullName: 'NYU User', schoolSlug: 'nyu', isSwiper: false },
+  { email: 'nyuswiper@test.edu', fullName: 'NYU Swiper', schoolSlug: 'nyu', isSwiper: true },
+  { email: 'tnsuser@test.edu', fullName: 'TNS User', schoolSlug: 'tns', isSwiper: false },
+  { email: 'tnsswiper@test.edu', fullName: 'TNS Swiper', schoolSlug: 'tns', isSwiper: true },
 ]
 
 // 1×1 PNG (smallest valid PNG payload — placeholder for the demo order).
@@ -108,7 +108,7 @@ async function main(): Promise<void> {
   await seedStripeAccounts(userIds)
 
   console.log('Seeding demo open NYU order…')
-  await seedDemoOrder(schoolIds.nyu, userIds['nyu-orderer@goober.test'])
+  await seedDemoOrder(schoolIds.nyu, userIds['nyuuser@test.edu'])
 
   console.log('Seed complete.')
   console.log(`  - Schools: ${SCHOOLS.map((s) => s.slug).join(', ')}`)
@@ -123,7 +123,7 @@ main().catch((err) => {
 
 // --- Helpers ---
 
-type SchoolIds = { nyu: string; 'new-school': string }
+type SchoolIds = { nyu: string; tns: string }
 
 /**
  * Upserts NYU + The New School rows; returns their IDs keyed by slug.

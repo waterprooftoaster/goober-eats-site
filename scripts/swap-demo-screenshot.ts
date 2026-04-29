@@ -31,7 +31,7 @@ async function main(): Promise<void> {
   const { data: orderer } = await supabase
     .from('profiles')
     .select('id, school_id')
-    .eq('email', 'nyu-orderer@goober.test')
+    .eq('email', 'nyuuser@test.edu')
     .single()
   if (!orderer) throw new Error('Demo orderer profile missing — run seed.ts first')
 

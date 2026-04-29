@@ -20,9 +20,9 @@ const VIEWPORTS: Array<{ name: string; width: number; height: number }> = [
 
 const VERIFICATION_DIR = path.resolve(__dirname, '../../../verification')
 
-const SWIPER_EMAIL = 'nyu-swiper@goober.test'
-const ORDERER_EMAIL = 'new-school-orderer@goober.test'
-const DEMO_PASSWORD = 'GooberDemo!1'
+const SWIPER_EMAIL = 'nyuswiper@test.edu'
+const ORDERER_EMAIL = 'tnsuser@test.edu'
+const DEMO_PASSWORD = 'goober123'
 
 const FIXTURE_TALL = '/tmp/tall-cart-mock.png'      // 390x844 ~9:19.5 (the seeded order)
 const FIXTURE_SQUARE = '/tmp/fixture-square.png'    // 1024x1024 in-band square

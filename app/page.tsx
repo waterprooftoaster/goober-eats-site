@@ -12,7 +12,6 @@ import { createClient } from '@/lib/supabase/server'
 import { getAuthenticatedUser } from '@/lib/api/helpers'
 import CoverPage from '@/components/cover-page'
 import HomeUpload from '@/components/home-upload'
-import { HomeRefresh } from './home-refresh'
 
 /**
  * Renders the cover page for anon users; the upload-cart home for authed users.
@@ -33,12 +32,7 @@ export default async function HomePage() {
       .eq('id', user.id)
       .maybeSingle()
     if (profile?.school_id) {
-      return (
-        <>
-          <HomeRefresh />
-          <HomeUpload />
-        </>
-      )
+      return <HomeUpload />
     }
   }
 
@@ -47,10 +41,5 @@ export default async function HomePage() {
     .select('id, name')
     .order('name')
 
-  return (
-    <>
-      <HomeRefresh />
-      <CoverPage schools={schools ?? []} />
-    </>
-  )
+  return <CoverPage schools={schools ?? []} />
 }

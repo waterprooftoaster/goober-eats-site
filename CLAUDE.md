@@ -36,7 +36,7 @@ Goober Eats no longer hosts menus. An orderer uploads 1+ screenshots of their **
 | Entity | Notes |
 |--------|-------|
 | `schools` | Top-level tenant (e.g. NYU, Columbia). Tenancy is enforced: an NYU student cannot order for Columbia. Every `profiles` row has `school_id`; every `orders` row has `school_id`; RLS scopes visibility by `school_id`. |
-| `profiles` | Extends Supabase auth users; has `school_id`, `phone` for SMS |
+| `profiles` | Extends Supabase auth users; has `full_name`, `email`, `school_id`, `is_swiper` |
 | `orders` | Core entity; `status` ∈ `{open, in_progress, completed, cancelled}`; `school_id` (tenant scope); `restaurant_name` (free-text, e.g. "Chipotle"); `cart_screenshot_urls` (text[], 1..N URLs into the `cart-screenshots` bucket); `total_cents` (int, user-entered total the orderer pays); `guest_access_token` (UUID, set for guest orders) |
 | `payments` | Created after Stripe PaymentIntent; tracks `platform_fee_cents` (10% of `orders.total_cents`) |
 | `stripe_accounts` | Swiper's Stripe Connect account; must have `onboarding_complete = true` to accept orders |

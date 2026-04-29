@@ -9,37 +9,44 @@
  */
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { signOut, deleteAccount } from '@/app/auth/actions'
 import { Button } from '@/components/ui/button'
 
 /**
  * Renders the account-modal action set: orders link, sign-out, and a
- * two-step delete-account confirmation dialog.
+ * two-step delete-account confirmation dialog. On successful sign-out or
+ * delete, performs a hard navigation to / so all in-memory client state
+ * (chat panels, Realtime subscriptions, useState) is replaced along with
+ * the document. Errors render inline in the still-mounted modal.
  * @returns Action controls
  * @called-by components/account-panel.tsx
  */
 export function AccountActions() {
-  const router = useRouter()
   const [confirming, setConfirming] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   async function handleSignOut() {
-    router.back()
-    await signOut()
+    setError(null)
+    const result = await signOut()
+    if ('error' in result) {
+      setError(result.error)
+      return
+    }
+    window.location.assign('/')
   }
 
   async function handleDelete() {
     setDeleting(true)
     setError(null)
-    router.back()
     const result = await deleteAccount()
-    if (result?.error) {
+    if ('error' in result) {
       setError(result.error)
       setDeleting(false)
+      return
     }
+    window.location.assign('/')
   }
 
   return (
@@ -56,6 +63,12 @@ export function AccountActions() {
       >
         Sign out
       </Button>
+
+      {error && !confirming && (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
 
       {!confirming ? (
         <Button
