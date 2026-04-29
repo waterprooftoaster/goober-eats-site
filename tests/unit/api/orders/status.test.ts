@@ -63,6 +63,11 @@ async function callPatch(status: string): Promise<Response> {
   return PATCH(req, { params: Promise.resolve({ id: ORDER_ID }) })
 }
 
+/** Absorbs the lib/api/helpers.ts:getAuthenticatedUser suspension SELECT. */
+function primeSuspensionMock(): void {
+  mockServerFrom.mockReturnValueOnce(dbResult({ data: null }))
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   mockGetUser.mockResolvedValue({ data: { user: { id: SWIPER_ID } }, error: null })
@@ -74,7 +79,9 @@ beforeEach(() => {
 describe('PATCH /api/orders/[id]/status — does not persist system messages', () => {
   it('does NOT insert a messages row on un-accept (in_progress → open) and still clears conversations.swiper_id', async () => {
     // Server client chain (in order):
+    //   0. stripe_accounts.select (suspension gate inside getAuthenticatedUser)
     //   1. orders.select (current row)
+    primeSuspensionMock()
     mockServerFrom.mockReturnValueOnce(
       dbResult({
         data: {
@@ -123,6 +130,7 @@ describe('PATCH /api/orders/[id]/status — does not persist system messages', (
   })
 
   it('returns the updated order with cart_screenshot_urls signed', async () => {
+    primeSuspensionMock()
     mockServerFrom.mockReturnValueOnce(
       dbResult({
         data: {
@@ -164,6 +172,7 @@ describe('PATCH /api/orders/[id]/status — does not persist system messages', (
   it('does NOT insert a messages row on cancel (open → cancelled)', async () => {
     // Orderer cancels their own order from open
     mockGetUser.mockResolvedValue({ data: { user: { id: ORDERER_ID } }, error: null })
+    primeSuspensionMock()
     mockServerFrom.mockReturnValueOnce(
       dbResult({
         data: {
@@ -199,6 +208,7 @@ describe('PATCH /api/orders/[id]/status — does not persist system messages', (
   })
 
   it('does NOT insert a messages row on complete (in_progress → completed)', async () => {
+    primeSuspensionMock()
     mockServerFrom
       // 1. orders.select
       .mockReturnValueOnce(

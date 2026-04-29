@@ -102,6 +102,18 @@ export async function authenticate(
 
   // Check if returning user has a profile
   if (data.user) {
+    // Suspension gate: Stripe has permanently terminated this swiper's
+    // connected account. Force-signout and refuse the sign-in.
+    const { data: stripeAccount } = await supabase
+      .from('stripe_accounts')
+      .select('suspended')
+      .eq('user_id', data.user.id)
+      .maybeSingle()
+    if ((stripeAccount as { suspended?: boolean } | null)?.suspended === true) {
+      await supabase.auth.signOut()
+      return { error: 'This account has been suspended.' }
+    }
+
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('id')

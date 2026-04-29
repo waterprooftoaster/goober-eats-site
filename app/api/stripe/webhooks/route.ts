@@ -280,8 +280,9 @@ async function handleAccountUpdated(
   account: Stripe.Account,
   supabase: ServiceClient
 ): Promise<void> {
-  if (!account.details_submitted || !account.charges_enabled) return
-
+  // Locate the row first — we want to handle suspension even when
+  // details_submitted/charges_enabled are false (Stripe disables them when it
+  // rejects an account).
   const { data: existing } = await supabase
     .from('stripe_accounts')
     .select('id, user_id')
@@ -289,7 +290,27 @@ async function handleAccountUpdated(
     .maybeSingle()
   if (!existing) return
 
-  console.log(`[webhook] account.updated: ${account.id}`)
+  // Permanent termination: Stripe sets requirements.disabled_reason to a value
+  // starting with 'rejected.' (rejected.fraud, rejected.terms_of_service,
+  // rejected.listed, rejected.other, rejected.platform_paused). At that point
+  // we have zero liability — Stripe has formally terminated the account — so
+  // we suspend ours and force-logout via the gates in helpers.ts /
+  // actions.ts / resolve-principal.ts. Other disabled_reason values
+  // (requirements.past_due, pending_verification, under_review) are temporary
+  // and do NOT trigger suspension.
+  const disabledReason = account.requirements?.disabled_reason ?? null
+  if (disabledReason && disabledReason.startsWith('rejected.')) {
+    await supabase
+      .from('stripe_accounts')
+      .update({ suspended: true })
+      .eq('stripe_account_id', account.id)
+    return
+  }
+
+  // Onboarding completion path — only when Stripe reports the account is fully
+  // ready to charge.
+  if (!account.details_submitted || !account.charges_enabled) return
+
   await supabase
     .from('stripe_accounts')
     .update({ onboarding_complete: true })

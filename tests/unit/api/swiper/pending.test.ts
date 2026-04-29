@@ -41,6 +41,11 @@ function dbResult(result: { data?: unknown; error?: unknown } = { data: null, er
 const USER_ID = '00000000-0000-4000-8000-000000000001'
 const NYU_SCHOOL_ID = '00000000-0000-4000-8000-000000000aaa'
 
+/** Absorbs the lib/api/helpers.ts:getAuthenticatedUser suspension SELECT. */
+function primeSuspensionMock(): void {
+  mockFrom.mockReturnValueOnce(dbResult({ data: null }))
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   mockSignCartScreenshotPaths.mockImplementation(async (paths: string[]) =>
@@ -57,6 +62,7 @@ describe('GET /api/swiper/pending', () => {
 
   it('returns 403 when user is not a swiper', async () => {
     mockGetUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null })
+    primeSuspensionMock()
     mockFrom.mockReturnValueOnce(
       dbResult({ data: { is_swiper: false, school_id: NYU_SCHOOL_ID } })
     )
@@ -66,6 +72,7 @@ describe('GET /api/swiper/pending', () => {
 
   it('returns empty array when swiper has no school_id', async () => {
     mockGetUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null })
+    primeSuspensionMock()
     mockFrom.mockReturnValueOnce(
       dbResult({ data: { is_swiper: true, school_id: null } })
     )
@@ -76,6 +83,7 @@ describe('GET /api/swiper/pending', () => {
 
   it('queries orders with status=open, swiper_id=null, school_id=profile.school_id', async () => {
     mockGetUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null })
+    primeSuspensionMock()
     const profileChain = dbResult({ data: { is_swiper: true, school_id: NYU_SCHOOL_ID } })
     const ordersChain = dbResult({ data: [] })
     mockFrom.mockReturnValueOnce(profileChain).mockReturnValueOnce(ordersChain)
@@ -92,6 +100,7 @@ describe('GET /api/swiper/pending', () => {
 
   it('returns order rows with cart_screenshot_urls replaced by signed URLs', async () => {
     mockGetUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null })
+    primeSuspensionMock()
     const path = 'pre-checkout/ABCdef1234/00000000-0000-4000-8000-000000000010.png'
     const orders = [
       {

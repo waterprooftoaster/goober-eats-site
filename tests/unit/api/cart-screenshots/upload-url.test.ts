@@ -15,7 +15,14 @@ const { mockGetUser, mockCreateSignedUploadUrl } = vi.hoisted(() => ({
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(async () => ({
-    auth: { getUser: mockGetUser },
+    auth: { getUser: mockGetUser, signOut: vi.fn().mockResolvedValue({ error: null }) },
+    // getAuthenticatedUser does a stripe_accounts.suspended SELECT after
+    // auth.getUser; return a no-row chain so the suspension gate passes.
+    from: () => ({
+      select: () => ({
+        eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }),
+      }),
+    }),
   })),
 }))
 

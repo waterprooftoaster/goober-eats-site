@@ -8,7 +8,7 @@
  *   Called by: Vitest
  */
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { resolvePrincipal } from '@/lib/auth/resolve-principal'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ReadonlyRequestCookies } from 'next/dist/server/web/spec-extension/adapters/request-cookies'
@@ -189,6 +189,37 @@ describe('resolvePrincipal — authed paths', () => {
       schoolId: null,
     })
   })
+
+  it('signs the user out and returns anon when stripe_accounts.suspended=true', async () => {
+    const signOut = vi.fn().mockResolvedValue({ error: null })
+    const supabase = makeSupabase({
+      user: { id: USER_ID, is_anonymous: false },
+      profile: { school_id: SCHOOL_ID },
+      stripeAccount: { onboarding_complete: true, suspended: true },
+      signOut,
+    })
+    const cookies = makeCookies([])
+
+    const principal = await resolvePrincipal(supabase, cookies)
+
+    expect(signOut).toHaveBeenCalledTimes(1)
+    expect(principal).toEqual({ kind: 'anon' })
+  })
+
+  it('does NOT sign out when stripe_accounts.suspended=false', async () => {
+    const signOut = vi.fn().mockResolvedValue({ error: null })
+    const supabase = makeSupabase({
+      user: { id: USER_ID, is_anonymous: false },
+      profile: { school_id: SCHOOL_ID },
+      stripeAccount: { onboarding_complete: true, suspended: false },
+      signOut,
+    })
+    const cookies = makeCookies([])
+
+    await resolvePrincipal(supabase, cookies)
+
+    expect(signOut).not.toHaveBeenCalled()
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -207,7 +238,8 @@ interface FakeUser {
 interface SupabaseFixture {
   user: FakeUser | null
   profile?: { school_id: string | null } | null
-  stripeAccount?: { onboarding_complete: boolean } | null
+  stripeAccount?: { onboarding_complete: boolean; suspended?: boolean } | null
+  signOut?: () => Promise<{ error: unknown }>
 }
 
 function makeSupabase(fixture: SupabaseFixture): SupabaseClient {
@@ -219,6 +251,7 @@ function makeSupabase(fixture: SupabaseFixture): SupabaseClient {
   return {
     auth: {
       getUser: () => Promise.resolve({ data: { user: fixture.user }, error: null }),
+      signOut: fixture.signOut ?? (() => Promise.resolve({ error: null })),
     },
     from: (table: string) => buildSelectChain(tableResults[table]),
   } as unknown as SupabaseClient

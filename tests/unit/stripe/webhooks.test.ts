@@ -368,6 +368,68 @@ describe('POST /api/stripe/webhooks', () => {
       )
       expect(res.status).toBe(200)
     })
+
+    it('marks stripe_accounts.suspended when requirements.disabled_reason starts with rejected.', async () => {
+      const stripeAccountsUpdate = dbResult({ data: null, error: null })
+      let updateCallCount = 0
+      mockServiceFrom.mockImplementation((table: string) => {
+        if (table === 'stripe_accounts') {
+          updateCallCount += 1
+          if (updateCallCount === 1) {
+            // first hit: lookup row
+            return dbResult({ data: { id: 'sa-1', user_id: ACCT_USER_ID } })
+          }
+          // subsequent hits: the suspension UPDATE
+          return stripeAccountsUpdate
+        }
+        return dbResult()
+      })
+
+      const res = await POST(
+        buildSignedRequest(
+          makeEvent('account.updated', {
+            id: 'acct_test_suspend',
+            details_submitted: true,
+            charges_enabled: false,
+            requirements: { disabled_reason: 'rejected.fraud' },
+          })
+        )
+      )
+      expect(res.status).toBe(200)
+      expect(stripeAccountsUpdate.update).toHaveBeenCalledWith(
+        expect.objectContaining({ suspended: true })
+      )
+    })
+
+    it('does NOT suspend on transient disabled_reason (e.g. requirements.past_due)', async () => {
+      const calls: Array<{ table: string; chain: ReturnType<typeof dbResult> }> = []
+      mockServiceFrom.mockImplementation((table: string) => {
+        const chain =
+          table === 'stripe_accounts'
+            ? dbResult({ data: { id: 'sa-1', user_id: ACCT_USER_ID } })
+            : dbResult()
+        calls.push({ table, chain })
+        return chain
+      })
+
+      const res = await POST(
+        buildSignedRequest(
+          makeEvent('account.updated', {
+            id: 'acct_test_past_due',
+            details_submitted: true,
+            charges_enabled: true,
+            requirements: { disabled_reason: 'requirements.past_due' },
+          })
+        )
+      )
+      expect(res.status).toBe(200)
+      // No call should have been made with { suspended: true } in update
+      for (const { chain } of calls) {
+        for (const updateCall of chain.update.mock.calls) {
+          expect(updateCall[0]).not.toHaveProperty('suspended')
+        }
+      }
+    })
   })
 
   describe('no-op events', () => {
