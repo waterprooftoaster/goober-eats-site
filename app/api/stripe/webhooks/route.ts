@@ -50,8 +50,6 @@ export async function POST(request: NextRequest) {
     return apiError('Invalid webhook signature', 400)
   }
 
-  console.log(`webhook received: ${event.type}`, { eventId: event.id })
-
   const supabase = createServiceClient()
 
   switch (event.type) {
@@ -70,8 +68,6 @@ export async function POST(request: NextRequest) {
 
     case 'checkout.session.completed': {
       // No-op: order creation is handled by payment_intent.succeeded.
-      const session = event.data.object as Stripe.Checkout.Session
-      console.log(`checkout.session.completed: session ${session.id} (no-op)`)
       break
     }
 
@@ -106,11 +102,6 @@ async function handlePaymentIntentSucceeded(
   supabase: ServiceClient
 ): Promise<Response | null> {
   const meta = pi.metadata
-  console.log('payment_intent.succeeded: processing', {
-    piId: pi.id,
-    isGuest: meta.is_guest === 'true',
-  })
-
   const isGuest = meta.is_guest === 'true'
   // Cap guest_name to the same 100-char ceiling as the request schema to
   // defend against metadata tampering by a compromised platform key.
@@ -143,7 +134,7 @@ async function handlePaymentIntentSucceeded(
   }
 
   if (existingPayment) {
-    console.log('payment_intent.succeeded: skip — duplicate delivery', { piId: pi.id })
+    // Stripe re-delivered an event we've already processed; idempotent ack.
     return null
   }
 
@@ -178,7 +169,11 @@ async function handlePaymentIntentSucceeded(
 
     if (!existing) {
       console.error('payment_intent.succeeded: failed to create order', orderError)
-      return apiError('Failed to create order', 500)
+      // Permanent constraint violation: Stripe retrying won't fix a row our
+      // schema would reject again. Ack with 200 so Stripe drops the event;
+      // the failure is logged for ops follow-up. Anything else (network,
+      // transient unavailability, unknown) is retryable → 500.
+      return isPermanentDbError(orderError) ? null : apiError('Failed to create order', 500)
     }
     orderId = existing.id
   } else {
@@ -197,10 +192,24 @@ async function handlePaymentIntentSucceeded(
 
   if (paymentError) {
     console.error('payment_intent.succeeded: failed to record payment', paymentError)
-    return apiError('Failed to record payment', 500)
+    return isPermanentDbError(paymentError) ? null : apiError('Failed to record payment', 500)
   }
 
   return null
+}
+
+/**
+ * Postgres error codes that signal a permanent failure: retrying with the
+ * same payload will fail again. We ack these with 200 so Stripe stops
+ * retrying; anything else falls through to 500 for transient retries.
+ * @param err - Supabase error object (has a `code` field for Postgres errors)
+ * @returns true when the error is permanent and should not be retried
+ */
+function isPermanentDbError(err: { code?: string } | null): boolean {
+  if (!err?.code) return false
+  // 23xxx = integrity-constraint violations (NOT NULL, CHECK, FK, unique).
+  // 22xxx = data-exception (invalid input format, value out of range).
+  return err.code.startsWith('23') || err.code.startsWith('22')
 }
 
 type MetadataOk = {
@@ -311,17 +320,21 @@ async function handleAccountUpdated(
   // ready to charge.
   if (!account.details_submitted || !account.charges_enabled) return
 
-  await supabase
-    .from('stripe_accounts')
-    .update({ onboarding_complete: true })
-    .eq('stripe_account_id', account.id)
+  // Mark onboarding complete and read the user's school_id concurrently —
+  // they don't depend on each other.
+  const [, profileRead] = await Promise.all([
+    supabase
+      .from('stripe_accounts')
+      .update({ onboarding_complete: true })
+      .eq('stripe_account_id', account.id),
+    supabase
+      .from('profiles')
+      .select('school_id')
+      .eq('id', existing.user_id)
+      .single(),
+  ])
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('school_id')
-    .eq('id', existing.user_id)
-    .single()
-
+  const profile = profileRead.data
   if (profile?.school_id) {
     await supabase
       .from('profiles')

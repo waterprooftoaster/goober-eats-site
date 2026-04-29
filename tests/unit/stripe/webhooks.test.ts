@@ -268,6 +268,29 @@ describe('POST /api/stripe/webhooks', () => {
       expect(res.status).toBe(200)
       expect(mockServiceFrom).toHaveBeenCalledTimes(4)
     })
+
+    it('returns 200 (no Stripe retry) when orders.insert fails with a permanent constraint error', async () => {
+      // 1. payments idempotency → none
+      // 2. orders.insert → 23514 check-constraint violation (permanent)
+      // 3. orders.select → no orphan exists (the constraint blocked the insert)
+      mockServiceFrom
+        .mockReturnValueOnce(dbResult({ data: null }))
+        .mockReturnValueOnce(dbResult({ data: null, error: { code: '23514', message: 'check constraint' } }))
+        .mockReturnValueOnce(dbResult({ data: null }))
+
+      const res = await POST(buildSignedRequest(guestPiEvent()))
+      expect(res.status).toBe(200)
+    })
+
+    it('returns 500 (retry) when orders.insert fails with a non-permanent error', async () => {
+      mockServiceFrom
+        .mockReturnValueOnce(dbResult({ data: null }))
+        .mockReturnValueOnce(dbResult({ data: null, error: { code: '08006', message: 'connection failure' } }))
+        .mockReturnValueOnce(dbResult({ data: null }))
+
+      const res = await POST(buildSignedRequest(guestPiEvent()))
+      expect(res.status).toBe(500)
+    })
   })
 
   describe('payment_intent.succeeded metadata validation', () => {
