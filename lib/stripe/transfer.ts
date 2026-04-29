@@ -64,25 +64,23 @@ export async function transferToSwiper(
       { idempotencyKey: `transfer-${orderId}` }
     )
   } catch (err) {
+    // Surface the failure on the payment row so ops can query for stuck
+    // transfers; the order itself stays in 'completed' (Stripe holds the
+    // platform balance until we retry or refund).
     const message = err instanceof Error ? err.message : 'Unknown error'
     console.error(`Transfer failed for order ${orderId}: ${message}`)
+    await service
+      .from('payments')
+      .update({ transfer_failed_at: new Date().toISOString() })
+      .eq('order_id', orderId)
     return
   }
 
-  // Mark payment as transferred and advance order to 'paid'
+  // Mark payment as transferred. The atomic .is('payee_id', null) guards
+  // against a duplicate transfer call racing with this update.
   await service
     .from('payments')
     .update({ payee_id: swiperId })
     .eq('order_id', orderId)
     .is('payee_id', null)
-
-  const { error: statusError } = await service
-    .from('orders')
-    .update({ status: 'paid' })
-    .eq('id', orderId)
-    .eq('status', 'completed')
-
-  if (statusError) {
-    console.error(`Transfer succeeded but failed to update order ${orderId} to paid: ${statusError.message}`)
-  }
 }
