@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button'
 import { Surface } from '@/components/ui/surface'
 import { Skeleton } from '@/components/ui/skeleton'
 import { BackButton } from '@/components/back-button'
+import { CartScreenshot, CartScreenshotSkeleton } from '@/components/order/cart-screenshot'
 import { createClient } from '@/lib/supabase/client'
 import { PENDING_SCREENSHOTS_KEY, PENDING_SCHOOL_ID_KEY } from '@/lib/constants'
 import { computeSplit } from '@/lib/pricing'
@@ -93,16 +94,23 @@ export default function CheckoutPage() {
     }, [])
 
     // Load signed display URLs for the cart preview.
+    // Server-side signing: at /checkout no orders row exists yet (the row is
+    // inserted by the Stripe payment_intent.succeeded webhook), so the
+    // cart-screenshots Storage RLS policy denies a client-side createSignedUrls
+    // call (no orders.cart_screenshot_urls row to scope against). The /sign
+    // endpoint uses the service client to bypass RLS.
     useEffect(() => {
         if (screenshotPaths.length === 0) return
         let cancelled = false
         void (async () => {
-            const supabase = createClient()
-            const { data, error: signErr } = await supabase.storage
-                .from('cart-screenshots')
-                .createSignedUrls(screenshotPaths, 3600)
-            if (cancelled || signErr || !data) return
-            setPreviewUrls(data.map((d) => d.signedUrl).filter((u): u is string => typeof u === 'string'))
+            const res = await fetch('/api/cart-screenshots/sign', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ paths: screenshotPaths }),
+            })
+            if (cancelled || !res.ok) return
+            const json: { signed_urls?: string[] } = await res.json().catch(() => ({}))
+            setPreviewUrls(json.signed_urls ?? [])
         })()
         return () => { cancelled = true }
     }, [screenshotPaths])
@@ -201,16 +209,14 @@ export default function CheckoutPage() {
                 >
                     <h2 className="text-sm font-medium text-muted-foreground">Your cart</h2>
                     {previewUrls.length === 0 ? (
-                        <Skeleton className="aspect-square w-full max-w-md rounded-2xl" />
+                        <CartScreenshotSkeleton />
                     ) : (
                         <div className="flex flex-col gap-3">
                             {previewUrls.map((url, idx) => (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img
+                                <CartScreenshot
                                     key={url}
                                     src={url}
                                     alt={`Cart screenshot ${idx + 1}`}
-                                    className="w-full max-w-md rounded-2xl border border-border bg-card object-contain"
                                 />
                             ))}
                         </div>
@@ -223,7 +229,8 @@ export default function CheckoutPage() {
                             Pay for your order.
                         </h1>
                         <p className="mt-2 text-sm text-muted-foreground">
-                            Once you pay, a swiper at your school picks it up.
+                            Make sure the total you enter matches the total in the screenshot!
+                            <br /> Or else a swiper most likely won't accept your order.
                         </p>
                     </header>
 

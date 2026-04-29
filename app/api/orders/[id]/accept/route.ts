@@ -12,6 +12,7 @@ import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { apiError, apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
+import { signCartScreenshotPaths } from '@/lib/storage/sign-screenshots'
 
 /**
  * Atomically claims an open order for the calling swiper after eligibility validation.
@@ -83,7 +84,7 @@ export async function PATCH(
     .eq('status', 'open')
     .is('swiper_id', null)
     .select(
-      'id, orderer_id, swiper_id, school_id, restaurant_name, cart_screenshot_urls, status, subtotal_cents, total_cents, guest_name, guest_phone, created_at, updated_at'
+      'id, orderer_id, swiper_id, school_id, restaurant_name, cart_screenshot_urls, status, subtotal_cents, total_cents, guest_name, guest_email, created_at, updated_at'
     )
     .single()
 
@@ -91,21 +92,28 @@ export async function PATCH(
     return apiError('Order was already accepted by another swiper', 409)
   }
 
+  const nowIso = new Date().toISOString()
   const { error: convError } = await service
     .from('conversations')
     .insert({
       order_id: updated.id,
       orderer_id: updated.orderer_id,
       swiper_id: user.id,
+      swiper_assigned_at: nowIso,
     })
 
-  // Handle re-acceptance after cancellation (unique violation on order_id)
+  // Handle re-acceptance after a prior un-accept (unique violation on order_id).
+  // Reset swiper_assigned_at so the new swiper's chat starts clean — messages
+  // older than this timestamp are filtered out of their view.
   if (convError?.code === '23505') {
     await service
       .from('conversations')
-      .update({ swiper_id: user.id })
+      .update({ swiper_id: user.id, swiper_assigned_at: nowIso })
       .eq('order_id', updated.id)
   }
 
-  return apiSuccess(updated)
+  const cart_screenshot_urls = await signCartScreenshotPaths(
+    (updated.cart_screenshot_urls as string[] | null) ?? []
+  )
+  return apiSuccess({ ...updated, cart_screenshot_urls })
 }

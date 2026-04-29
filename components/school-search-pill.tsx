@@ -72,6 +72,11 @@ export default function SchoolSearchPill({
     const handleNavigate = useCallback(() => {
         if (!selectedId) return
         sessionStorage.setItem(PENDING_SCHOOL_ID_KEY, selectedId)
+        // Same-tab subscribers (banner.tsx, guest-home-router.tsx) listen on the
+        // `storage` event, which the platform fires only for OTHER tabs. Dispatch
+        // a synthetic one so they swap immediately without depending on whether
+        // router.push to the same path triggers a re-render.
+        window.dispatchEvent(new StorageEvent('storage', { key: PENDING_SCHOOL_ID_KEY, newValue: selectedId }))
         router.push(ctaHref)
     }, [selectedId, ctaHref, router])
 

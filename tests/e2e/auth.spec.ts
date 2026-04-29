@@ -7,7 +7,7 @@
 import { test, expect } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 
-const SIGNUP_EMAIL = 'signup-test@goobereats.test'
+const SIGNUP_EMAIL = 'signup-test@goobereats.edu'
 const SIGNUP_PASSWORD = 'signup123456'
 const SIGNUP_FULL_NAME = 'Signup User'
 
@@ -93,7 +93,7 @@ test.describe('Authentication flow', () => {
   })
 })
 
-const FORM_SIGNUP_EMAIL = 'signup-via-form@goobereats.test'
+const FORM_SIGNUP_EMAIL = 'signup-via-form@goobereats.edu'
 const FORM_SIGNUP_PASSWORD = 'form123456'
 
 test.describe('Signup via form', () => {

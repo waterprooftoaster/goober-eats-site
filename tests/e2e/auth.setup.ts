@@ -8,7 +8,7 @@
 import { test as setup } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 
-const TEST_EMAIL = 'test@goobereats.test'
+const TEST_EMAIL = 'test@goobereats.edu'
 const TEST_PASSWORD = 'testpassword123'
 const TEST_FULL_NAME = 'Test User'
 

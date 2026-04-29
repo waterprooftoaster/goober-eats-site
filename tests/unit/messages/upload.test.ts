@@ -7,13 +7,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
 
-const { mockGetAuthenticatedUser, mockFrom, mockStorageBucket } = vi.hoisted(() => ({
+const { mockGetAuthenticatedUser, mockFrom, mockStorageBucket, mockSignCompletionPhotoPath, mockMessageInsert } = vi.hoisted(() => ({
   mockGetAuthenticatedUser: vi.fn(),
   mockFrom: vi.fn(),
   mockStorageBucket: {
     upload: vi.fn(),
     getPublicUrl: vi.fn(),
   },
+  mockSignCompletionPhotoPath: vi.fn(),
+  mockMessageInsert: vi.fn(),
 }))
 
 vi.mock('@/lib/api/helpers', async (importOriginal) => {
@@ -30,19 +32,25 @@ vi.mock('@/lib/supabase/server', () => ({
   ),
 }))
 
+vi.mock('@/lib/storage/sign-screenshots', () => ({
+  signCompletionPhotoPath: mockSignCompletionPhotoPath,
+}))
+
 import { POST } from '@/app/api/messages/[orderId]/upload/route'
 
 const VALID_ORDER_ID = '00000000-0000-4000-8000-000000000001'
 const INVALID_ORDER_ID = 'not-a-uuid'
 const MOCK_USER = { id: 'swiper-123' }
 const MOCK_CONVERSATION = { id: 'conv-456', swiper_id: MOCK_USER.id }
+const STORED_PATH_PREFIX = `${VALID_ORDER_ID}/`
+const SIGNED_URL = 'https://signed.test/completion-photos/order/uuid.jpg'
 const MOCK_MESSAGE = {
   id: 'msg-789',
   conversation_id: MOCK_CONVERSATION.id,
   sender_id: MOCK_USER.id,
   body: null,
   message_type: 'completion_photo',
-  image_url: 'https://example.com/completion-photos/order/uuid.jpg',
+  image_url: 'will-be-replaced-by-test',
   sent_at: new Date().toISOString(),
   expires_at: new Date().toISOString(),
 }
@@ -68,18 +76,22 @@ function makeParams(orderId: string) {
 
 function setupHappyPath() {
   mockStorageBucket.upload.mockResolvedValue({ data: { path: 'order/uuid.jpg' }, error: null })
-  mockStorageBucket.getPublicUrl.mockReturnValue({
-    data: { publicUrl: MOCK_MESSAGE.image_url },
-  })
+  mockSignCompletionPhotoPath.mockImplementation(async (path: string) => `https://signed.test/${path}`)
 
   const mockConvSingle = vi.fn().mockResolvedValue({ data: MOCK_CONVERSATION, error: null })
-  const mockMsgSingle = vi.fn().mockResolvedValue({ data: MOCK_MESSAGE, error: null })
+  const mockMsgSingle = vi.fn().mockImplementation(async () => ({
+    data: { ...MOCK_MESSAGE, image_url: mockMessageInsert.mock.calls[0]?.[0]?.image_url ?? null },
+    error: null,
+  }))
 
   mockFrom.mockImplementation((table: string) => {
     if (table === 'conversations') {
       return { select: () => ({ eq: () => ({ single: mockConvSingle }) }) }
     }
-    return { insert: () => ({ select: () => ({ single: mockMsgSingle }) }) }
+    return { insert: (payload: unknown) => {
+      mockMessageInsert(payload)
+      return { select: () => ({ single: mockMsgSingle }) }
+    } }
   })
 }
 
@@ -138,13 +150,23 @@ describe('POST /api/messages/[orderId]/upload', () => {
     expect(res.status).toBe(403)
   })
 
-  it('returns 201 with message on valid JPEG upload', async () => {
+  it('stores the storage path on the message row and returns a signed URL', async () => {
     mockGetAuthenticatedUser.mockResolvedValue(MOCK_USER)
     setupHappyPath()
     const res = await POST(makeRequest(VALID_ORDER_ID, makeFile('image/jpeg', 100)), makeParams(VALID_ORDER_ID))
     expect(res.status).toBe(201)
     const json = await res.json()
-    expect(json).toMatchObject({ message_type: 'completion_photo', image_url: MOCK_MESSAGE.image_url })
+
+    // The DB row gets the raw storage path (not a URL), e.g. `${orderId}/<uuid>.jpg`
+    const insertedPayload = mockMessageInsert.mock.calls[0][0] as { image_url: string }
+    expect(insertedPayload.image_url).toMatch(new RegExp(`^${STORED_PATH_PREFIX}.+\\.jpg$`))
+    expect(insertedPayload.image_url).not.toMatch(/^https?:/)
+
+    // The response carries a signed URL (so the chat can render it)
+    expect(json.image_url).toMatch(/^https:\/\/signed\.test\//)
+    expect(mockSignCompletionPhotoPath).toHaveBeenCalledWith(insertedPayload.image_url)
+    // Suppress unused warning for the constant kept for documentation
+    void SIGNED_URL
   })
 
   it('returns 201 with message on valid WebP upload', async () => {
@@ -154,5 +176,7 @@ describe('POST /api/messages/[orderId]/upload', () => {
     expect(res.status).toBe(201)
     const json = await res.json()
     expect(json).toMatchObject({ message_type: 'completion_photo' })
+    const insertedPayload = mockMessageInsert.mock.calls[0][0] as { image_url: string }
+    expect(insertedPayload.image_url).toMatch(/\.webp$/)
   })
 })

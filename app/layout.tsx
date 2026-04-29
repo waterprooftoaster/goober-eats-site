@@ -1,23 +1,21 @@
 /**
  * @file layout.tsx
  * @description Root layout. Resolves the principal once via the §10 helper,
- *   passes server-derived booleans down into Header / Banner / SwiperOrders
- *   Button. Mounts ChatPanelProvider + ChatPanel (no parallel slots — see
- *   master plan §Decisions locked + 02-routes.md ADR-1). pendingOrderCount
- *   filters by school_id (catalog GLOBAL-SWIPER-BADGE).
+ *   passes server-derived booleans into Header / Banner / BottomDock.
+ *   pendingOrderCount filters by school_id (catalog GLOBAL-SWIPER-BADGE).
  *   Called by: Next.js App Router (wraps all routes)
  * @dependencies @/lib/auth/resolve-principal, @/lib/supabase/server,
- *   @/components/{header,banner,swiper-orders-button,chat-panel}
+ *   @/components/{header,banner,chat-panel,bottom-dock}
  */
 
 import type { Metadata } from "next"
-import { cookies, headers } from "next/headers"
+import { cookies } from "next/headers"
 import "./globals.css"
 import { bricolageGrotesque, figtree } from "./fonts"
 import { Header } from "@/components/header"
 import { Banner } from "@/components/banner"
-import { SwiperOrdersButton } from "@/components/swiper-orders-button"
-import { ChatPanelProvider, ChatPanel } from "@/components/chat-panel"
+import { ChatPanelProvider } from "@/components/chat-panel"
+import { BottomDock } from "@/components/bottom-dock"
 import { createClient } from "@/lib/supabase/server"
 import { resolvePrincipal, type Principal } from "@/lib/auth/resolve-principal"
 
@@ -41,7 +39,6 @@ export default async function RootLayout({
   const supabase = await createClient()
   const cookieStore = await cookies()
   const principal = await resolvePrincipal(supabase, cookieStore)
-  const pathname = (await headers()).get('x-pathname') ?? ''
 
   const isSwiper =
     principal.kind === 'authed_swiper' || principal.kind === 'authed_swiper_pre_stripe'
@@ -58,12 +55,9 @@ export default async function RootLayout({
       <body>
         <ChatPanelProvider userId={userId}>
           <Header principal={principal} />
-          {(isLoggedIn || pathname !== '/') && (
-            <Banner isSwiper={isSwiper} isLoggedIn={isLoggedIn} />
-          )}
-          <main className="px-6">{children}</main>
-          <SwiperOrdersButton isSwiper={isSwiper} pendingOrderCount={pendingOrderCount} />
-          <ChatPanel currentUserId={userId} />
+          <Banner isSwiper={isSwiper} isLoggedIn={isLoggedIn} />
+          <main className="px-6 pb-24">{children}</main>
+          <BottomDock isSwiper={isSwiper} pendingOrderCount={pendingOrderCount} />
         </ChatPanelProvider>
       </body>
     </html>

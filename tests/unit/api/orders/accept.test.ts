@@ -8,10 +8,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
 
-const { mockGetUser, mockServerFrom, mockServiceFrom } = vi.hoisted(() => ({
+const { mockGetUser, mockServerFrom, mockServiceFrom, mockSignCartScreenshotPaths } = vi.hoisted(() => ({
   mockGetUser: vi.fn(),
   mockServerFrom: vi.fn(),
   mockServiceFrom: vi.fn(),
+  mockSignCartScreenshotPaths: vi.fn(),
 }))
 
 vi.mock('@/lib/supabase/server', () => ({
@@ -23,6 +24,10 @@ vi.mock('@/lib/supabase/server', () => ({
 
 vi.mock('@/lib/supabase/service', () => ({
   createServiceClient: vi.fn(() => ({ from: mockServiceFrom })),
+}))
+
+vi.mock('@/lib/storage/sign-screenshots', () => ({
+  signCartScreenshotPaths: mockSignCartScreenshotPaths,
 }))
 
 import { PATCH } from '@/app/api/orders/[id]/accept/route'
@@ -79,6 +84,9 @@ function setupEligibleSwiper(schoolId: string) {
 beforeEach(() => {
   vi.clearAllMocks()
   mockGetUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null })
+  mockSignCartScreenshotPaths.mockImplementation(async (paths: string[]) =>
+    paths.map((p) => `https://signed.test/${p}`)
+  )
 })
 
 describe('PATCH /api/orders/[id]/accept', () => {
@@ -171,7 +179,7 @@ describe('PATCH /api/orders/[id]/accept', () => {
       subtotal_cents: 2500,
       total_cents: 1500,
       guest_name: null,
-      guest_phone: null,
+      guest_email: null,
       created_at: '2026-04-22T00:00:00Z',
       updated_at: '2026-04-22T00:00:00Z',
     }
@@ -182,7 +190,11 @@ describe('PATCH /api/orders/[id]/accept', () => {
     const res = await callPatch()
     expect(res.status).toBe(200)
     const body = await res.json()
-    expect(body).toEqual(updatedOrder)
+    expect(body.id).toEqual(updatedOrder.id)
+    expect(body.cart_screenshot_urls).toEqual([
+      'https://signed.test/pre-checkout/ABCdef1234/00000000-0000-4000-8000-000000000010.png',
+    ])
+    expect(mockSignCartScreenshotPaths).toHaveBeenCalledWith(updatedOrder.cart_screenshot_urls)
 
     // Atomic WHERE clause: status=open + swiper_id IS NULL
     expect(updateChain.update).toHaveBeenCalledWith(

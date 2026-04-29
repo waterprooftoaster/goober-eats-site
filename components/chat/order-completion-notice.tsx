@@ -5,9 +5,10 @@
  *   skeleton until the photo INSERT arrives via realtime / refetch); swiper
  *   view shows the photo plus an "Order Completed" label.
  *   Called by: components/chat/chat-view.tsx
+ * @dependencies components/order/cart-screenshot
  */
 
-import Image from 'next/image'
+import { CartScreenshot, CartScreenshotSkeleton } from '@/components/order/cart-screenshot'
 import type { Message } from '@/lib/types/messaging'
 
 type ViewerRole = 'orderer' | 'swiper'
@@ -29,28 +30,18 @@ export function OrderCompletedView({ viewerRole, deliveryPhoto }: Props) {
   const imageUrl = deliveryPhoto?.image_url ?? null
   const label = viewerRole === 'swiper' ? 'Order Completed' : 'Your Order is Ready!'
   return (
-    <div data-testid="order-completed-view" className="flex h-full flex-col items-center justify-center gap-4 p-4">
+    <div data-testid="order-completed-view" className="flex flex-col items-center justify-center gap-4 p-4">
       {imageUrl ? (
         <a
           href={imageUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="relative block h-48 w-full"
+          className="block transition-opacity hover:opacity-90 motion-reduce:transition-none"
         >
-          <Image
-            fill
-            src={imageUrl}
-            alt="Completion photo from your swiper"
-            className="cursor-pointer rounded-lg border border-border object-cover transition-opacity hover:opacity-90 motion-reduce:transition-none"
-          />
+          <CartScreenshot src={imageUrl} alt="Completion photo from your swiper" />
         </a>
       ) : (
-        <div
-          data-testid="order-completed-loading"
-          aria-label="Loading completion photo"
-          role="status"
-          className="h-48 w-full animate-pulse rounded-lg border border-border bg-muted motion-reduce:animate-none"
-        />
+        <CartScreenshotSkeleton testid="order-completed-loading" />
       )}
       <p className="text-lg font-semibold text-foreground">{label}</p>
     </div>

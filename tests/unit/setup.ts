@@ -49,3 +49,21 @@ if (typeof Element.prototype.setPointerCapture !== 'function') {
   Element.prototype.releasePointerCapture = function () {}
   Element.prototype.hasPointerCapture = function () { return false }
 }
+
+// jsdom does not implement HTMLDialogElement.showModal/close. Minimal shim that
+// toggles the `open` attribute and fires the native `close` event so listeners
+// (e.g., parent-controlled `onClose`) behave like a real browser.
+if (typeof window !== 'undefined' && typeof HTMLDialogElement !== 'undefined') {
+  if (typeof HTMLDialogElement.prototype.showModal !== 'function') {
+    HTMLDialogElement.prototype.showModal = function showModal() {
+      this.setAttribute('open', '')
+    }
+  }
+  if (typeof HTMLDialogElement.prototype.close !== 'function') {
+    HTMLDialogElement.prototype.close = function close() {
+      if (!this.hasAttribute('open')) return
+      this.removeAttribute('open')
+      this.dispatchEvent(new Event('close'))
+    }
+  }
+}

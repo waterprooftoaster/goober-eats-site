@@ -1,10 +1,10 @@
 /**
  * @file seed.ts
- * @description Seeds the local Supabase database for the GrubHub-cart-screenshot
- *   model: schools (NYU + Columbia), demo profiles for orderer/swiper roles in
- *   each school, Stripe Connect onboarding rows for both swipers, and one
- *   open NYU "Chipotle" demo order with two placeholder PNG screenshots in
- *   the cart-screenshots bucket. Idempotent — safe to re-run.
+ * @description Seeds the Supabase database for the GrubHub-cart-screenshot
+ *   model: schools (NYU + The New School), demo profiles for orderer/swiper
+ *   roles in each school, Stripe Connect onboarding rows for both swipers,
+ *   and one open NYU "Chipotle" demo order with two placeholder PNG
+ *   screenshots in the cart-screenshots bucket. Idempotent — safe to re-run.
  *   Called by: npx tsx scripts/seed.ts
  * @dependencies @supabase/supabase-js
  */
@@ -55,22 +55,22 @@ interface SchoolSpec {
 interface DemoUserSpec {
   email: string
   fullName: string
-  schoolSlug: 'nyu' | 'columbia'
+  schoolSlug: 'nyu' | 'tns'
   isSwiper: boolean
 }
 
 const SCHOOLS: SchoolSpec[] = [
   { slug: 'nyu', name: 'New York University' },
-  { slug: 'columbia', name: 'Columbia University' },
+  { slug: 'tns', name: 'The New School' },
 ]
 
-const DEMO_PASSWORD = 'GooberDemo!1'
+const DEMO_PASSWORD = 'goober123'
 
 const DEMO_USERS: DemoUserSpec[] = [
-  { email: 'nyu-orderer@goober.test', fullName: 'NYU Orderer', schoolSlug: 'nyu', isSwiper: false },
-  { email: 'nyu-swiper@goober.test', fullName: 'NYU Swiper', schoolSlug: 'nyu', isSwiper: true },
-  { email: 'columbia-orderer@goober.test', fullName: 'Columbia Orderer', schoolSlug: 'columbia', isSwiper: false },
-  { email: 'columbia-swiper@goober.test', fullName: 'Columbia Swiper', schoolSlug: 'columbia', isSwiper: true },
+  { email: 'nyuuser@test.edu', fullName: 'NYU User', schoolSlug: 'nyu', isSwiper: false },
+  { email: 'nyuswiper@test.edu', fullName: 'NYU Swiper', schoolSlug: 'nyu', isSwiper: true },
+  { email: 'tnsuser@test.edu', fullName: 'TNS User', schoolSlug: 'tns', isSwiper: false },
+  { email: 'tnsswiper@test.edu', fullName: 'TNS Swiper', schoolSlug: 'tns', isSwiper: true },
 ]
 
 // 1×1 PNG (smallest valid PNG payload — placeholder for the demo order).
@@ -89,8 +89,17 @@ const PLACEHOLDER_PNG = Buffer.from(
  * @returns Resolves when seed completes; logs a summary
  */
 async function main(): Promise<void> {
+  const schoolsOnly = process.env.SEED_SCHOOLS_ONLY === '1'
+
   console.log('Seeding schools…')
   const schoolIds = await seedSchools()
+
+  if (schoolsOnly) {
+    console.log('SEED_SCHOOLS_ONLY=1 — skipping demo users, stripe_accounts, demo order.')
+    console.log('Seed complete.')
+    console.log(`  - Schools: ${SCHOOLS.map((s) => s.slug).join(', ')}`)
+    return
+  }
 
   console.log('Seeding demo users + profiles…')
   const userIds = await seedUsers(schoolIds)
@@ -99,7 +108,7 @@ async function main(): Promise<void> {
   await seedStripeAccounts(userIds)
 
   console.log('Seeding demo open NYU order…')
-  await seedDemoOrder(schoolIds.nyu, userIds['nyu-orderer@goober.test'])
+  await seedDemoOrder(schoolIds.nyu, userIds['nyuuser@test.edu'])
 
   console.log('Seed complete.')
   console.log(`  - Schools: ${SCHOOLS.map((s) => s.slug).join(', ')}`)
@@ -114,10 +123,10 @@ main().catch((err) => {
 
 // --- Helpers ---
 
-type SchoolIds = { nyu: string; columbia: string }
+type SchoolIds = { nyu: string; tns: string }
 
 /**
- * Upserts NYU + Columbia rows; returns their IDs keyed by slug.
+ * Upserts NYU + The New School rows; returns their IDs keyed by slug.
  * @returns Map of school slug → UUID
  */
 async function seedSchools(): Promise<SchoolIds> {
@@ -166,27 +175,55 @@ async function seedUsers(schoolIds: SchoolIds): Promise<Record<string, string>> 
 
 /**
  * Returns the existing auth.users id for the email, creating the user if absent.
+ * Uses the public /auth/v1/signup endpoint instead of supabase.auth.admin.* —
+ * the local GoTrue container is configured for ES256-signed JWTs and rejects
+ * the new sb_secret_ HS256 keys at admin endpoints, but accepts them at the
+ * public signup endpoint where they're forwarded only as the apikey header.
  * @param email - Login email for the demo user
  * @param fullName - Display name
  * @returns Auth user UUID
  */
 async function getOrCreateAuthUser(email: string, fullName: string): Promise<string> {
-  // listUsers paginates; for the small demo set the first page is sufficient.
-  const { data: list, error: listErr } = await supabase.auth.admin.listUsers({ page: 1, perPage: 200 })
-  if (listErr) throw new Error(`auth.admin.listUsers failed: ${listErr.message}`)
-  const found = list.users.find((u) => u.email === email)
-  if (found) return found.id
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
+  if (!anonKey) throw new Error('Missing NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY')
 
-  const { data: created, error: createErr } = await supabase.auth.admin.createUser({
-    email,
-    password: DEMO_PASSWORD,
-    email_confirm: true,
-    user_metadata: { full_name: fullName },
+  // Fast path: if a profile already exists with this email, reuse its id.
+  const { data: existingProfile } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('email', email)
+    .maybeSingle()
+  if (existingProfile?.id) return existingProfile.id
+
+  // Try signup; on "already registered" fall back to password sign-in.
+  const signupRes = await fetch(`${supabaseUrl}/auth/v1/signup`, {
+    method: 'POST',
+    headers: { apikey: anonKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email,
+      password: DEMO_PASSWORD,
+      data: { full_name: fullName },
+    }),
   })
-  if (createErr || !created.user) {
-    throw new Error(`auth.admin.createUser failed for ${email}: ${createErr?.message}`)
+  if (signupRes.ok) {
+    const json = (await signupRes.json()) as { user?: { id: string } }
+    if (json.user?.id) return json.user.id
   }
-  return created.user.id
+
+  const signinRes = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+    method: 'POST',
+    headers: { apikey: anonKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password: DEMO_PASSWORD }),
+  })
+  if (!signinRes.ok) {
+    const body = await signinRes.text()
+    throw new Error(`signup+signin failed for ${email}: ${body}`)
+  }
+  const signinJson = (await signinRes.json()) as { user?: { id: string } }
+  if (!signinJson.user?.id) {
+    throw new Error(`signin returned no user for ${email}`)
+  }
+  return signinJson.user.id
 }
 
 /**

@@ -2,120 +2,39 @@
 
 /**
  * @file actions.ts
- * @description Server actions for authentication: sign in, sign up, sign out, Google OAuth,
- *   unified authenticate flow, onboarding completion, and account deletion.
+ * @description Server actions for authentication: unified authenticate flow,
+ *   sign-out, onboarding completion, and account deletion.
  *   Called by: app/auth/login/login-form.tsx, app/account/account-actions.tsx
- * @dependencies lib/supabase/server.ts, lib/supabase/admin.ts
+ * @dependencies lib/supabase/server.ts
  */
 
 import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
-import { redirect } from 'next/navigation'
-import { headers } from 'next/headers'
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const EDU_EMAIL_REGEX = /\.edu$/i
 const FULL_NAME_REGEX = /^[\p{L} \-']+$/u
 
 type ActionState =
   | { error: string }
   | { needsOnboarding: true; email: string }
+  | { success: true }
   | null
 
 /**
- * Signs in an existing user with email and password, then redirects to home.
- * @param _prevState - Previous action state (unused)
- * @param formData - Form data containing email and password fields
- * @returns Error state on failure; redirects to / on success
- * @called-by app/auth/login/login-form.tsx
- */
-export async function signIn(
-  _prevState: ActionState,
-  formData: FormData,
-): Promise<ActionState> {
-  const email = formData.get('email') as string
-  const password = formData.get('password') as string
-
-  if (!email || !EMAIL_REGEX.test(email)) {
-    return { error: 'Please enter a valid email address.' }
-  }
-  if (!password) {
-    return { error: 'Password is required.' }
-  }
-
-  const supabase = await createClient()
-  const { error } = await supabase.auth.signInWithPassword({ email, password })
-
-  if (error) {
-    return { error: error.message }
-  }
-
-  redirect('/')
-}
-
-/**
- * Registers a new user with email and password, then redirects to home.
- * @param _prevState - Previous action state (unused)
- * @param formData - Form data containing email and password fields
- * @returns Error state on failure; redirects to / on success
- * @called-by app/auth/login/login-form.tsx
- */
-export async function signUp(
-  _prevState: ActionState,
-  formData: FormData,
-): Promise<ActionState> {
-  const email = formData.get('email') as string
-  const password = formData.get('password') as string
-
-  if (!email || !EMAIL_REGEX.test(email)) {
-    return { error: 'Please enter a valid email address.' }
-  }
-  if (!password || password.length < 6) {
-    return { error: 'Password must be at least 6 characters.' }
-  }
-
-  const supabase = await createClient()
-  const { error } = await supabase.auth.signUp({ email, password })
-
-  if (error) {
-    return { error: error.message }
-  }
-
-  redirect('/')
-}
-
-/**
- * Signs out the current user and redirects to home.
+ * Signs out the current user.
+ * @returns { success: true } on success; { error } if Supabase signOut fails.
+ *   The client triggers a hard reload to / so all in-memory state (chat
+ *   panels, Realtime subs, useState) is replaced along with the document.
  * @called-by app/account/account-actions.tsx
  */
-export async function signOut() {
+export async function signOut(): Promise<{ success: true } | { error: string }> {
   const supabase = await createClient()
-  await supabase.auth.signOut()
-  redirect('/')
-}
-
-/**
- * Initiates Google OAuth sign-in and redirects to the provider's auth URL.
- * @called-by app/auth/login/login-form.tsx
- */
-export async function signInWithGoogle() {
-  const headersList = await headers()
-  const origin =
-    headersList.get('origin') ??
-    `${headersList.get('x-forwarded-proto') ?? 'http'}://${headersList.get('host')}`
-
-  const supabase = await createClient()
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo: `${origin}/auth/callback`,
-    },
-  })
-
-  if (error || !data.url) {
-    redirect('/auth/login?error=Could+not+initiate+Google+sign-in')
+  const { error } = await supabase.auth.signOut()
+  if (error) {
+    console.error('signOut: supabase.auth.signOut failed', error)
+    return { error: error.message }
   }
-
-  redirect(data.url)
+  return { success: true }
 }
 
 /**
@@ -139,6 +58,9 @@ export async function authenticate(
 
   if (!email || !EMAIL_REGEX.test(email)) {
     return { error: 'Please enter a valid email address.' }
+  }
+  if (!EDU_EMAIL_REGEX.test(email)) {
+    return { error: 'Please use a school email ending in .edu.' }
   }
   if (!password) {
     return { error: 'Password is required.' }
@@ -194,7 +116,7 @@ export async function authenticate(
     }
   }
 
-  redirect('/')
+  return { success: true }
 }
 
 /**
@@ -245,15 +167,20 @@ export async function completeOnboarding(
     return { error: 'Could not create profile. Please try again.' }
   }
 
-  redirect('/')
+  return { success: true }
 }
 
 /**
- * Permanently deletes the authenticated user's account via the admin client, then signs out.
- * @returns Error object on failure; redirects to / on success
+ * Permanently deletes the authenticated user's account via the
+ * `public.delete_user_account` SECURITY DEFINER RPC (gated on
+ * auth.uid() = target_id), then signs out. Bypasses the GoTrue admin
+ * endpoint, which the local Supabase container rejects when called with
+ * the new sb_secret_ HS256 keys.
+ * @returns { success: true } on success; { error } on failure. The client
+ *   triggers a hard reload on success.
  * @called-by app/account/account-actions.tsx
  */
-export async function deleteAccount(): Promise<{ error: string }> {
+export async function deleteAccount(): Promise<{ success: true } | { error: string }> {
   const supabase = await createClient()
   const {
     data: { user },
@@ -263,13 +190,17 @@ export async function deleteAccount(): Promise<{ error: string }> {
     return { error: 'Not authenticated.' }
   }
 
-  const adminClient = createAdminClient()
-  const { error } = await adminClient.auth.admin.deleteUser(user.id)
+  const { error } = await supabase.rpc('delete_user_account', { target_id: user.id })
 
   if (error) {
+    console.error('deleteAccount: rpc delete_user_account failed', error)
     return { error: error.message }
   }
 
-  await supabase.auth.signOut()
-  redirect('/')
+  const { error: signOutError } = await supabase.auth.signOut()
+  if (signOutError) {
+    console.error('deleteAccount: supabase.auth.signOut failed after delete', signOutError)
+    // The user row is already gone — client will hard-reload anyway.
+  }
+  return { success: true }
 }

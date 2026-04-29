@@ -8,7 +8,7 @@ import { test, expect } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'node:crypto'
 
-const TEST_EMAIL = 'test@goobereats.test'
+const TEST_EMAIL = 'test@goobereats.edu'
 const FAKE_UUID = '00000000-0000-4000-8000-000000000099'
 // Subtotal $25 → orderer pays $15 (60%), platform $2.50, swiper $12.50.
 const ORDER_SUBTOTAL_CENTS = 2500
@@ -179,7 +179,7 @@ test.describe('Order Lifecycle', () => {
         total_cents: ORDER_TOTAL_CENTS,
         status: 'open',
         guest_name: 'Un-accept Test',
-        guest_phone: '+15005550006',
+        guest_email: 'unaccept-test@example.com',
       })
       .select('id')
       .single()

@@ -9,7 +9,7 @@ import { test, expect } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 import Stripe from 'stripe'
 
-const TEST_EMAIL = 'test@goobereats.test'
+const TEST_EMAIL = 'test@goobereats.edu'
 
 let supabase: ReturnType<typeof createClient>
 let stripe: InstanceType<typeof Stripe>

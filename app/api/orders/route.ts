@@ -8,6 +8,7 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { apiError, apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
+import { signCartScreenshotPaths } from '@/lib/storage/sign-screenshots'
 
 /**
  * Lists orders for the authenticated user, with optional role and status filters.
@@ -26,7 +27,7 @@ export async function GET(request: NextRequest) {
   const offset = Math.max(parseInt(searchParams.get('offset') ?? '0', 10) || 0, 0)
 
   let query = supabase.from('orders').select(
-    'id, orderer_id, swiper_id, school_id, restaurant_name, cart_screenshot_urls, status, subtotal_cents, total_cents, guest_name, guest_phone, created_at, updated_at'
+    'id, orderer_id, swiper_id, school_id, restaurant_name, cart_screenshot_urls, status, subtotal_cents, total_cents, guest_name, guest_email, created_at, updated_at'
   )
 
   if (role === 'orderer') {
@@ -44,5 +45,14 @@ export async function GET(request: NextRequest) {
     .range(offset, offset + limit - 1)
 
   if (error) return apiError('Failed to fetch orders', 500)
-  return apiSuccess(orders)
+
+  const signed = await Promise.all(
+    (orders ?? []).map(async (row) => ({
+      ...row,
+      cart_screenshot_urls: await signCartScreenshotPaths(
+        (row.cart_screenshot_urls as string[] | null) ?? []
+      ),
+    }))
+  )
+  return apiSuccess(signed)
 }

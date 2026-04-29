@@ -90,9 +90,29 @@ export function LoginForm({
     }
   }, [initialOnboarding, needsOnboarding])
 
+  // Hard-reload to / on sign-in / sign-up / onboarding success. The server
+  // actions previously called redirect('/'), but a soft redirect leaves
+  // client-only state (e.g. ChatPanelProvider) tied to the prior session.
+  // A fresh document load resets everything in one step.
+  useEffect(() => {
+    if (authState && 'success' in authState) {
+      window.location.assign('/')
+    }
+  }, [authState])
+
+  useEffect(() => {
+    if (onboardingState && 'success' in onboardingState) {
+      window.location.assign('/')
+    }
+  }, [onboardingState])
+
   async function handleContinue() {
     if (!email || !EMAIL_REGEX.test(email)) {
       setEmailError('Please enter a valid email address.')
+      return
+    }
+    if (!/\.edu$/i.test(email)) {
+      setEmailError('Please use a school email ending in .edu.')
       return
     }
     setEmailError('')

@@ -235,6 +235,99 @@ describe('useMessages (S07 registry + subscribe-before-fetch + temp_id)', () => 
     expect(result.current.messages.filter((m) => m.id === existingMsg.id)).toHaveLength(1)
   })
 
+  it('upgrades a same-id message when refetch delivers a signed image_url over a realtime path', async () => {
+    // Realtime delivers the completion_photo first (raw storage path stored in
+    // messages.image_url). The subsequent refetch (triggered by status flip
+    // to "completed") arrives with the same id but a signed URL — that
+    // signed URL must overwrite the raw path so OrderCompletedView can render.
+    const { result } = renderHook(() => useMessages({ orderId: ORDER_ID }))
+    await waitFor(() => expect(result.current.conversation).not.toBeNull())
+
+    const PHOTO_ID = 'msg-photo-1'
+    const realtimeCallback = mockChannel.on.mock.calls[0][2] as (p: { new: Message }) => void
+
+    // Step 1: realtime echo (raw path)
+    act(() => {
+      realtimeCallback({
+        new: makeMessage({
+          id: PHOTO_ID,
+          message_type: 'completion_photo',
+          body: null,
+          image_url: 'order-id/uuid.jpg',
+        }),
+      })
+    })
+    expect(result.current.messages.find((m) => m.id === PHOTO_ID)?.image_url).toBe('order-id/uuid.jpg')
+
+    // Step 2: refetch (signed URL, same id) — call refetch directly to mimic
+    // the chat-view orderStatus="completed" effect.
+    mockFetch.mockReturnValueOnce(
+      mockJsonOk({
+        conversation: MOCK_CONVERSATION,
+        messages: [
+          makeMessage({
+            id: PHOTO_ID,
+            message_type: 'completion_photo',
+            body: null,
+            image_url: 'https://signed.test/order-id/uuid.jpg',
+          }),
+        ],
+      })
+    )
+    await act(async () => {
+      await result.current.refetch()
+    })
+
+    const upgraded = result.current.messages.find((m) => m.id === PHOTO_ID)
+    expect(upgraded?.image_url).toBe('https://signed.test/order-id/uuid.jpg')
+  })
+
+  it('keeps an existing signed image_url when a later realtime delivers the raw path', async () => {
+    // Inverse race: the API refetch resolves first (signed URL), then the
+    // realtime echo arrives with the same id but the raw path. The signed
+    // URL must remain — we never downgrade.
+    const { result } = renderHook(() => useMessages({ orderId: ORDER_ID }))
+    await waitFor(() => expect(result.current.conversation).not.toBeNull())
+
+    const PHOTO_ID = 'msg-photo-2'
+
+    mockFetch.mockReturnValueOnce(
+      mockJsonOk({
+        conversation: MOCK_CONVERSATION,
+        messages: [
+          makeMessage({
+            id: PHOTO_ID,
+            message_type: 'completion_photo',
+            body: null,
+            image_url: 'https://signed.test/order-id/uuid.jpg',
+          }),
+        ],
+      })
+    )
+    await act(async () => {
+      await result.current.refetch()
+    })
+    expect(result.current.messages.find((m) => m.id === PHOTO_ID)?.image_url).toBe(
+      'https://signed.test/order-id/uuid.jpg'
+    )
+
+    const realtimeCallback = mockChannel.on.mock.calls[0][2] as (p: { new: Message }) => void
+    act(() => {
+      realtimeCallback({
+        new: makeMessage({
+          id: PHOTO_ID,
+          message_type: 'completion_photo',
+          body: null,
+          image_url: 'order-id/uuid.jpg',
+        }),
+      })
+    })
+
+    expect(result.current.messages.find((m) => m.id === PHOTO_ID)?.image_url).toBe(
+      'https://signed.test/order-id/uuid.jpg'
+    )
+  })
+
   it('replaces an optimistic entry when realtime arrives with matching temp_id', async () => {
     const { result } = renderHook(() => useMessages({ orderId: ORDER_ID }))
     await waitFor(() => expect(result.current.conversation).not.toBeNull())

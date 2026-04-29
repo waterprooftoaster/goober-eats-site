@@ -8,8 +8,9 @@ export interface Conversation {
   id: string
   order_id: string
   orderer_id: string | null
-  swiper_id: string
+  swiper_id: string | null
   swiper_full_name: string | null
+  swiper_assigned_at: string | null
   created_at: string
 }
 

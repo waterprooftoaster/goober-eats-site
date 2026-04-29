@@ -10,10 +10,12 @@
  * @dependencies @/components/ui/surface, @/components/ui/button
  */
 
+import { useSyncExternalStore } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Surface } from '@/components/ui/surface'
 import { Button } from '@/components/ui/button'
+import { PENDING_SCHOOL_ID_KEY } from '@/lib/constants'
 
 interface BannerProps {
   /** Hides the banner for swipers (recruitment is irrelevant once enrolled). */
@@ -23,15 +25,27 @@ interface BannerProps {
 }
 
 /**
- * Renders the recruitment banner; returns null off the home route or for swipers.
+ * Renders the recruitment banner. Visible only on `/`, only to non-swipers, and
+ * for guests only when a school has been picked (PENDING_SCHOOL_ID_KEY) — so
+ * cover-view visitors don't see it before they engage.
  * @param isSwiper - Whether the current viewer is already a swiper
  * @param isLoggedIn - Whether the viewer has an authenticated session
- * @returns Banner JSX, or null if the route/role guards apply
+ * @returns Banner JSX, or null if the route/role/state guards apply
  * @called-by app/layout.tsx
  */
 export function Banner({ isSwiper, isLoggedIn }: BannerProps) {
   const pathname = usePathname()
+  const guestHasSchool = useSyncExternalStore(
+    subscribePendingSchool,
+    getPendingSchoolSnapshot,
+    getPendingSchoolServerSnapshot,
+  )
+
   if (isSwiper || pathname !== '/') return null
+  // Guests on / start on the cover view (no school selected) — hide the banner
+  // there. After they pick a school, sessionStorage flips and the upload view
+  // renders the banner.
+  if (!isLoggedIn && !guestHasSchool) return null
 
   return (
     <Surface
@@ -53,4 +67,26 @@ export function Banner({ isSwiper, isLoggedIn }: BannerProps) {
       </Button>
     </Surface>
   )
+}
+
+// --- Helpers ---
+
+/**
+ * useSyncExternalStore subscriber for sessionStorage. We listen to the cross-tab
+ * `storage` event; same-tab updates are picked up on the next render-trigger
+ * (the store snapshot is recomputed each render).
+ */
+function subscribePendingSchool(callback: () => void): () => void {
+  if (typeof window === 'undefined') return () => {}
+  window.addEventListener('storage', callback)
+  return () => window.removeEventListener('storage', callback)
+}
+
+function getPendingSchoolSnapshot(): boolean {
+  if (typeof window === 'undefined') return false
+  return Boolean(window.sessionStorage.getItem(PENDING_SCHOOL_ID_KEY))
+}
+
+function getPendingSchoolServerSnapshot(): boolean {
+  return false
 }
