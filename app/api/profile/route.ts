@@ -49,32 +49,38 @@ export async function PATCH(request: NextRequest) {
   }
 
   if (is_swiper === true) {
-    // Fetch current profile to get effective school_id
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('school_id')
-      .eq('id', user.id)
-      .maybeSingle()
+    // The Stripe-onboarding gate doesn't depend on the school resolution, so
+    // kick it off in parallel with the profile fetch. If the body already
+    // supplies school_id we can skip the profile lookup entirely.
+    const profilePromise = school_id
+      ? Promise.resolve(null)
+      : supabase
+          .from('profiles')
+          .select('school_id')
+          .eq('id', user.id)
+          .maybeSingle()
+    const stripePromise = supabase
+      .from('stripe_accounts')
+      .select('onboarding_complete')
+      .eq('user_id', user.id)
+      .single()
+    const [profileResult, { data: stripeAccount }] = await Promise.all([
+      profilePromise,
+      stripePromise,
+    ])
 
-    const effectiveSchoolId = school_id ?? profile?.school_id
+    const effectiveSchoolId = school_id ?? (profileResult?.data as { school_id?: string } | null)?.school_id
     if (!effectiveSchoolId) {
       return apiError('School must be selected before activating swiper status', 422)
     }
 
-    // Verify the school actually exists (gives a clear error vs generic FK failure)
+    // School existence check needs effectiveSchoolId; runs after the parallel pair.
     const { data: school } = await supabase
       .from('schools')
       .select('id')
       .eq('id', effectiveSchoolId)
       .single()
     if (!school) return apiError('School not found', 422)
-
-    // Check Stripe onboarding
-    const { data: stripeAccount } = await supabase
-      .from('stripe_accounts')
-      .select('onboarding_complete')
-      .eq('user_id', user.id)
-      .single()
 
     if (!stripeAccount?.onboarding_complete) {
       return apiError(

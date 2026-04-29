@@ -151,7 +151,11 @@ describe('PATCH /api/orders/[id]/accept', () => {
           },
         })
       )
+      // stripe_accounts + profiles run concurrently via Promise.all; mock both.
       .mockReturnValueOnce(dbResult({ data: { onboarding_complete: false } }))
+      .mockReturnValueOnce(
+        dbResult({ data: { is_swiper: true, school_id: NYU_SCHOOL_ID, full_name: 'Alex' } })
+      )
     const res = await callPatch()
     expect(res.status).toBe(403)
   })

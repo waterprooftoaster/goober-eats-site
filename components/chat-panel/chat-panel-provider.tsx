@@ -121,6 +121,19 @@ export function ChatPanelProvider({ userId, children }: Props) {
     })
   }, [])
 
+  // Cache the auth.getUser → is_anonymous resolution so loadActiveOrders and
+  // the realtime subscribe effect share a single round trip per mount (instead
+  // of issuing one getUser each).
+  const isAnonPromiseRef = useRef<Promise<boolean> | null>(null)
+  const resolveIsAnonymous = useCallback((supabase: ReturnType<typeof createClient>) => {
+    if (!isAnonPromiseRef.current) {
+      isAnonPromiseRef.current = supabase.auth.getUser().then(
+        ({ data: { user } }) => user?.is_anonymous ?? false
+      )
+    }
+    return isAnonPromiseRef.current
+  }, [])
+
   // --- Auto-open active orders ---
   // The loadActiveOrders query LEFT JOINs conversations(id) so each panel is
   // opened with a pre-resolved conversationId (B2 pairing — no per-panel
@@ -128,8 +141,7 @@ export function ChatPanelProvider({ userId, children }: Props) {
   const loadActiveOrders = useCallback(async () => {
     if (!userId) return
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    const isAnon = user?.is_anonymous ?? false
+    const isAnon = await resolveIsAnonymous(supabase)
 
     const query = supabase
       .from('orders')
@@ -150,7 +162,7 @@ export function ChatPanelProvider({ userId, children }: Props) {
         : conversationsArray?.id ?? null
       openPanel(order.id, order.status as OrderStatus, restaurantName, conversationId)
     }
-  }, [userId, openPanel])
+  }, [userId, openPanel, resolveIsAnonymous])
 
   useEffect(() => {
     if (!userId) return
@@ -175,8 +187,7 @@ export function ChatPanelProvider({ userId, children }: Props) {
 
     async function subscribe() {
       const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      const isAnon = user?.is_anonymous ?? false
+      const isAnon = await resolveIsAnonymous(supabase)
       const filterField = isAnon ? 'anon_user_id' : 'orderer_id'
 
       try {
@@ -223,7 +234,7 @@ export function ChatPanelProvider({ userId, children }: Props) {
     return () => {
       handle?.unsubscribe()
     }
-  }, [userId, updateOrderStatus, openPanel])
+  }, [userId, updateOrderStatus, openPanel, resolveIsAnonymous])
 
   return (
     <ChatPanelContext.Provider
