@@ -28,7 +28,7 @@ interface Props {
  * @param initialStatus - Current order status passed into the chat panel
  * @param eateryName - Eatery name displayed in the chat panel header
  * @param schoolId - Order's school_id; re-seeded into sessionStorage so HomeUpload's guard accepts the anon visitor
- * @returns Spinner while bootstrapping; redirects to /order/new when done
+ * @returns Spinner while bootstrapping; redirects to / when done
  * @called-by app/order/[orderId]/page.tsx
  */
 export function GuestPanelOpener({ orderId, initialStatus, eateryName, schoolId }: Props) {
@@ -59,7 +59,7 @@ export function GuestPanelOpener({ orderId, initialStatus, eateryName, schoolId 
       // HomeUpload's school-resolution guard doesn't bounce the anon visitor.
       sessionStorage.setItem(PENDING_SCHOOL_ID_KEY, schoolId)
       openPanel(orderId, initialStatus, eateryName)
-      router.replace('/order/new')
+      router.replace('/')
     }
 
     initAndOpen()

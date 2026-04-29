@@ -4,21 +4,19 @@
  * @file pending-orders-list.tsx
  * @description Swiper queue: open-order list + detail modal + accept action.
  *   Accept state machine is "soft-disable, not optimistic" (master plan §10):
- *   200 → openPanel + green banner + remove row; 409 → red banner + remove
- *   row; 403/5xx → inline modal error, modal stays open. Detail surface uses
- *   the S03 <Modal> primitive (focus-trap + Escape + return-focus).
+ *   200 → hard redirect to /current-orders; 409 → red banner + remove row;
+ *   403/5xx → inline modal error, modal stays open. Detail surface uses the
+ *   S03 <Modal> primitive (focus-trap + Escape + return-focus).
  *   Called by: app/swiper/orders/page.tsx
- * @dependencies components/chat-panel, components/order/order-card,
- *   components/order/cart-screenshot, components/ui/{modal,button,surface}
+ * @dependencies components/order/order-card, components/order/cart-screenshot,
+ *   components/ui/{modal,button}
  */
 
 import { useState } from 'react'
-import { useChatPanel } from '@/components/chat-panel'
 import { OrderCard, formatDollars } from '@/components/order/order-card'
 import { CartScreenshot } from '@/components/order/cart-screenshot'
 import { Modal, ModalContent, ModalTitle, ModalDescription } from '@/components/ui/modal'
 import { Button } from '@/components/ui/button'
-import { Surface } from '@/components/ui/surface'
 import { computeSplit } from '@/lib/pricing'
 
 export type PendingOrder = {
@@ -45,8 +43,6 @@ export function PendingOrdersList({ orders: initialOrders }: Props) {
   const [selectedOrder, setSelectedOrder] = useState<PendingOrder | null>(null)
   const [accepting, setAccepting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [successMsg, setSuccessMsg] = useState<string | null>(null)
-  const { openPanel } = useChatPanel()
 
   async function handleAccept() {
     if (!selectedOrder || accepting) return
@@ -55,13 +51,10 @@ export function PendingOrdersList({ orders: initialOrders }: Props) {
     try {
       const res = await fetch(`/api/orders/${selectedOrder.id}/accept`, { method: 'PATCH' })
       if (res.ok) {
-        const acceptedId = selectedOrder.id
-        const acceptedRestaurant = selectedOrder.restaurant_name
-        setOrders((prev) => prev.filter((o) => o.id !== acceptedId))
-        setSelectedOrder(null)
-        openPanel(acceptedId, 'in_progress')
-        setSuccessMsg(`Order accepted! Head to ${acceptedRestaurant} to start filling it.`)
-        setTimeout(() => { setSuccessMsg(null) }, 5000)
+        // Hard redirect (not router.push) so the destination page renders
+        // from a fresh document load — no race with stale queue state.
+        window.location.assign('/current-orders')
+        return
       } else if (res.status === 409) {
         // Race: another swiper claimed it first. Drop the row + close the modal.
         setOrders((prev) => prev.filter((o) => o.id !== selectedOrder.id))
@@ -104,18 +97,6 @@ export function PendingOrdersList({ orders: initialOrders }: Props) {
 
   return (
     <div data-testid="pending-orders-list">
-      {successMsg && (
-        <Surface
-          tone="subtle"
-          padding="sm"
-          data-testid="swiper-accept-success-banner"
-          role="status"
-          className="mb-6 border border-primary/40 bg-primary/10 text-sm"
-        >
-          {successMsg}
-        </Surface>
-      )}
-
       {error && !selectedOrder && (
         <p
           role="alert"

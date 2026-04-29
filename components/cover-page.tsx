@@ -68,7 +68,7 @@ function HeroSection({ schools }: { schools: School[] }) {
                 <div className="max-w-[360px]">
                     <SchoolSearchPill
                         schools={schools}
-                        ctaHref="/order/new"
+                        ctaHref="/"
                         ctaColor="#A1C935"
                         ctaArrowColor="#000000"
                         placeholder="Select your school"

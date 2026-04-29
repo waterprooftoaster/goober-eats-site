@@ -1,7 +1,7 @@
 /**
  * @file pending-orders-list.test.tsx
  * @description Behavioral tests for the swiper queue accept state machine:
- *   200 success path → openPanel + green banner + row removed;
+ *   200 success path → hard redirect to /current-orders;
  *   409 race → row removed + red banner;
  *   403/5xx → inline modal error, modal stays open;
  *   accepting → button is disabled.
@@ -10,17 +10,6 @@
 
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
-
-const openPanelMock = vi.fn()
-
-vi.mock('@/components/chat-panel', () => ({
-  useChatPanel: () => ({
-    openPanel: openPanelMock,
-    closePanel: vi.fn(),
-    updateOrderStatus: vi.fn(),
-    orders: {},
-  }),
-}))
 
 vi.mock('next/image', () => ({
   default: ({ alt }: { alt: string }) => <span data-stub-img={alt} />,
@@ -39,19 +28,34 @@ function buildOrder(id: string, restaurantName = 'Chipotle'): PendingOrder {
 }
 
 const fetchMock = vi.fn()
+const assignMock = vi.fn()
+let originalLocation: Location
 
 beforeEach(() => {
-  openPanelMock.mockReset()
   fetchMock.mockReset()
+  assignMock.mockReset()
   vi.stubGlobal('fetch', fetchMock)
+  // window.location.assign is non-configurable in jsdom; replace the whole
+  // location object with a writable mock for the test.
+  originalLocation = window.location
+  Object.defineProperty(window, 'location', {
+    configurable: true,
+    writable: true,
+    value: { assign: assignMock },
+  })
 })
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  Object.defineProperty(window, 'location', {
+    configurable: true,
+    writable: true,
+    value: originalLocation,
+  })
 })
 
 describe('<PendingOrdersList /> accept state machine', () => {
-  it('on 200, calls openPanel(orderId, "in_progress"), removes the row, and shows the success banner', async () => {
+  it('on 200, hard-redirects to /current-orders', async () => {
     fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({}) })
     const order = buildOrder('order-1', 'Chipotle')
     render(<PendingOrdersList orders={[order]} />)
@@ -62,11 +66,8 @@ describe('<PendingOrdersList /> accept state machine', () => {
     fireEvent.click(screen.getByTestId('swiper-accept-button'))
 
     await waitFor(() => {
-      expect(openPanelMock).toHaveBeenCalledWith('order-1', 'in_progress')
+      expect(assignMock).toHaveBeenCalledWith('/current-orders')
     })
-    expect(screen.queryByTestId('swiper-order-detail-modal')).toBeNull()
-    expect(screen.getByTestId('swiper-accept-success-banner')).toHaveTextContent(/Chipotle/)
-    expect(screen.getByTestId('swiper-orders-empty-state')).toBeInTheDocument()
   })
 
   it('on 409, removes the row from the local queue and renders the race-condition banner', async () => {
@@ -80,7 +81,7 @@ describe('<PendingOrdersList /> accept state machine', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('swiper-order-detail-modal')).toBeNull()
     })
-    expect(openPanelMock).not.toHaveBeenCalled()
+    expect(assignMock).not.toHaveBeenCalled()
     expect(screen.getByText(/just accepted by another swiper/i)).toBeInTheDocument()
     expect(screen.getAllByTestId('order-card')).toHaveLength(1)
   })
@@ -101,7 +102,7 @@ describe('<PendingOrdersList /> accept state machine', () => {
       expect(screen.getByText(/Complete Stripe onboarding first/i)).toBeInTheDocument()
     })
     expect(screen.getByTestId('swiper-order-detail-modal')).toBeInTheDocument()
-    expect(openPanelMock).not.toHaveBeenCalled()
+    expect(assignMock).not.toHaveBeenCalled()
   })
 
   it('disables the accept button while the request is in flight', async () => {
@@ -121,7 +122,7 @@ describe('<PendingOrdersList /> accept state machine', () => {
     })
 
     await waitFor(() => {
-      expect(screen.queryByTestId('swiper-order-detail-modal')).toBeNull()
+      expect(assignMock).toHaveBeenCalledWith('/current-orders')
     })
   })
 })

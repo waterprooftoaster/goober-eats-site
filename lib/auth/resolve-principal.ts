@@ -19,7 +19,8 @@ export type Principal =
   | { kind: 'authed_swiper'; userId: string; schoolId: string }
   | { kind: 'guest_cookie'; orderId: string; anonUserId: string | null }
 
-const GUEST_COOKIE_PREFIX = 'guest_order_token_'
+/** Cookie-name prefix for the per-order guest token. Pair with `lib/api/guest-auth.ts:guestOrderCookieName`. */
+export const GUEST_COOKIE_PREFIX = 'guest_order_token_'
 
 /**
  * Resolves the calling principal into the §10 discriminated union.

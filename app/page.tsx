@@ -13,7 +13,7 @@ import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { getAuthenticatedUser } from '@/lib/api/helpers'
 import { resolvePrincipal } from '@/lib/auth/resolve-principal'
-import CoverPage from '@/components/cover-page'
+import GuestHomeRouter from '@/components/guest-home-router'
 import HomeUpload from '@/components/home-upload'
 
 /**
@@ -56,5 +56,5 @@ export default async function HomePage() {
     .select('id, name')
     .order('name')
 
-  return <CoverPage schools={schools ?? []} />
+  return <GuestHomeRouter schools={schools ?? []} />
 }

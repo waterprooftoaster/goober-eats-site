@@ -17,6 +17,7 @@ import { useChatPanel } from '@/components/chat-panel'
 import { Surface } from '@/components/ui/surface'
 import { cn } from '@/lib/utils'
 import type { OrderStatus } from '@/lib/types/database'
+import { OrderIdentity, StatusBadge } from './_card-parts'
 
 interface CurrentOrderListItem {
   id: string
@@ -100,14 +101,7 @@ export function CurrentOrdersList({ orders, currentUserId }: Props) {
           className="flex flex-col overflow-hidden rounded-2xl border border-border bg-card"
         >
           <header className="flex items-center justify-between gap-3 border-b border-border px-5 py-3">
-            <div className="flex min-w-0 items-baseline gap-2">
-              <span className="truncate text-sm font-semibold text-foreground">
-                {order.restaurantName || 'Order'}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                #{order.id.slice(0, 8)}
-              </span>
-            </div>
+            <OrderIdentity restaurantName={order.restaurantName} id={order.id} />
             <div className="flex items-center gap-2">
               <StatusBadge status={order.status} />
               {order.status === 'completed' && (
@@ -139,37 +133,3 @@ export function CurrentOrdersList({ orders, currentUserId }: Props) {
   )
 }
 
-// --- Helpers ---
-
-const STATUS_LABEL: Record<OrderStatus, string> = {
-  open: 'Open',
-  in_progress: 'In progress',
-  completed: 'Completed',
-  cancelled: 'Cancelled',
-}
-
-const STATUS_TONE: Record<OrderStatus, string> = {
-  open: 'bg-secondary text-secondary-foreground',
-  in_progress: 'bg-primary/15 text-foreground',
-  completed: 'bg-muted text-muted-foreground',
-  cancelled: 'bg-destructive/10 text-destructive',
-}
-
-/**
- * Per-order status pill. Picks a tinted background per status and stamps
- * the catalog `current-orders-status-badge` testid for E2E assertions.
- */
-function StatusBadge({ status }: { status: OrderStatus }) {
-  return (
-    <span
-      data-testid="current-orders-status-badge"
-      data-status={status}
-      className={cn(
-        'inline-flex shrink-0 items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
-        STATUS_TONE[status]
-      )}
-    >
-      {STATUS_LABEL[status]}
-    </span>
-  )
-}
