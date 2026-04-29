@@ -2,10 +2,11 @@
  * @file route.ts
  * @description PATCH endpoint to advance an order through the state machine.
  *   Validates transitions, enforces per-role authorization, guards completion (payment + delivery photo),
- *   triggers Stripe transfer on completion, and sends system chat messages on status change.
+ *   triggers Stripe transfer on completion. Status notifications are NOT persisted here — the chat UI
+ *   renders them client-side as pseudo-messages derived from order.status + viewer role.
  *   Called by: swiper/orderer order action buttons
  * @dependencies lib/supabase/server.ts, lib/supabase/service.ts, lib/orders/state-machine.ts,
- *               lib/stripe/transfer.ts, lib/chat/system-messages.ts
+ *               lib/stripe/transfer.ts
  */
 
 import { NextRequest } from 'next/server'
@@ -15,14 +16,8 @@ import { updateOrderStatusSchema } from '@/lib/types/api'
 import { canTransition } from '@/lib/orders/state-machine'
 import { apiError, apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
 import { transferToSwiper } from '@/lib/stripe/transfer'
-import { sendSystemMessage } from '@/lib/chat/system-messages'
 import { signCartScreenshotPaths } from '@/lib/storage/sign-screenshots'
 import type { OrderStatus } from '@/lib/types/database'
-
-const STATUS_MESSAGES: Partial<Record<string, string>> = {
-  completed: 'Order completed — check completion photo',
-  cancelled: 'Order was cancelled',
-}
 
 /**
  * Advances an order through the state machine; triggers Stripe transfer on completion.
@@ -110,19 +105,6 @@ export async function PATCH(
     }
   }
 
-  // Un-accept: capture the swiper's name BEFORE clearing swiper_id so the
-  // system message can address them by name. RLS on profiles already lets the
-  // orderer/swiper read each other's full_name.
-  let unacceptSwiperName: string | null = null
-  if (newStatus === 'open' && order.swiper_id) {
-    const { data: swiperProfile } = await supabase
-      .from('profiles')
-      .select('full_name')
-      .eq('id', order.swiper_id)
-      .maybeSingle()
-    unacceptSwiperName = swiperProfile?.full_name ?? null
-  }
-
   // Un-accept: clear swiper_id so the order re-enters the open queue.
   // Uses service client because the orders_update RLS WITH CHECK only permits
   // rows where the updater remains orderer or swiper — clearing swiper_id to
@@ -164,16 +146,6 @@ export async function PATCH(
   // realized split always matches what was committed at checkout.
   if (newStatus === 'completed' && updated.swiper_id) {
     await transferToSwiper(updated.id, updated.swiper_id)
-  }
-
-  if (newStatus === 'open') {
-    const name = unacceptSwiperName ?? 'Your swiper'
-    await sendSystemMessage(
-      id,
-      `Swiper ${name} is no longer available. Finding you another swiper.`
-    )
-  } else if (STATUS_MESSAGES[newStatus]) {
-    await sendSystemMessage(id, STATUS_MESSAGES[newStatus]!)
   }
 
   const cart_screenshot_urls = await signCartScreenshotPaths(

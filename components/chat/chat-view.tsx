@@ -314,6 +314,19 @@ function getStatusMessages(
     }
 
     if (orderStatus === 'open' && !isSwiper) {
+        // Un-accept signal: the conversation row exists (created on prior accept)
+        // but its swiper_id has been cleared, so the order is back in the open
+        // queue without anyone assigned. Pinned above the placed-order message
+        // so the orderer sees the most recent lifecycle event first.
+        if (conversation && conversation.swiper_id === null) {
+            return [
+                {
+                    text: 'Swiper is no longer available. Finding you another swiper.',
+                    testid: 'chat-pseudo-swiper-unavailable',
+                },
+                placedMsg,
+            ]
+        }
         return [placedMsg]
     }
     if (orderStatus === 'in_progress' && !isSwiper) {

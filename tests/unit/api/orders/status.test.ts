@@ -1,20 +1,19 @@
 /**
  * @file status.test.ts
- * @description Unit tests for PATCH /api/orders/[id]/status — focuses on the
- *   un-accept (in_progress → open) branch: personalised system message body
- *   includes the swiper's full_name, conversations.swiper_id is cleared via
- *   the service client, and orders.swiper_id is null'd atomically.
+ * @description Unit tests for PATCH /api/orders/[id]/status — verifies that
+ *   status transitions (un-accept, cancelled, completed) do NOT insert system
+ *   messages into the conversation; status notifications are rendered
+ *   client-side as pseudo-messages, never persisted as DB rows.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
 
-const { mockGetUser, mockServerFrom, mockServiceFrom, mockSendSystemMessage, mockTransferToSwiper, mockSignCartScreenshotPaths } =
+const { mockGetUser, mockServerFrom, mockServiceFrom, mockTransferToSwiper, mockSignCartScreenshotPaths } =
   vi.hoisted(() => ({
     mockGetUser: vi.fn(),
     mockServerFrom: vi.fn(),
     mockServiceFrom: vi.fn(),
-    mockSendSystemMessage: vi.fn().mockResolvedValue(undefined),
     mockTransferToSwiper: vi.fn().mockResolvedValue(undefined),
     mockSignCartScreenshotPaths: vi.fn(),
   }))
@@ -30,10 +29,6 @@ vi.mock('@/lib/supabase/service', () => ({
   createServiceClient: vi.fn(() => ({ from: mockServiceFrom })),
 }))
 
-vi.mock('@/lib/chat/system-messages', () => ({
-  sendSystemMessage: mockSendSystemMessage,
-}))
-
 vi.mock('@/lib/stripe/transfer', () => ({
   transferToSwiper: mockTransferToSwiper,
 }))
@@ -44,7 +39,7 @@ vi.mock('@/lib/storage/sign-screenshots', () => ({
 
 import { PATCH } from '@/app/api/orders/[id]/status/route'
 
-function dbResult(result: { data?: unknown; error?: unknown } = { data: null, error: null }) {
+function dbResult(result: { data?: unknown; error?: unknown; count?: number } = { data: null, error: null }) {
   const mock: Record<string, unknown> = {}
   for (const m of ['select', 'insert', 'update', 'delete', 'eq', 'in', 'is']) {
     mock[m] = vi.fn(() => mock)
@@ -76,23 +71,20 @@ beforeEach(() => {
   )
 })
 
-describe('PATCH /api/orders/[id]/status — un-accept (in_progress → open)', () => {
-  it('sends a personalised system message with the swiper full_name and clears conversations.swiper_id', async () => {
+describe('PATCH /api/orders/[id]/status — does not persist system messages', () => {
+  it('does NOT insert a messages row on un-accept (in_progress → open) and still clears conversations.swiper_id', async () => {
     // Server client chain (in order):
     //   1. orders.select (current row)
-    //   2. profiles.select (swiper full_name lookup)
-    mockServerFrom
-      .mockReturnValueOnce(
-        dbResult({
-          data: {
-            id: ORDER_ID,
-            orderer_id: ORDERER_ID,
-            swiper_id: SWIPER_ID,
-            status: 'in_progress',
-          },
-        })
-      )
-      .mockReturnValueOnce(dbResult({ data: { full_name: 'Alex Smith' } }))
+    mockServerFrom.mockReturnValueOnce(
+      dbResult({
+        data: {
+          id: ORDER_ID,
+          orderer_id: ORDERER_ID,
+          swiper_id: SWIPER_ID,
+          status: 'in_progress',
+        },
+      })
+    )
 
     // Service client chain (in order):
     //   1. orders.update (status=open, swiper_id=null) — atomic
@@ -119,33 +111,28 @@ describe('PATCH /api/orders/[id]/status — un-accept (in_progress → open)', (
     const res = await callPatch('open')
     expect(res.status).toBe(200)
 
-    // Conversation revoke happened with the right payload + filter
+    // Conversation revoke still happens
     expect(convUpdateChain.update).toHaveBeenCalledWith({
       swiper_id: null,
       swiper_assigned_at: null,
     })
     expect(convUpdateChain.eq).toHaveBeenCalledWith('order_id', ORDER_ID)
 
-    // System message includes the swiper's name in the new copy
-    expect(mockSendSystemMessage).toHaveBeenCalledWith(
-      ORDER_ID,
-      'Swiper Alex Smith is no longer available. Finding you another swiper.'
-    )
+    // No messages row inserted across either client
+    expectNoMessagesInsert(mockServerFrom, mockServiceFrom)
   })
 
   it('returns the updated order with cart_screenshot_urls signed', async () => {
-    mockServerFrom
-      .mockReturnValueOnce(
-        dbResult({
-          data: {
-            id: ORDER_ID,
-            orderer_id: ORDERER_ID,
-            swiper_id: SWIPER_ID,
-            status: 'in_progress',
-          },
-        })
-      )
-      .mockReturnValueOnce(dbResult({ data: { full_name: 'Alex Smith' } }))
+    mockServerFrom.mockReturnValueOnce(
+      dbResult({
+        data: {
+          id: ORDER_ID,
+          orderer_id: ORDERER_ID,
+          swiper_id: SWIPER_ID,
+          status: 'in_progress',
+        },
+      })
+    )
 
     const path = 'pre-checkout/abc/00000000-0000-4000-8000-000000000010.jpg'
     const updatedOrder = {
@@ -174,8 +161,46 @@ describe('PATCH /api/orders/[id]/status — un-accept (in_progress → open)', (
     expect(mockSignCartScreenshotPaths).toHaveBeenCalledWith([path])
   })
 
-  it('falls back to "Your swiper" when full_name is null', async () => {
+  it('does NOT insert a messages row on cancel (open → cancelled)', async () => {
+    // Orderer cancels their own order from open
+    mockGetUser.mockResolvedValue({ data: { user: { id: ORDERER_ID } }, error: null })
+    mockServerFrom.mockReturnValueOnce(
+      dbResult({
+        data: {
+          id: ORDER_ID,
+          orderer_id: ORDERER_ID,
+          swiper_id: null,
+          status: 'open',
+        },
+      })
+    )
+
+    const cancelledOrder = {
+      id: ORDER_ID,
+      orderer_id: ORDERER_ID,
+      swiper_id: null,
+      school_id: '00000000-0000-4000-8000-000000000aaa',
+      restaurant_name: 'Chipotle',
+      cart_screenshot_urls: [],
+      status: 'cancelled',
+      subtotal_cents: 2500,
+      total_cents: 1500,
+      guest_name: null,
+      guest_email: null,
+      created_at: '2026-04-22T00:00:00Z',
+      updated_at: '2026-04-22T00:00:00Z',
+    }
+    // Cancel uses the user (server) client for the orders update — not service
+    mockServerFrom.mockReturnValueOnce(dbResult({ data: cancelledOrder }))
+
+    const res = await callPatch('cancelled')
+    expect(res.status).toBe(200)
+    expectNoMessagesInsert(mockServerFrom, mockServiceFrom)
+  })
+
+  it('does NOT insert a messages row on complete (in_progress → completed)', async () => {
     mockServerFrom
+      // 1. orders.select
       .mockReturnValueOnce(
         dbResult({
           data: {
@@ -186,16 +211,19 @@ describe('PATCH /api/orders/[id]/status — un-accept (in_progress → open)', (
           },
         })
       )
-      .mockReturnValueOnce(dbResult({ data: { full_name: null } }))
+      // 2. conversations.select (lookup conv id for completion-photo gate)
+      .mockReturnValueOnce(dbResult({ data: { id: 'conv-1' } }))
+      // 3. messages.select count (head:true) — completion-photo gate
+      .mockReturnValueOnce(dbResult({ count: 1, error: null }))
 
-    const updatedOrder = {
+    const completedOrder = {
       id: ORDER_ID,
       orderer_id: ORDERER_ID,
-      swiper_id: null,
+      swiper_id: SWIPER_ID,
       school_id: '00000000-0000-4000-8000-000000000aaa',
       restaurant_name: 'Chipotle',
       cart_screenshot_urls: [],
-      status: 'open',
+      status: 'completed',
       subtotal_cents: 2500,
       total_cents: 1500,
       guest_name: null,
@@ -203,15 +231,39 @@ describe('PATCH /api/orders/[id]/status — un-accept (in_progress → open)', (
       created_at: '2026-04-22T00:00:00Z',
       updated_at: '2026-04-22T00:00:00Z',
     }
+    // Service client: 1) payments.select (gate), 2) orders.update
     mockServiceFrom
-      .mockReturnValueOnce(dbResult({ data: updatedOrder }))
-      .mockReturnValueOnce(dbResult({ data: null, error: null }))
+      .mockReturnValueOnce(dbResult({ data: { id: 'pay-1' } }))
+      .mockReturnValueOnce(dbResult({ data: completedOrder }))
 
-    const res = await callPatch('open')
+    // The completion path also calls orders.update via the user client (not the service client),
+    // because un-accept is the only branch that uses the service client for orders.update.
+    mockServerFrom.mockReturnValueOnce(dbResult({ data: completedOrder }))
+
+    const res = await callPatch('completed')
     expect(res.status).toBe(200)
-    expect(mockSendSystemMessage).toHaveBeenCalledWith(
-      ORDER_ID,
-      'Swiper Your swiper is no longer available. Finding you another swiper.'
-    )
+    expectNoMessagesInsert(mockServerFrom, mockServiceFrom)
   })
 })
+
+// --- Helpers ---
+
+function expectNoMessagesInsert(
+  serverFrom: ReturnType<typeof vi.fn>,
+  serviceFrom: ReturnType<typeof vi.fn>
+): void {
+  // Walk every from(...) call across both clients; for any chain bound to the
+  // 'messages' table, assert .insert was never invoked. SELECTs (e.g. the
+  // completion-photo gate counts existing messages) are allowed.
+  for (const fromMock of [serverFrom, serviceFrom]) {
+    fromMock.mock.calls.forEach((args, i) => {
+      if (args[0] !== 'messages') return
+      const result = fromMock.mock.results[i]
+      if (result?.type !== 'return') return
+      const chain = result.value as { insert?: ReturnType<typeof vi.fn> }
+      if (chain.insert) {
+        expect(chain.insert).not.toHaveBeenCalled()
+      }
+    })
+  }
+}
