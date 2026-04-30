@@ -31,7 +31,7 @@ export async function transferToSwiper(
 
   const { data: payment } = await service
     .from('payments')
-    .select('id, payee_id, amount_cents, platform_fee_cents')
+    .select('id, payee_id, amount_cents, platform_fee_cents, stripe_payment_intent_id')
     .eq('order_id', orderId)
     .eq('status', 'succeeded')
     .maybeSingle()
@@ -51,6 +51,39 @@ export async function transferToSwiper(
     return
   }
 
+  // Resolve the source charge so the transfer can debit pending settlement
+  // funds (otherwise Stripe rejects with `balance_insufficient` while the
+  // orderer's charge is still in the ~2-day settlement window).
+  let chargeId: string | null = null
+  try {
+    const pi = await getStripe().paymentIntents.retrieve(
+      payment.stripe_payment_intent_id
+    )
+    chargeId =
+      typeof pi.latest_charge === 'string'
+        ? pi.latest_charge
+        : pi.latest_charge?.id ?? null
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error'
+    console.error(`Transfer failed for order ${orderId}: ${message}`)
+    await service
+      .from('payments')
+      .update({ transfer_failed_at: new Date().toISOString() })
+      .eq('order_id', orderId)
+    return
+  }
+
+  if (!chargeId) {
+    console.error(
+      `Transfer failed for order ${orderId}: missing latest_charge on PaymentIntent ${payment.stripe_payment_intent_id}`
+    )
+    await service
+      .from('payments')
+      .update({ transfer_failed_at: new Date().toISOString() })
+      .eq('order_id', orderId)
+    return
+  }
+
   const transferAmount = payment.amount_cents - payment.platform_fee_cents
 
   try {
@@ -59,6 +92,7 @@ export async function transferToSwiper(
         amount: transferAmount,
         currency: 'usd',
         destination: stripeAccount.stripe_account_id,
+        source_transaction: chargeId,
         metadata: { order_id: orderId },
       },
       { idempotencyKey: `transfer-${orderId}` }
