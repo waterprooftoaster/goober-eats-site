@@ -10,12 +10,20 @@
  *   components/ui/surface.tsx, lib/pricing.ts
  */
 
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getAuthenticatedUser } from '@/lib/api/helpers'
 import { Surface } from '@/components/ui/surface'
+import { Button } from '@/components/ui/button'
 import { computeSplit } from '@/lib/pricing'
-import type { OrderStatus } from '@/lib/types/database'
+import { isWithinComplaintWindow } from '@/lib/orders/complaint-eligibility'
+import type { ComplaintVerdict, OrderStatus } from '@/lib/types/database'
+
+interface ComplaintSummary {
+  id: string
+  verdict: ComplaintVerdict
+}
 
 interface OrdersRow {
   id: string
@@ -24,8 +32,10 @@ interface OrdersRow {
   subtotal_cents: number
   total_cents: number
   created_at: string
+  completed_at: string | null
   orderer_id: string | null
   swiper_id: string | null
+  complaints: ComplaintSummary[] | ComplaintSummary | null
 }
 
 type Role = 'placed' | 'fulfilled'
@@ -42,7 +52,9 @@ export default async function MyOrdersPage() {
 
   const { data } = await supabase
     .from('orders')
-    .select('id, status, restaurant_name, subtotal_cents, total_cents, created_at, orderer_id, swiper_id')
+    .select(
+      'id, status, restaurant_name, subtotal_cents, total_cents, created_at, completed_at, orderer_id, swiper_id, complaints(id, verdict)'
+    )
     .or(`orderer_id.eq.${user.id},swiper_id.eq.${user.id}`)
     .order('created_at', { ascending: false })
 
@@ -54,6 +66,12 @@ export default async function MyOrdersPage() {
       role === 'placed'
         ? o.total_cents
         : computeSplit(o.subtotal_cents).swiperReceivesCents
+    const complaint: ComplaintSummary | null = pickComplaint(o.complaints)
+    const canComplain =
+      role === 'placed' &&
+      o.status === 'completed' &&
+      complaint === null &&
+      isWithinComplaintWindow(o.completed_at)
     return {
       id: o.id,
       status: o.status,
@@ -61,6 +79,8 @@ export default async function MyOrdersPage() {
       amountCents,
       createdAt: o.created_at,
       role,
+      canComplain,
+      complaintVerdict: complaint?.verdict ?? null,
     }
   })
 
@@ -121,6 +141,31 @@ export default async function MyOrdersPage() {
                     </p>
                   </div>
                 </div>
+                {order.canComplain && (
+                  <div className="mt-3 flex justify-end">
+                    <Button
+                      asChild
+                      variant="outline"
+                      size="xs"
+                      data-testid="orders-row-complaint-button"
+                    >
+                      <Link href={`/orders/${order.id}/complaints/new`}>
+                        Report a problem
+                      </Link>
+                    </Button>
+                  </div>
+                )}
+                {order.complaintVerdict !== null && (
+                  <div className="mt-3 flex justify-end">
+                    <p
+                      data-testid="orders-row-complaint-pill"
+                      data-verdict={order.complaintVerdict}
+                      className="text-xs text-muted-foreground"
+                    >
+                      {VERDICT_LABEL[order.complaintVerdict]}
+                    </p>
+                  </div>
+                )}
               </article>
             </li>
           ))}
@@ -139,6 +184,13 @@ const STATUS_LABEL: Record<OrderStatus, string> = {
   cancelled: 'Cancelled',
 }
 
+const VERDICT_LABEL: Record<ComplaintVerdict, string> = {
+  pending: 'Complaint pending review',
+  approve_refund: 'Refund issued',
+  deny: 'Complaint denied',
+  escalate: 'Complaint pending review',
+}
+
 /** Formats integer cents as a US dollar string (e.g. 500 → "$5.00"). */
 function formatDollars(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`
@@ -151,4 +203,14 @@ function formatDate(iso: string): string {
     day: 'numeric',
     year: 'numeric',
   })
+}
+
+/** Supabase relational selects can return a single row OR an array of rows depending on FK
+ *  cardinality; pick the first complaint regardless of shape (one-per-order is enforced in DB). */
+function pickComplaint(
+  raw: ComplaintSummary[] | ComplaintSummary | null
+): ComplaintSummary | null {
+  if (raw == null) return null
+  if (Array.isArray(raw)) return raw[0] ?? null
+  return raw
 }
