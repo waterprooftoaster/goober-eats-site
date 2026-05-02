@@ -19,7 +19,7 @@ import { claimGuestOrders, clearGuestOrderCookies } from '@/lib/auth/claim-guest
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const EDU_EMAIL_REGEX = /\.edu$/i
-const FULL_NAME_REGEX = /^[\p{L} \-']+$/u
+const FULL_NAME_REGEX = /^[A-Za-z\s\-']+$/
 
 type ActionState =
   | { error: string }
@@ -320,9 +320,6 @@ export async function completeOnboarding(
 
   if (!fullName || fullName.length < 1 || fullName.length > 100) {
     return { error: 'Full name must be between 1 and 100 characters.' }
-  }
-  if (!FULL_NAME_REGEX.test(fullName)) {
-    return { error: 'Full name may only contain letters, spaces, hyphens, and apostrophes.' }
   }
   if (!schoolId) {
     return { error: 'Please select your school.' }

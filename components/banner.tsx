@@ -63,7 +63,7 @@ export function Banner({ isSwiper, isLoggedIn }: BannerProps) {
         </p>
       </div>
       <Button asChild variant="primary" size="lg" className="self-start sm:self-auto">
-        <Link href={isLoggedIn ? '/account' : '/auth/login'}>Become a swiper</Link>
+        <Link href={isLoggedIn ? '/account' : '/auth/login?next=/swiper-registration'}>Become a swiper</Link>
       </Button>
     </Surface>
   )

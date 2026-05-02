@@ -15,6 +15,7 @@ export const CONTACT_EMAIL = 'goobereats@gmail.com'
 export const PENDING_SCREENSHOTS_KEY = 'pending_screenshots'
 export const PENDING_SCHOOL_ID_KEY = 'pending_school_id'
 export const PENDING_SUBTOTAL_CENTS_KEY = 'pending_subtotal_cents'
+export const PENDING_PRICE_CENTS_KEY = 'pending_price_cents'
 
 // Cart-total bounds shared by the server-side extractor (lib/ai/extract-cart-total.ts)
 // and the client-side prefill effect (app/checkout/page.tsx). Lives here so the

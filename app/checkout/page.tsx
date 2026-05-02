@@ -26,6 +26,7 @@ import {
     PENDING_SCREENSHOTS_KEY,
     PENDING_SCHOOL_ID_KEY,
     PENDING_SUBTOTAL_CENTS_KEY,
+    PENDING_PRICE_CENTS_KEY,
     CART_TOTAL_MIN_CENTS,
     CART_TOTAL_MAX_CENTS,
 } from '@/lib/constants'
@@ -116,6 +117,15 @@ export default function CheckoutPage() {
             return
         }
         setScreenshotPaths(paths)
+
+        const rawPrice = sessionStorage.getItem(PENDING_PRICE_CENTS_KEY)
+        if (rawPrice) {
+            const priceCents = parseInt(rawPrice, 10)
+            if (!isNaN(priceCents) && priceCents > 0) {
+                setSubtotal((priceCents / 100).toFixed(2))
+            }
+            sessionStorage.removeItem(PENDING_PRICE_CENTS_KEY)
+        }
     }, [router])
 
     // Auto-prefill the Cart Total from Gemini's extracted value.
@@ -299,7 +309,7 @@ export default function CheckoutPage() {
                 <BackButton />
             </div>
 
-            <div className="grid gap-8 sm:grid-cols-[minmax(0,1fr)_minmax(0,440px)] lg:gap-12">
+            <div className="grid gap-8 sm:grid-cols-[minmax(0,1fr)_minmax(0,360px)] lg:gap-12">
                 <section
                     data-testid="checkout-cart-preview"
                     className="flex flex-col gap-3"

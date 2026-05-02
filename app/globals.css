@@ -3,6 +3,8 @@
 @import "shadcn/tailwind.css";
 
 /* Master plan §Phase 3 token vocabulary — OKLCH hue 126.
+   --primary / bg-primary = forest green (resting CTA).
+   --color-lime / --color-lime-hover = lime (hover ring / focus signal only).
    Every value is also wired into the legacy shadcn :root tokens below so
    utility classes (bg-background, bg-primary, …) and new primitives that
    read --color-* share one source of truth. */
@@ -13,8 +15,8 @@
   --color-muted: oklch(0.50 0.018 126);
   --color-muted-bg: oklch(0.95 0.012 126);
   --color-border: oklch(0.89 0.010 126);
-  --color-accent: oklch(0.77 0.17 126);
-  --color-accent-hover: oklch(0.70 0.16 126);
+  --color-lime: oklch(0.77 0.17 126);
+  --color-lime-hover: oklch(0.70 0.16 126);
 
   --font-display: var(--font-bricolage-grotesque);
   --font-body: var(--font-figtree);
@@ -57,8 +59,8 @@
   --card-foreground: oklch(0.12 0.008 126);
   --popover: oklch(0.975 0.005 126);
   --popover-foreground: oklch(0.12 0.008 126);
-  --primary: oklch(0.77 0.17 126);
-  --primary-foreground: oklch(0.12 0.008 126);
+  --primary: oklch(0.49 0.17 126);
+  --primary-foreground: oklch(0.985 0.007 126);
   --secondary: oklch(0.95 0.012 126);
   --secondary-foreground: oklch(0.12 0.008 126);
   --muted: oklch(0.95 0.012 126);
