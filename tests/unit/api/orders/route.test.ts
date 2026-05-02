@@ -40,11 +40,6 @@ function dbResult(result: { data?: unknown; error?: unknown } = { data: null, er
   return mock
 }
 
-/** Absorbs the lib/api/helpers.ts:getAuthenticatedUser suspension SELECT. */
-function primeSuspensionMock(): void {
-  mockFrom.mockReturnValueOnce(dbResult({ data: null }))
-}
-
 beforeEach(() => {
   vi.clearAllMocks()
   mockGetUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null })
@@ -63,7 +58,6 @@ describe('GET /api/orders', () => {
   })
 
   it('replaces cart_screenshot_urls with signed URLs on every row', async () => {
-    primeSuspensionMock()
     const orders = [
       {
         id: 'order-1',
@@ -89,7 +83,6 @@ describe('GET /api/orders', () => {
   })
 
   it('handles rows with no screenshots without crashing', async () => {
-    primeSuspensionMock()
     const orders = [{ id: 'order-1', cart_screenshot_urls: null, restaurant_name: 'X' }]
     mockFrom.mockReturnValueOnce(dbResult({ data: orders }))
     const res = await GET(new NextRequest('http://localhost/api/orders'))

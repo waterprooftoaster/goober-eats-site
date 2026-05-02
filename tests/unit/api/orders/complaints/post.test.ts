@@ -62,7 +62,7 @@ const OTHER_USER = '00000000-0000-4000-8000-000000000bbb'
 
 function chain(result: { data?: unknown; error?: unknown } = { data: null, error: null }) {
   const mock: Record<string, unknown> = {}
-  for (const m of ['select', 'insert', 'update', 'delete', 'eq', 'is', 'order', 'limit']) {
+  for (const m of ['select', 'insert', 'update', 'delete', 'eq', 'is', 'in', 'gte', 'order', 'limit']) {
     mock[m] = vi.fn(() => mock)
   }
   mock.single = vi.fn(() => Promise.resolve(result))
@@ -108,8 +108,8 @@ const baseBody = {
   reason_text: 'Two of my burritos were missing from the order I picked up.',
 }
 
-// Per-table queues so getAuthenticatedUser's stripe_accounts probe doesn't
-// consume slots intended for orders/complaints.
+// Per-table queues — chains are looked up by table name so test setup can
+// register them in any order.
 let serverQueues: Record<string, ReturnType<typeof chain>[]> = {}
 let serviceQueues: Record<string, ReturnType<typeof chain>[]> = {}
 
@@ -127,8 +127,6 @@ beforeEach(() => {
   serviceQueues = {}
 
   mockGetUser.mockResolvedValue({ data: { user: { id: ORDERER_ID } }, error: null })
-  // Suspension probe — never suspended by default.
-  queueServer('stripe_accounts', chain({ data: null }))
 
   mockServerFrom.mockImplementation((table: string) => {
     const next = serverQueues[table]?.shift()
@@ -217,7 +215,8 @@ describe('POST /api/orders/[id]/complaints', () => {
     queueService('messages', chain({ data: { image_url: 'completion-photos/abc.png' } }))
     queueService(
       'complaints',
-      chain({ data: { id: 'new-complaint-1' } }),
+      chain({ data: { id: 'new-complaint-1' } }), // insert
+      chain({ data: [] }),                         // hasRecentApprovedRefund: empty
       chain({
         data: {
           id: 'new-complaint-1',
@@ -308,7 +307,8 @@ describe('POST /api/orders/[id]/complaints', () => {
     queueService('messages', chain({ data: { image_url: 'x.png' } }))
     queueService(
       'complaints',
-      chain({ data: { id: 'cid-4' } }),
+      chain({ data: { id: 'cid-4' } }),    // insert
+      chain({ data: [] }),                  // hasRecentApprovedRefund: empty
       chain({ data: { id: 'cid-4', verdict: 'pending' } })
     )
 
@@ -328,6 +328,34 @@ describe('POST /api/orders/[id]/complaints', () => {
     const body = await res.json()
     expect(body.complaint.verdict).toBe('pending')
     consoleSpy.mockRestore()
+  })
+
+  it('downgrades approve_refund to escalate when the orderer already had a recent auto-refund', async () => {
+    queueServer('orders', chain({ data: orderRow() }))
+    queueServer('complaints', chain({ data: null }))
+    queueService('conversations', chain({ data: { id: 'convo-rate' } }))
+    queueService('messages', chain({ data: { image_url: 'x.png' } }))
+    queueService(
+      'complaints',
+      chain({ data: { id: 'cid-rate' } }),                         // insert
+      chain({ data: [{ id: 'prev-approved' }] }),                  // hasRecentApprovedRefund: HIT
+      chain({ data: { id: 'cid-rate', verdict: 'escalate' } })      // final update
+    )
+
+    mockAdjudicate.mockResolvedValue({
+      verdict: 'approve_refund',
+      confidence: 0.95,
+      reasoning: 'looks legit',
+      evidence_citations: [],
+    })
+
+    const res = await POST(buildPostRequest(baseBody), {
+      params: Promise.resolve({ id: ORDER_ID }),
+    })
+    expect(res.status).toBe(200)
+    expect(mockRefundOrder).not.toHaveBeenCalled()
+    const body = await res.json()
+    expect(body.complaint.verdict).toBe('escalate')
   })
 
   it('returns 409 when the DB trigger rejects the insert (post-API race)', async () => {

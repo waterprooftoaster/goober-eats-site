@@ -88,6 +88,12 @@ function primeSuspensionMock(): void {
   mockServerFrom.mockReturnValueOnce(dbResult({ data: null }))
 }
 
+/** Absorbs the service-client suspension re-check that runs right before the
+ *  atomic claim (closes the webhook-vs-accept race window). */
+function primeServiceSuspensionMock(suspended: boolean = false): void {
+  mockServiceFrom.mockReturnValueOnce(dbResult({ data: { suspended } }))
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   mockGetUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null })
@@ -200,6 +206,7 @@ describe('PATCH /api/orders/[id]/accept', () => {
     }
     const updateChain = dbResult({ data: updatedOrder })
     const convChain = dbResult({ data: null, error: null })
+    primeServiceSuspensionMock(false)
     mockServiceFrom.mockReturnValueOnce(updateChain).mockReturnValueOnce(convChain)
 
     const res = await callPatch()
@@ -225,9 +232,20 @@ describe('PATCH /api/orders/[id]/accept', () => {
       data: null,
       error: { message: 'no rows updated', code: 'PGRST116' },
     })
+    primeServiceSuspensionMock(false)
     mockServiceFrom.mockReturnValueOnce(updateChain)
 
     const res = await callPatch()
     expect(res.status).toBe(409)
+  })
+
+  it('returns 403 when the swiper was suspended between auth and claim', async () => {
+    setupEligibleSwiper(NYU_SCHOOL_ID)
+    primeServiceSuspensionMock(true)
+
+    const res = await callPatch()
+    expect(res.status).toBe(403)
+    const body = await res.json()
+    expect(body.error).toMatch(/suspended/i)
   })
 })

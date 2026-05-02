@@ -18,7 +18,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { updateOrderStatusSchema } from '@/lib/types/api'
 import { canTransition } from '@/lib/orders/state-machine'
-import { apiError, apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
+import { apiError, apiSuccess, getAuthenticatedSwiper, getAuthenticatedUser } from '@/lib/api/helpers'
 import { validateGuestOrder } from '@/lib/api/guest-auth'
 import { captureAndTransfer } from '@/lib/stripe/capture-and-transfer'
 import { getStripe } from '@/lib/stripe/client'
@@ -36,9 +36,6 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
-  const supabase = await createClient()
-  const user = await getAuthenticatedUser(supabase)
-  if (!user) return apiError('Unauthorized', 401)
 
   const body = await request.json()
   const parsed = updateOrderStatusSchema.safeParse(body)
@@ -46,6 +43,15 @@ export async function PATCH(
     return apiError(parsed.error.issues[0].message, 400)
   }
   const { status: newStatus } = parsed.data
+
+  // Pick auth helper based on newStatus: orderer-cancel uses the cheap path;
+  // swiper-driven transitions (open/completed) enforce the Stripe suspension
+  // gate so a terminated swiper cannot drive a state change on the way out.
+  const supabase = await createClient()
+  const user = newStatus === 'cancelled'
+    ? await getAuthenticatedUser(supabase)
+    : await getAuthenticatedSwiper(supabase)
+  if (!user) return apiError('Unauthorized', 401)
 
   const { data: order } = await supabase
     .from('orders')

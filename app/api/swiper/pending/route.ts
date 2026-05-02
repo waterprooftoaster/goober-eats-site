@@ -8,7 +8,7 @@
  */
 
 import { createClient } from '@/lib/supabase/server'
-import { apiError, apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
+import { apiError, apiSuccess, getAuthenticatedSwiper } from '@/lib/api/helpers'
 import { signCartScreenshotPathsBatch } from '@/lib/storage/sign-screenshots'
 
 /**
@@ -18,7 +18,7 @@ import { signCartScreenshotPathsBatch } from '@/lib/storage/sign-screenshots'
  */
 export async function GET() {
   const supabase = await createClient()
-  const user = await getAuthenticatedUser(supabase)
+  const user = await getAuthenticatedSwiper(supabase)
   if (!user) return apiError('Unauthorized', 401)
 
   const { data: profile } = await supabase

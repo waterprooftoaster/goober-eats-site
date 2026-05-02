@@ -477,13 +477,14 @@ describe('POST /api/stripe/webhooks', () => {
       )
     })
 
-    it('unaccepts in-progress orders, detaches conversations, posts system messages, THEN suspends', async () => {
+    it('SUSPENDS first to close the accept-race window, then unaccepts in-progress orders + detaches conversations + posts system messages', async () => {
       const ORDER_1 = '00000000-0000-4000-8000-000000000301'
       const ORDER_2 = '00000000-0000-4000-8000-000000000302'
 
       const callLog: string[] = []
 
       const stripeLookup = dbResult({ data: { id: 'sa-1', user_id: ACCT_USER_ID } })
+      const stripeSuspend = dbResult({ data: null, error: null })
       const ordersUnaccept = dbResult({ data: [{ id: ORDER_1 }, { id: ORDER_2 }] })
       const conversationsDetach = dbResult({ data: null, error: null })
       const conversationsLookup = dbResult({
@@ -493,15 +494,14 @@ describe('POST /api/stripe/webhooks', () => {
         ],
       })
       const messagesInsert = dbResult({ data: null, error: null })
-      const stripeSuspend = dbResult({ data: null, error: null })
 
       const sequence = [
         { table: 'stripe_accounts', chain: stripeLookup, label: 'stripe_lookup' },
+        { table: 'stripe_accounts', chain: stripeSuspend, label: 'stripe_suspend' },
         { table: 'orders', chain: ordersUnaccept, label: 'orders_unaccept' },
         { table: 'conversations', chain: conversationsDetach, label: 'conversations_detach' },
         { table: 'conversations', chain: conversationsLookup, label: 'conversations_lookup' },
         { table: 'messages', chain: messagesInsert, label: 'messages_insert' },
-        { table: 'stripe_accounts', chain: stripeSuspend, label: 'stripe_suspend' },
       ]
       let i = 0
       mockServiceFrom.mockImplementation((table: string) => {
@@ -529,11 +529,11 @@ describe('POST /api/stripe/webhooks', () => {
 
       expect(callLog).toEqual([
         'stripe_lookup',
+        'stripe_suspend',
         'orders_unaccept',
         'conversations_detach',
         'conversations_lookup',
         'messages_insert',
-        'stripe_suspend',
       ])
 
       expect(ordersUnaccept.update).toHaveBeenCalledWith({ status: 'open', swiper_id: null })

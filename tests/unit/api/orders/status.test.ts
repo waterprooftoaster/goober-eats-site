@@ -83,7 +83,11 @@ async function callPatch(status: string): Promise<Response> {
   return PATCH(req, { params: Promise.resolve({ id: ORDER_ID }) })
 }
 
-/** Absorbs the lib/api/helpers.ts:getAuthenticatedUser suspension SELECT. */
+/**
+ * Absorbs the lib/api/helpers.ts:getAuthenticatedSwiper suspension SELECT.
+ * Required only on the swiper-driven branches (un-accept, completed); the
+ * cancel branch uses the cheap getAuthenticatedUser and skips this lookup.
+ */
 function primeSuspensionMock(): void {
   mockServerFrom.mockReturnValueOnce(dbResult({ data: null }))
 }
@@ -99,7 +103,7 @@ beforeEach(() => {
 describe('PATCH /api/orders/[id]/status — does not persist system messages', () => {
   it('does NOT insert a messages row on un-accept (in_progress → open) and still clears conversations.swiper_id', async () => {
     // Server client chain (in order):
-    //   0. stripe_accounts.select (suspension gate inside getAuthenticatedUser)
+    //   0. stripe_accounts.select (suspension gate inside getAuthenticatedSwiper)
     //   1. orders.select (current row)
     primeSuspensionMock()
     mockServerFrom.mockReturnValueOnce(
@@ -190,9 +194,9 @@ describe('PATCH /api/orders/[id]/status — does not persist system messages', (
   })
 
   it('does NOT insert a messages row on cancel (open → cancelled)', async () => {
-    // Orderer cancels their own order from open
+    // Orderer cancels their own order from open. Cancel uses the cheap auth
+    // helper (no suspension SELECT) so no primeSuspensionMock() here.
     mockGetUser.mockResolvedValue({ data: { user: { id: ORDERER_ID } }, error: null })
-    primeSuspensionMock()
     mockServerFrom.mockReturnValueOnce(
       dbResult({
         data: {
@@ -380,7 +384,6 @@ describe('PATCH /api/orders/[id]/status — completion branches under manual cap
 
   it('calls paymentIntents.cancel with idempotency key cancel-${orderId} on orderer cancel', async () => {
     mockGetUser.mockResolvedValue({ data: { user: { id: ORDERER_ID } }, error: null })
-    primeSuspensionMock()
     mockServerFrom.mockReturnValueOnce(
       dbResult({
         data: {
@@ -424,7 +427,6 @@ describe('PATCH /api/orders/[id]/status — completion branches under manual cap
 
   it('still flips orders.status to cancelled when paymentIntents.cancel throws (PI already captured/canceled)', async () => {
     mockGetUser.mockResolvedValue({ data: { user: { id: ORDERER_ID } }, error: null })
-    primeSuspensionMock()
     mockServerFrom.mockReturnValueOnce(
       dbResult({
         data: {
@@ -468,7 +470,6 @@ describe('PATCH /api/orders/[id]/status — completion branches under manual cap
   it('rejects cancel from non-orderer with 403', async () => {
     // Authenticated as the swiper, not the orderer
     mockGetUser.mockResolvedValue({ data: { user: { id: SWIPER_ID } }, error: null })
-    primeSuspensionMock()
     mockServerFrom.mockReturnValueOnce(
       dbResult({
         data: {
@@ -491,7 +492,6 @@ describe('PATCH /api/orders/[id]/status — completion branches under manual cap
     // auth.getUser returns the anon user — whose id never matches orderer_id
     // because guest orders have orderer_id NULL by design.
     mockGetUser.mockResolvedValue({ data: { user: { id: ANON_USER_ID } }, error: null })
-    primeSuspensionMock()
     mockServerFrom.mockReturnValueOnce(
       dbResult({
         data: {
@@ -541,7 +541,6 @@ describe('PATCH /api/orders/[id]/status — completion branches under manual cap
 
   it('rejects guest cancel with 403 when validateGuestOrder fails (missing/wrong cookie)', async () => {
     mockGetUser.mockResolvedValue({ data: { user: { id: ANON_USER_ID } }, error: null })
-    primeSuspensionMock()
     mockServerFrom.mockReturnValueOnce(
       dbResult({
         data: {
@@ -572,7 +571,6 @@ describe('PATCH /api/orders/[id]/status — completion branches under manual cap
     // CAS .eq('status','open') matches 0 rows → re-read shows 'cancelled' →
     // return 200 instead of a misleading 409.
     mockGetUser.mockResolvedValue({ data: { user: { id: ORDERER_ID } }, error: null })
-    primeSuspensionMock()
     mockServerFrom.mockReturnValueOnce(
       dbResult({
         data: {

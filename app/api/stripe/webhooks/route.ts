@@ -437,15 +437,17 @@ async function handleAccountUpdated(
   // and do NOT trigger suspension.
   const disabledReason = account.requirements?.disabled_reason ?? null
   if (disabledReason && disabledReason.startsWith('rejected.')) {
-    // Order matters: unaccept first, suspend second. If we crash between,
-    // the orders are already back in queue; the suspension flag will land
-    // on a redelivered webhook (Stripe redelivers on non-2xx).
-    await unacceptInflightOrders(existing.user_id, supabase)
-
+    // Order matters: SUSPEND FIRST so any concurrent /api/orders/[id]/accept
+    // call from this swiper fails the suspended re-check before claiming.
+    // Unaccept second to return their in-flight orders to the queue. If we
+    // crash between, the suspension flag is already in place; the redelivery
+    // (Stripe re-fires on non-2xx) re-runs the unaccept idempotently.
     await supabase
       .from('stripe_accounts')
       .update({ suspended: true })
       .eq('stripe_account_id', account.id)
+
+    await unacceptInflightOrders(existing.user_id, supabase)
     return
   }
 

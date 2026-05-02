@@ -6,7 +6,7 @@
  */
 
 import { createClient } from '@/lib/supabase/server'
-import { getAuthenticatedUser } from '@/lib/api/helpers'
+import { getAuthenticatedSwiper } from '@/lib/api/helpers'
 import { redirect } from 'next/navigation'
 
 /**
@@ -21,7 +21,7 @@ export default async function SwiperLayout({
   children: React.ReactNode
 }) {
   const supabase = await createClient()
-  const user = await getAuthenticatedUser(supabase)
+  const user = await getAuthenticatedSwiper(supabase)
   if (!user) redirect('/auth/login')
 
   const { data: profile } = await supabase
