@@ -39,13 +39,11 @@ export function OrdererCancelBanner({ orderId, onStatusChange }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'cancelled' }),
       })
-      // Hard reload on success OR the known race-409. The
-      // payment_intent.canceled webhook (app/api/stripe/webhooks/route.ts)
-      // can flip orders.status='cancelled' before our route's CAS lands,
-      // making the route return "Order status was changed by another
-      // request" even though the cancellation actually succeeded. A fresh
-      // document load re-runs the SSR query so the cancelled order is gone.
-      if (res.ok || res.status === 409) {
+      // Hard reload on success — the route is now idempotent (handles the
+      // payment_intent.canceled webhook race server-side), so a 200 means
+      // the row is canonically cancelled. A fresh document load re-runs the
+      // SSR query so the cancelled order is gone for sure.
+      if (res.ok) {
         window.location.reload()
         return
       }

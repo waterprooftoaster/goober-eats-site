@@ -141,6 +141,10 @@ export async function PATCH(
   // Uses service client because the orders_update RLS WITH CHECK only permits
   // rows where the updater remains orderer or swiper — clearing swiper_id to
   // null would fail the check on the new row even though USING passes.
+  // Cancel: also uses service client so guests (whose anon session never
+  // matches orderer_id/swiper_id, both NULL on guest orders) can cancel —
+  // authorization for the cancel was already enforced via isOrderer +
+  // validateGuestOrder above.
   // completed: stamp completed_at so the complaint feature has a canonical
   // completion timestamp (lib/orders/complaint-eligibility.ts reads it).
   const updatePayload =
@@ -149,7 +153,10 @@ export async function PATCH(
       : newStatus === 'completed'
         ? { status: newStatus, completed_at: new Date().toISOString() }
         : { status: newStatus }
-  const updateClient = newStatus === 'open' ? createServiceClient() : supabase
+  const updateClient =
+    newStatus === 'open' || newStatus === 'cancelled'
+      ? createServiceClient()
+      : supabase
 
   // Atomic: only update if status still matches what we read (prevents race)
   const { data: updated, error } = await updateClient
@@ -163,6 +170,27 @@ export async function PATCH(
     .single()
 
   if (error || !updated) {
+    // CAS may fail because a concurrent writer already moved the row to
+    // newStatus. Most common cause for cancel: stripe.paymentIntents.cancel
+    // above triggers a payment_intent.canceled webhook
+    // (app/api/stripe/webhooks/route.ts) that flips status='cancelled'
+    // before our own UPDATE lands. Re-read; if the row is already at
+    // newStatus, return idempotent 200 — the side effects (Stripe cancel,
+    // capture+transfer, conversation clear) ran on whichever path won.
+    const { data: current } = await updateClient
+      .from('orders')
+      .select(
+        'id, orderer_id, swiper_id, school_id, restaurant_name, cart_screenshot_urls, status, subtotal_cents, total_cents, guest_name, guest_email, created_at, updated_at, completed_at'
+      )
+      .eq('id', id)
+      .single()
+
+    if (current && current.status === newStatus) {
+      const cart_screenshot_urls = await signCartScreenshotPaths(
+        (current.cart_screenshot_urls as string[] | null) ?? []
+      )
+      return apiSuccess({ ...current, cart_screenshot_urls })
+    }
     return apiError('Order status was changed by another request', 409)
   }
 

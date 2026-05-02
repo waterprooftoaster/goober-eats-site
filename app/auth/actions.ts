@@ -3,7 +3,8 @@
 /**
  * @file actions.ts
  * @description Server actions for authentication: unified authenticate flow,
- *   sign-out, onboarding completion, and account deletion.
+ *   sign-up OTP verification, sign-out, onboarding completion, and account
+ *   deletion.
  *   Called by: app/auth/login/login-form.tsx, app/account/account-actions.tsx
  * @dependencies lib/supabase/server.ts, lib/auth/resolve-principal.ts, next/headers, next/cache
  */
@@ -21,7 +22,7 @@ const FULL_NAME_REGEX = /^[\p{L} \-']+$/u
 type ActionState =
   | { error: string }
   | { needsOnboarding: true; email: string }
-  | { checkEmail: true; email: string }
+  | { otpSent: true; email: string }
   | { success: true }
   | null
 
@@ -100,20 +101,17 @@ export async function authenticate(
       return { error: 'Passwords do not match.' }
     }
 
-    const emailRedirectTo = `${process.env.NEXT_PUBLIC_URL ?? 'http://localhost:3000'}/auth/callback?next=/auth/login`
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { emailRedirectTo },
-    })
+    const { data, error } = await supabase.auth.signUp({ email, password })
     if (error) {
       return { error: 'Could not create account. Please try again.' }
     }
 
     // With email confirmation enabled (config.toml: enable_confirmations = true)
-    // signUp returns no session — surface a "check your email" panel and stop here.
+    // signUp returns no session — Supabase has emailed a 6-digit OTP. Switch
+    // the form into the OTP-entry step so the user finishes verification in
+    // the same tab.
     if (!data.session) {
-      return { checkEmail: true, email: data.user?.email ?? email }
+      return { otpSent: true, email: data.user?.email ?? email }
     }
 
     // Confirmation disabled fallback (kept for safety): persist the session
@@ -169,6 +167,61 @@ export async function authenticate(
   }
 
   return { success: true }
+}
+
+/**
+ * Re-sends the 6-digit signup confirmation code to `email`. The client
+ * gates the call behind a 20-second cooldown via ResendCodeButton, but
+ * Supabase also enforces `max_frequency` server-side as a backstop.
+ * @param email - The address that originally signed up
+ * @returns void; logs Supabase failures but does not surface them to the
+ *   client (the code may be rate-limited by Supabase, which is harmless).
+ * @called-by app/auth/login/login-form.tsx
+ */
+export async function resendSignupOtp(email: string): Promise<void> {
+  const trimmed = email?.trim() ?? ''
+  if (!trimmed || !EMAIL_REGEX.test(trimmed)) return
+  const supabase = await createClient()
+  const { error } = await supabase.auth.resend({ type: 'signup', email: trimmed })
+  if (error) {
+    console.error('resendSignupOtp: supabase.auth.resend failed', error)
+  }
+}
+
+/**
+ * Verifies the 6-digit OTP from the signup confirmation email; on success
+ * the session is established in this tab and the form advances to onboarding.
+ * Single-tab by construction: no link is sent, so PKCE / link-prefetcher /
+ * URL-rewriter failure modes cannot apply.
+ * @param _prevState - Previous action state (unused; required by useActionState)
+ * @param formData - Form data; reads `email` (hidden) and `token` (6 digits)
+ * @returns needsOnboarding state on success; error state on validation or
+ *   verifyOtp failure
+ * @called-by app/auth/login/login-form.tsx
+ */
+export async function verifySignupOtp(
+  _prevState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const email = (formData.get('email') as string | null)?.trim() ?? ''
+  const token = (formData.get('token') as string | null)?.trim() ?? ''
+
+  if (!email || !EMAIL_REGEX.test(email)) {
+    return { error: 'Please enter a valid email address.' }
+  }
+  if (!/^\d{6}$/.test(token)) {
+    return { error: 'Enter the 6-digit code from your email.' }
+  }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.auth.verifyOtp({ email, token, type: 'signup' })
+  if (error || !data.session) {
+    return { error: 'Invalid or expired code. Try again or sign up to resend.' }
+  }
+
+  // verifyOtp already wrote the session cookies via the SSR adapter; the
+  // profile row will be created in the next step (completeOnboarding).
+  return { needsOnboarding: true, email: data.user?.email ?? email }
 }
 
 /**

@@ -92,17 +92,21 @@ describe('useSwiperQueue', () => {
     })
   })
 
-  it('configures both INSERT and UPDATE listeners on the orders table with school_id filter', async () => {
+  it('configures INSERT, UPDATE, and broadcast listeners on the orders queue channel', async () => {
     renderHook(() =>
       useSwiperQueue({ schoolId: SCHOOL_ID, initialOrders: [] })
     )
     await waitFor(() => {
-      expect(mockChannel.on).toHaveBeenCalledTimes(2)
+      expect(mockChannel.on).toHaveBeenCalledTimes(3)
     })
     const calls = mockChannel.on.mock.calls
     const events = calls.map((c) => (c[1] as { event: string }).event).sort()
-    expect(events).toEqual(['INSERT', 'UPDATE'])
-    for (const c of calls) {
+    expect(events).toEqual(['INSERT', 'UPDATE', 'queue_changed'])
+    // postgres_changes calls carry the school-scoped filter; the broadcast
+    // call uses { event: 'queue_changed' } only.
+    const pgCalls = calls.filter(([type]) => type === 'postgres_changes')
+    expect(pgCalls).toHaveLength(2)
+    for (const c of pgCalls) {
       const cfg = c[1] as { schema: string; table: string; filter: string }
       expect(cfg.schema).toBe('public')
       expect(cfg.table).toBe('orders')
@@ -127,7 +131,7 @@ describe('useSwiperQueue', () => {
       useSwiperQueue({ schoolId: SCHOOL_ID, initialOrders: [] })
     )
     await waitFor(() => {
-      expect(mockChannel.on).toHaveBeenCalledTimes(2)
+      expect(mockChannel.on).toHaveBeenCalledTimes(3)
     })
 
     const insertHandler = mockChannel.on.mock.calls.find(
@@ -146,6 +150,37 @@ describe('useSwiperQueue', () => {
     })
   })
 
+  it('refetches and drops a cancelled row on broadcast queue_changed event (RLS-bypass path)', async () => {
+    const initial = [makeOrder('order-cancelled'), makeOrder('order-stays')]
+    // After an orderer cancel, /api/swiper/pending no longer returns the
+    // cancelled row. The postgres_changes UPDATE event is filtered out by
+    // RLS (new row state fails SELECT), so we depend on the broadcast.
+    mockFetch.mockResolvedValue(mockJsonOk([initial[1]]))
+
+    const { result } = renderHook(() =>
+      useSwiperQueue({ schoolId: SCHOOL_ID, initialOrders: initial })
+    )
+    await waitFor(() => {
+      expect(mockChannel.on).toHaveBeenCalledTimes(3)
+    })
+
+    const broadcastHandler = mockChannel.on.mock.calls.find(
+      ([type, cfg]) => type === 'broadcast' && (cfg as { event: string }).event === 'queue_changed'
+    )?.[2] as (payload: unknown) => void
+
+    act(() => {
+      broadcastHandler({
+        event: 'queue_changed',
+        type: 'broadcast',
+        payload: { order_id: 'order-cancelled', status: 'cancelled' },
+      })
+    })
+
+    await waitFor(() => {
+      expect(result.current.orders.map((o) => o.id)).toEqual(['order-stays'])
+    })
+  })
+
   it('refetches and removes a row when an UPDATE drops it out of the predicate', async () => {
     const initial = [makeOrder('order-1'), makeOrder('order-2')]
     // After the UPDATE (e.g., another swiper accepted order-1), the server's
@@ -156,7 +191,7 @@ describe('useSwiperQueue', () => {
       useSwiperQueue({ schoolId: SCHOOL_ID, initialOrders: initial })
     )
     await waitFor(() => {
-      expect(mockChannel.on).toHaveBeenCalledTimes(2)
+      expect(mockChannel.on).toHaveBeenCalledTimes(3)
     })
 
     const updateHandler = mockChannel.on.mock.calls.find(
@@ -215,7 +250,7 @@ describe('useSwiperQueue', () => {
     const { result } = renderHook(() =>
       useSwiperQueue({ schoolId: SCHOOL_ID, initialOrders: initial })
     )
-    await waitFor(() => expect(mockChannel.on).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(mockChannel.on).toHaveBeenCalledTimes(3))
 
     const insertHandler = mockChannel.on.mock.calls.find(
       ([, cfg]) => (cfg as { event: string }).event === 'INSERT'

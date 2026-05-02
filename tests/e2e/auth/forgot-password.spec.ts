@@ -1,9 +1,10 @@
 /**
  * @file forgot-password.spec.ts
- * @description End-to-end coverage for the forgot-password flow:
- *   request a reset link from /auth/forgot-password, fetch the message
- *   from the local Mailpit REST API, click the recovery link to land
- *   on /auth/reset-password, set a new password, and sign back in.
+ * @description End-to-end coverage for the forgot-password OTP flow:
+ *   request a reset code from /auth/forgot-password, fetch the latest
+ *   message body from the local Inbucket REST API, scrape the 6-digit
+ *   token, type it into the OTP input, set a new password on the
+ *   /auth/reset-password page, then sign back in.
  *   Called by: Playwright test runner
  */
 
@@ -13,7 +14,7 @@ import { createClient } from '@supabase/supabase-js'
 const TEST_EMAIL = 'forgot-password-test@goobereats.edu'
 const ORIGINAL_PASSWORD = 'oldpassword123'
 const NEW_PASSWORD = 'newpassword456'
-const MAILPIT_BASE = 'http://127.0.0.1:54384'
+const MAILPIT_BASE = process.env.MAILPIT_BASE ?? 'http://127.0.0.1:64364'
 
 test.describe('Forgot-password flow', () => {
   test.beforeAll(async () => {
@@ -39,7 +40,7 @@ test.describe('Forgot-password flow', () => {
       throw new Error(`Failed to seed test user: ${error.message}`)
     }
 
-    // Drain the Mailpit mailbox so the most-recent fetched message is the
+    // Drain the mailbox so the most-recent fetched message is the
     // recovery email this test triggers, not stale leftovers.
     await fetch(`${MAILPIT_BASE}/api/v1/messages`, { method: 'DELETE' }).catch(
       () => undefined,
@@ -59,32 +60,33 @@ test.describe('Forgot-password flow', () => {
     }
   })
 
-  test('request reset → click email link → set new password → sign in', async ({ page }) => {
+  test('request reset → enter OTP → set new password → sign in', async ({ page }) => {
     test.setTimeout(60000)
 
-    // 1. Request a reset link from the forgot-password page.
+    // 1. Request a reset code from the forgot-password page.
     await page.goto('/auth/forgot-password')
     await page.getByTestId('forgot-password-email-input').fill(TEST_EMAIL)
     await page.getByTestId('forgot-password-submit-button').click()
     await expect(page.getByTestId('forgot-password-sent')).toBeVisible({ timeout: 10000 })
 
-    // 2. Pull the recovery link from Mailpit. Supabase's default recovery
-    //    template embeds the /auth/v1/verify URL; we follow it via the API
-    //    rather than the rendered Mailpit UI so we can scrape the body.
-    const recoveryUrl = await fetchRecoveryLink(TEST_EMAIL)
+    // 2. Pull the recovery code from the test mailbox. The new template
+    //    renders {{ .Token }} as a plain 6-digit string in the body.
+    const token = await fetchOtpToken(TEST_EMAIL)
 
-    // 3. Visit the recovery URL — Supabase verifies the token then redirects
-    //    to the configured site_url + the next param (i.e. /auth/reset-password
-    //    via /auth/callback). The browser follows the chain and lands on the
-    //    new-password form.
-    await page.goto(recoveryUrl)
+    // 3. Type the OTP into the same tab — no link to click, no Tab B.
+    await page.getByTestId('forgot-password-otp-input').fill(token)
+    await page.getByTestId('forgot-password-verify-button').click()
+
+    // 4. The form hard-loads /auth/reset-password once the recovery
+    //    session is established.
+    await page.waitForURL('**/auth/reset-password', { timeout: 15000 })
     await expect(page.getByTestId('reset-password-input')).toBeVisible({ timeout: 15000 })
 
-    // 4. Set the new password.
+    // 5. Set the new password.
     await page.getByTestId('reset-password-input').fill(NEW_PASSWORD)
     await page.getByTestId('reset-password-submit-button').click()
 
-    // 5. Hard-redirected to /auth/login on success.
+    // 6. Hard-redirected to /auth/login on success.
     await page.waitForURL('**/auth/login', { timeout: 15000 })
 
     // The recovery session is still attached to the browser context after
@@ -94,7 +96,7 @@ test.describe('Forgot-password flow', () => {
     await page.context().clearCookies()
     await page.goto('/auth/login')
 
-    // 6. Sign in with the new password.
+    // 7. Sign in with the new password.
     await page.getByTestId('auth-email-input').fill(TEST_EMAIL)
     await page.getByTestId('auth-continue-button').click()
     await page.getByTestId('auth-password-input').fill(NEW_PASSWORD)
@@ -110,13 +112,13 @@ test.describe('Forgot-password flow', () => {
 // --- Helpers ---
 
 /**
- * Polls the Mailpit REST API for the most-recent message addressed to
- * `email` and extracts the first https?://…/auth URL it finds.
+ * Polls the local Inbucket/Mailpit REST API for the most-recent message
+ * addressed to `email` and extracts the 6-digit OTP from its body.
  * @param email - The recipient address to look for
- * @returns The recovery link present in the message body
+ * @returns The 6-digit numeric token rendered by the recovery template
  * @called-by the forgot-password spec above
  */
-async function fetchRecoveryLink(email: string): Promise<string> {
+async function fetchOtpToken(email: string): Promise<string> {
   for (let attempt = 0; attempt < 30; attempt++) {
     const listRes = await fetch(`${MAILPIT_BASE}/api/v1/messages`)
     if (listRes.ok) {
@@ -130,11 +132,12 @@ async function fetchRecoveryLink(email: string): Promise<string> {
         const detailRes = await fetch(`${MAILPIT_BASE}/api/v1/message/${match.ID}`)
         if (detailRes.ok) {
           const detail = (await detailRes.json()) as { Text?: string; HTML?: string }
-          // Prefer text/plain so we don't have to unescape &amp; in URLs.
           const body = detail.Text ?? detail.HTML ?? ''
-          const urlMatch = body.match(/https?:\/\/[^\s"<>)]+\/auth[^\s"<>)]+/)
-          if (urlMatch) {
-            return urlMatch[0].replace(/&amp;/g, '&')
+          // Look for the first standalone 6-digit run; the template
+          // renders the token in its own paragraph so this is unambiguous.
+          const tokenMatch = body.match(/\b(\d{6})\b/)
+          if (tokenMatch) {
+            return tokenMatch[1]
           }
         }
       }
@@ -142,5 +145,5 @@ async function fetchRecoveryLink(email: string): Promise<string> {
     await new Promise((resolve) => setTimeout(resolve, 1000))
   }
 
-  throw new Error(`No recovery email arrived in Mailpit for ${email}`)
+  throw new Error(`No recovery email arrived in mailbox for ${email}`)
 }

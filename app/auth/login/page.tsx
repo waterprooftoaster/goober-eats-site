@@ -9,20 +9,15 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { LoginForm } from './login-form'
 
-const ALLOWED_ERRORS: Record<string, string> = {
-  'Could not complete authentication': 'Could not complete authentication.',
-}
-
 /**
  * Fetches schools and resolves onboarding state, then renders the login/sign-up form.
  * @returns LoginForm component; redirects to / if the user already has a profile
  * @called-by Next.js routing (/auth/login)
  */
 export default async function LoginPage(props: {
-  searchParams: Promise<{ error?: string; onboarding?: string }>
+  searchParams: Promise<{ onboarding?: string }>
 }) {
-  const { error, onboarding } = await props.searchParams
-  const callbackError = error ? ALLOWED_ERRORS[error] : undefined
+  const { onboarding } = await props.searchParams
 
   const supabase = await createClient()
 
@@ -61,7 +56,6 @@ export default async function LoginPage(props: {
 
   return (
     <LoginForm
-      callbackError={callbackError}
       schools={schools ?? []}
       initialOnboarding={initialOnboarding}
       userEmail={userEmail}

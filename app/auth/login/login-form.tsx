@@ -13,9 +13,10 @@
 
 import Link from 'next/link'
 import { useActionState, useEffect, useState } from 'react'
-import { authenticate, completeOnboarding } from '@/app/auth/actions'
+import { authenticate, completeOnboarding, resendSignupOtp, verifySignupOtp } from '@/app/auth/actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { ResendCodeButton } from '@/components/ui/resend-code-button'
 import {
   Combobox,
   ComboboxInput,
@@ -33,15 +34,13 @@ interface School {
 }
 
 interface LoginFormProps {
-  callbackError?: string
   schools: School[]
   initialOnboarding?: boolean
   userEmail?: string
 }
 
 /**
- * Renders the multi-step authentication form (email → password → name → school).
- * @param callbackError - Error message from OAuth callback query param
+ * Renders the multi-step authentication form (email → password → otp → name → school).
  * @param schools - Available schools for the onboarding school-selection step
  * @param initialOnboarding - Start directly at the name step (returning user without profile)
  * @param userEmail - Pre-fill the email field (used during onboarding resume)
@@ -49,12 +48,11 @@ interface LoginFormProps {
  * @called-by app/auth/login/page.tsx
  */
 export function LoginForm({
-  callbackError,
   schools,
   initialOnboarding,
   userEmail,
 }: LoginFormProps) {
-  const [step, setStep] = useState<'email' | 'password' | 'name' | 'school'>(
+  const [step, setStep] = useState<'email' | 'password' | 'otp' | 'name' | 'school'>(
     initialOnboarding ? 'name' : 'email',
   )
   const [email, setEmail] = useState(userEmail ?? '')
@@ -70,11 +68,20 @@ export function LoginForm({
     completeOnboarding,
     null,
   )
+  const [otpState, otpAction, otpPending] = useActionState(verifySignupOtp, null)
 
   // When authenticate signals onboarding is needed, derive the step and email from authState.
   // Once the user advances to 'school', step takes over (needsOnboarding && step !== 'school').
+  // When authenticate signals otpSent (sign-up confirmation pending), force the OTP entry
+  // step until the user moves on to onboarding via verifyOtp's hard reload.
+  const otpSent = !!authState && 'otpSent' in authState
   const needsOnboarding = !!authState && 'needsOnboarding' in authState
-  const effectiveStep = (needsOnboarding && step !== 'school') ? 'name' : step
+  const effectiveStep =
+    otpSent && step !== 'name' && step !== 'school'
+      ? 'otp'
+      : needsOnboarding && step !== 'school'
+        ? 'name'
+        : step
   const effectiveEmail = needsOnboarding
     ? (authState as { email: string }).email
     : email
@@ -107,6 +114,15 @@ export function LoginForm({
     }
   }, [onboardingState])
 
+  // OTP verified — session cookies are now set. Hard-reload /auth/login so
+  // the server detects authed-no-profile and re-renders the form starting
+  // at the inline name step. This is what makes the header refresh too.
+  useEffect(() => {
+    if (otpState && 'needsOnboarding' in otpState) {
+      window.location.assign('/auth/login')
+    }
+  }, [otpState])
+
   async function handleContinue() {
     if (!email || !EMAIL_REGEX.test(email)) {
       setEmailError('Please enter a valid email address.')
@@ -138,30 +154,10 @@ export function LoginForm({
     authState && 'error' in authState ? authState.error : null
   const onboardingError =
     onboardingState && 'error' in onboardingState ? onboardingState.error : null
-  const checkEmailState =
-    authState && 'checkEmail' in authState
-      ? { email: authState.email }
-      : null
-
-  if (checkEmailState) {
-    return (
-      <main
-        data-testid="auth-login-page"
-        className="mx-auto flex min-h-screen max-w-sm flex-col px-6 pt-16 pb-12 sm:pt-24"
-      >
-        <div className="flex flex-col gap-6">
-          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-            Check your email
-          </h1>
-          <p data-testid="auth-check-email" className="text-base text-muted-foreground">
-            We sent a confirmation link to{' '}
-            <span className="text-foreground">{checkEmailState.email}</span>.
-            Click it to finish creating your account.
-          </p>
-        </div>
-      </main>
-    )
-  }
+  const otpError =
+    otpState && 'error' in otpState ? otpState.error : null
+  const otpEmail =
+    authState && 'otpSent' in authState ? authState.email : effectiveEmail
 
   return (
     <main
@@ -171,16 +167,6 @@ export function LoginForm({
       <div className="flex flex-col gap-6">
         {effectiveStep === 'email' && (
           <>
-            {callbackError && (
-              <p
-                data-testid="auth-callback-error"
-                role="alert"
-                className="text-sm text-destructive"
-              >
-                {callbackError}
-              </p>
-            )}
-
             <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
               Enter your email
             </h1>
@@ -300,6 +286,63 @@ export function LoginForm({
                   Forgot password?
                 </Link>
               )}
+            </form>
+          </>
+        )}
+
+        {effectiveStep === 'otp' && (
+          <>
+            {otpError && (
+              <p
+                data-testid="auth-form-error"
+                role="alert"
+                className="text-sm text-destructive"
+              >
+                {otpError}
+              </p>
+            )}
+
+            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+              Check your email
+            </h1>
+            <p data-testid="auth-otp-instructions" className="text-base text-muted-foreground">
+              We sent a 6-digit code to{' '}
+              <span className="text-foreground">{otpEmail}</span>.
+              Enter it below to finish creating your account.
+            </p>
+
+            <form action={otpAction} className="flex flex-col gap-4">
+              <input type="hidden" name="email" value={otpEmail} />
+
+              <Input
+                name="token"
+                type="text"
+                inputMode="numeric"
+                pattern="\d{6}"
+                maxLength={6}
+                placeholder="123456"
+                required
+                autoFocus
+                autoComplete="one-time-code"
+                data-testid="auth-otp-input"
+                className="h-11 text-center text-lg tracking-[0.4em]"
+              />
+
+              <Button
+                type="submit"
+                variant="primary"
+                size="lg"
+                disabled={otpPending}
+                data-testid="auth-otp-verify-button"
+                className="h-11 w-full"
+              >
+                {otpPending ? '…' : 'Verify code'}
+              </Button>
+
+              <ResendCodeButton
+                onResend={() => resendSignupOtp(otpEmail)}
+                testId="auth-otp-resend-button"
+              />
             </form>
           </>
         )}
