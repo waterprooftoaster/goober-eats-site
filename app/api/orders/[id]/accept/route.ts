@@ -13,6 +13,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { apiError, apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
 import { signCartScreenshotPaths } from '@/lib/storage/sign-screenshots'
+import { sendOrderAcceptedEmails } from '@/lib/email/send'
 
 /**
  * Atomically claims an open order for the calling swiper after eligibility validation.
@@ -113,6 +114,8 @@ export async function PATCH(
       .update({ swiper_id: user.id, swiper_assigned_at: nowIso })
       .eq('order_id', updated.id)
   }
+
+  void sendOrderAcceptedEmails({ updated, swiperId: user.id })
 
   const cart_screenshot_urls = await signCartScreenshotPaths(
     (updated.cart_screenshot_urls as string[] | null) ?? []

@@ -23,6 +23,7 @@ import { validateGuestOrder } from '@/lib/api/guest-auth'
 import { captureAndTransfer } from '@/lib/stripe/capture-and-transfer'
 import { getStripe } from '@/lib/stripe/client'
 import { signCartScreenshotPaths } from '@/lib/storage/sign-screenshots'
+import { sendOrderCancelledEmail } from '@/lib/email/send'
 import type { OrderStatus } from '@/lib/types/database'
 
 /**
@@ -245,6 +246,8 @@ export async function PATCH(
     // result.transferStuck is logged inside captureAndTransfer; the order
     // still completes (food was delivered, orderer was charged).
   }
+
+  if (newStatus === 'cancelled') void sendOrderCancelledEmail({ updated })
 
   const cart_screenshot_urls = await signCartScreenshotPaths(
     (updated.cart_screenshot_urls as string[] | null) ?? []
