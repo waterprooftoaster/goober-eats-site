@@ -12,6 +12,7 @@ import { cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { GUEST_COOKIE_PREFIX } from '@/lib/auth/resolve-principal'
+import { claimGuestOrders, clearGuestOrderCookies } from '@/lib/auth/claim-guest-orders'
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const EDU_EMAIL_REGEX = /\.edu$/i
@@ -155,6 +156,16 @@ export async function authenticate(
     if (!profile) {
       return { needsOnboarding: true, email: data.user.email ?? email }
     }
+
+    // Claim any guest orders the user placed before signing in. Any error is
+    // logged inside the helper; we never block the sign-in flow on it (the
+    // cookies persist until the next reload, so the claim can retry).
+    try {
+      const { claimedOrderIds } = await claimGuestOrders(data.user.id)
+      await clearGuestOrderCookies(claimedOrderIds)
+    } catch (claimError) {
+      console.error('authenticate: claimGuestOrders failed', claimError)
+    }
   }
 
   return { success: true }
@@ -206,6 +217,18 @@ export async function completeOnboarding(
 
   if (error) {
     return { error: 'Could not create profile. Please try again.' }
+  }
+
+  // Claim any guest orders the user placed before signing up. The sign-up
+  // path of authenticate() does NOT call this — claim runs here, after the
+  // user has a fully-formed profile, matching the rest of the system's
+  // assumptions. Best-effort: any error is logged but doesn't block the
+  // onboarding success.
+  try {
+    const { claimedOrderIds } = await claimGuestOrders(user.id)
+    await clearGuestOrderCookies(claimedOrderIds)
+  } catch (claimError) {
+    console.error('completeOnboarding: claimGuestOrders failed', claimError)
   }
 
   return { success: true }

@@ -80,7 +80,7 @@ export default async function CurrentOrdersPage() {
                     Current orders.
                 </h1>
                 <p className="mt-2 text-sm text-muted-foreground">
-                    Your active orders, chat with the other side here. Refresh every so often, I just made this app and it isn&apos;t very responsive yet. <br /> It&apos;ll improve soon!
+                    Your active orders, chat with the other side here.
                 </p>
             </header>
             <CurrentOrdersList orders={rows} currentUserId={user.id} />

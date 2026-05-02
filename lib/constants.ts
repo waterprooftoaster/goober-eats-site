@@ -44,3 +44,25 @@ export function messagesChannel(conversationId: string): string {
 export function ordersOrdererChannel(userId: string): string {
   return `orders:orderer:${userId}`
 }
+
+/**
+ * Supabase Realtime channel name for order status UPDATEs filtered to a given swiper.
+ * Mirrors `ordersOrdererChannel` for the swiper-assigned-orders subscription.
+ * @param userId - UUID of the swiper (authenticated)
+ * @returns Channel name: `orders:swiper:<userId>`
+ * @called-by components/chat-panel/chat-panel-provider.tsx
+ */
+export function ordersSwiperChannel(userId: string): string {
+  return `orders:swiper:${userId}`
+}
+
+/**
+ * Supabase Realtime channel name for new/changing open orders within a school.
+ * Drives the swiper /swiper/orders queue's live updates.
+ * @param schoolId - UUID of the school
+ * @returns Channel name: `orders:queue:<schoolId>`
+ * @called-by hooks/use-swiper-queue.ts
+ */
+export function swiperQueueChannel(schoolId: string): string {
+  return `orders:queue:${schoolId}`
+}

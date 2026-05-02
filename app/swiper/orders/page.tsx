@@ -69,10 +69,16 @@ export default async function PendingOrdersPage() {
                     Open orders.
                 </h1>
                 <p className="mt-2 text-sm text-muted-foreground">
-                    Orders from your school. Click one to see order details and accept. Refresh every so often, I just made this app and it isn't very responsive yet. <br /> It'll improve soon!
+                    Orders from your school. Click one to see order details and accept.
                 </p>
             </header>
-            <PendingOrdersList orders={orders} />
+            {profile.school_id ? (
+                <PendingOrdersList orders={orders} schoolId={profile.school_id} />
+            ) : (
+                <p className="py-12 text-sm text-muted-foreground">
+                    Set your school in your account to see orders from your campus.
+                </p>
+            )}
         </main>
     )
 }

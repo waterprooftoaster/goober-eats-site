@@ -27,10 +27,15 @@ process.env.SUPABASE_SECRET_KEY = process.env.TEST_SUPABASE_SECRET_KEY ?? proces
 const TEST_NEXT_PORT = process.env.TEST_NEXT_PORT ?? '3100'
 const TEST_BASE_URL = `http://localhost:${TEST_NEXT_PORT}`
 
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:3000'
+
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: false,
   reporter: 'list',
+  // Cold-compile in dev mode can blow past the default 30s on first-hit routes;
+  // 90s gives enough headroom for the auth-form action + onboarding chain.
+  timeout: 90000,
   use: {
     baseURL: TEST_BASE_URL,
     screenshot: 'on',
@@ -42,9 +47,15 @@ export default defineConfig({
       testMatch: /auth\.setup\.ts/,
     },
     {
+      name: 'swiper-setup',
+      testMatch: /swiper\.setup\.ts/,
+    },
+    {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-      testIgnore: /authenticated/,
+      // Exclude setup files (handled by their dedicated projects) and the
+      // authenticated/authenticated-swiper directories (own projects).
+      testIgnore: [/authenticated/, /authenticated-swiper/, /\.setup\.ts$/],
     },
     {
       name: 'authenticated',
@@ -71,6 +82,16 @@ export default defineConfig({
       testIgnore: process.env.RUN_LIVE_MONEY === '1' ? /^$/ : /.*/,
       workers: 1,
       timeout: 60_000,
+    },
+    {
+      name: 'authenticated-swiper',
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: '.auth/swiper.json',
+      },
+      dependencies: ['swiper-setup'],
+      testDir: './tests/e2e/authenticated-swiper',
+      workers: 1,
     },
   ],
   webServer: {
