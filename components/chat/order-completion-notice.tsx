@@ -113,7 +113,7 @@ function ComplaintAffordance({ orderId }: { orderId: string }) {
   return (
     <Button
       asChild
-      variant="subtle"
+      variant="secondary"
       size="sm"
       data-testid="order-completed-report-button"
     >
