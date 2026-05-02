@@ -16,7 +16,6 @@ import { claimGuestOrders, clearGuestOrderCookies } from '@/lib/auth/claim-guest
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const EDU_EMAIL_REGEX = /\.edu$/i
-const FULL_NAME_REGEX = /^[\p{L} \-']+$/u
 
 type ActionState =
   | { error: string }
@@ -73,6 +72,9 @@ export async function authenticate(
 ): Promise<ActionState> {
   const email = formData.get('email') as string
   const password = formData.get('password') as string
+  const rawNext = formData.get('next') as string | null
+  // Only accept relative paths to prevent open-redirect via crafted form submissions.
+  const safeNext = rawNext && rawNext.startsWith('/') ? rawNext : null
   const rawConfirm = formData.get('confirm_password')
   // Distinguish sign-up (field present in DOM) from sign-in (field absent).
   // formData.get returns null when the field isn't rendered at all.
@@ -100,11 +102,25 @@ export async function authenticate(
       return { error: 'Passwords do not match.' }
     }
 
-    const emailRedirectTo = `${process.env.NEXT_PUBLIC_URL ?? 'http://localhost:3000'}/auth/callback?next=/auth/login`
+    const fullName = (formData.get('full_name') as string)?.trim()
+    const schoolId = formData.get('school_id') as string | null
+
+    if (!fullName || fullName.length < 1 || fullName.length > 100) {
+      return { error: 'Full name must be between 1 and 100 characters.' }
+    }
+    if (!schoolId) {
+      return { error: 'Please select your school.' }
+    }
+
+    const siteUrl = process.env.NEXT_PUBLIC_URL ?? 'http://localhost:3000'
+    // If the user came from a "next" intent (e.g. swiper banner), encode it so
+    // the confirmation link carries it through: callback → /auth/login?next=X → X.
+    const loginDest = safeNext ? `/auth/login?next=${encodeURIComponent(safeNext)}` : '/auth/login'
+    const emailRedirectTo = `${siteUrl}/auth/callback?next=${encodeURIComponent(loginDest)}`
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { emailRedirectTo },
+      options: { emailRedirectTo, data: { full_name: fullName, school_id: schoolId } },
     })
     if (error) {
       return { error: 'Could not create account. Please try again.' }
@@ -187,9 +203,6 @@ export async function completeOnboarding(
 
   if (!fullName || fullName.length < 1 || fullName.length > 100) {
     return { error: 'Full name must be between 1 and 100 characters.' }
-  }
-  if (!FULL_NAME_REGEX.test(fullName)) {
-    return { error: 'Full name may only contain letters, spaces, hyphens, and apostrophes.' }
   }
   if (!schoolId) {
     return { error: 'Please select your school.' }

@@ -19,9 +19,9 @@ const ALLOWED_ERRORS: Record<string, string> = {
  * @called-by Next.js routing (/auth/login)
  */
 export default async function LoginPage(props: {
-  searchParams: Promise<{ error?: string; onboarding?: string }>
+  searchParams: Promise<{ error?: string; onboarding?: string; next?: string }>
 }) {
-  const { error, onboarding } = await props.searchParams
+  const { error, onboarding, next } = await props.searchParams
   const callbackError = error ? ALLOWED_ERRORS[error] : undefined
 
   const supabase = await createClient()
@@ -43,14 +43,11 @@ export default async function LoginPage(props: {
   if (user && !user.is_anonymous) {
     const { data: profile } = await supabase
       .from('profiles')
-      .select('id, school_id')
+      .select('id')
       .eq('id', user.id)
       .maybeSingle()
 
-    // Profile missing OR profile exists but school_id is null (the FK is
-    // nullable + ON DELETE SET NULL on schools, so this can happen if the
-    // referenced school was deleted) → user still owes us a school choice.
-    if (!profile || !profile.school_id) {
+    if (!profile) {
       initialOnboarding = true
       userEmail = user.email ?? undefined
     } else {
@@ -59,12 +56,16 @@ export default async function LoginPage(props: {
     }
   }
 
+  // Only accept relative paths for `next` to prevent open redirects.
+  const safeNext = next && next.startsWith('/') ? next : undefined
+
   return (
     <LoginForm
       callbackError={callbackError}
       schools={schools ?? []}
       initialOnboarding={initialOnboarding}
       userEmail={userEmail}
+      next={safeNext}
     />
   )
 }

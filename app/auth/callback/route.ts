@@ -31,11 +31,30 @@ export async function GET(request: Request): Promise<NextResponse> {
   }
 
   const supabase = await createClient()
-  const { error } = await supabase.auth.exchangeCodeForSession(code)
+  const { data, error } = await supabase.auth.exchangeCodeForSession(code)
 
   if (error) {
     console.error('auth/callback: exchangeCodeForSession failed', error)
     return NextResponse.redirect(new URL('/auth/login?error=Could not complete authentication', url.origin))
+  }
+
+  // Auto-create the profile using metadata stored at sign-up time. Best-effort:
+  // if the insert fails (e.g. profile already exists on a password-reset flow,
+  // or the school was deleted), the login page's initialOnboarding resume path
+  // will catch it and ask the user to complete their profile again.
+  const user = data.user
+  const fullName = typeof user?.user_metadata?.full_name === 'string'
+    ? user.user_metadata.full_name : null
+  const schoolId = typeof user?.user_metadata?.school_id === 'string'
+    ? user.user_metadata.school_id : null
+
+  if (fullName && user?.email) {
+    await supabase.from('profiles').insert({
+      id: user.id,
+      full_name: fullName,
+      email: user.email,
+      school_id: schoolId ?? null,
+    })
   }
 
   return NextResponse.redirect(new URL(next, url.origin))

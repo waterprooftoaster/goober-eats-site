@@ -37,6 +37,7 @@ interface LoginFormProps {
   schools: School[]
   initialOnboarding?: boolean
   userEmail?: string
+  next?: string
 }
 
 /**
@@ -45,6 +46,7 @@ interface LoginFormProps {
  * @param schools - Available schools for the onboarding school-selection step
  * @param initialOnboarding - Start directly at the name step (returning user without profile)
  * @param userEmail - Pre-fill the email field (used during onboarding resume)
+ * @param next - Optional relative path to redirect to after successful auth/onboarding
  * @returns Multi-step auth/onboarding form
  * @called-by app/auth/login/page.tsx
  */
@@ -53,6 +55,7 @@ export function LoginForm({
   schools,
   initialOnboarding,
   userEmail,
+  next,
 }: LoginFormProps) {
   const [step, setStep] = useState<'email' | 'password' | 'name' | 'school'>(
     initialOnboarding ? 'name' : 'email',
@@ -61,6 +64,9 @@ export function LoginForm({
   const [emailError, setEmailError] = useState('')
   const [emailExists, setEmailExists] = useState<boolean | null>(null)
   const [checkingEmail, setCheckingEmail] = useState(false)
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [signUpPasswordError, setSignUpPasswordError] = useState('')
   const [fullName, setFullName] = useState('')
   const [selectedSchool, setSelectedSchool] = useState<{ value: string; label: string } | null>(null)
   const [schoolSearchQuery, setSchoolSearchQuery] = useState('')
@@ -71,19 +77,15 @@ export function LoginForm({
     null,
   )
 
-  // When authenticate signals onboarding is needed, derive the step and email from authState.
-  // Once the user advances to 'school', step takes over (needsOnboarding && step !== 'school').
+  // When sign-in returns needsOnboarding, step is still 'password' — force 'name'.
+  // Once the user advances via setStep, step state takes over naturally.
   const needsOnboarding = !!authState && 'needsOnboarding' in authState
-  const effectiveStep = (needsOnboarding && step !== 'school') ? 'name' : step
-  const effectiveEmail = needsOnboarding
-    ? (authState as { email: string }).email
-    : email
+  const effectiveStep = (needsOnboarding && step === 'password') ? 'name' : step
 
-  // Defensive reset: whenever onboarding starts (either via initialOnboarding
-  // from the server, or via authState.needsOnboarding after a successful
-  // sign-up), force a fresh school choice. Cover-page school selection is
-  // intentionally ephemeral, but this guarantees sign-up always asks again
-  // even if a future change seeds these fields from elsewhere.
+  // True when the user already has an auth session but no profile (resume paths).
+  const isResume = initialOnboarding || needsOnboarding
+
+  // Defensive reset: whenever onboarding starts, force a fresh school choice.
   useEffect(() => {
     if (initialOnboarding || needsOnboarding) {
       setSelectedSchool(null)
@@ -97,15 +99,15 @@ export function LoginForm({
   // A fresh document load resets everything in one step.
   useEffect(() => {
     if (authState && 'success' in authState) {
-      window.location.assign('/')
+      window.location.assign(next ?? '/')
     }
-  }, [authState])
+  }, [authState, next])
 
   useEffect(() => {
     if (onboardingState && 'success' in onboardingState) {
-      window.location.assign('/')
+      window.location.assign(next ?? '/')
     }
-  }, [onboardingState])
+  }, [onboardingState, next])
 
   async function handleContinue() {
     if (!email || !EMAIL_REGEX.test(email)) {
@@ -132,6 +134,19 @@ export function LoginForm({
 
     setCheckingEmail(false)
     setStep('password')
+  }
+
+  function handleSignUpPasswordContinue() {
+    if (password.length < 6) {
+      setSignUpPasswordError('Password must be at least 6 characters.')
+      return
+    }
+    if (password !== confirmPassword) {
+      setSignUpPasswordError('Passwords do not match.')
+      return
+    }
+    setSignUpPasswordError('')
+    setStep('name')
   }
 
   const passwordError =
@@ -189,7 +204,7 @@ export function LoginForm({
               <Input
                 type="email"
                 placeholder="you@school.edu"
-                value={effectiveEmail}
+                value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
@@ -235,63 +250,48 @@ export function LoginForm({
               ← Back
             </Button>
 
-            {passwordError && (
-              <p
-                data-testid="auth-form-error"
-                role="alert"
-                className="text-sm text-destructive"
-              >
-                {passwordError}
-              </p>
-            )}
-
             <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
               {emailExists ? 'Welcome back' : 'Create your password'}
             </h1>
 
-            <form action={formAction} className="flex flex-col gap-4">
-              <input type="hidden" name="email" value={effectiveEmail} />
+            {emailExists ? (
+              // Sign-in: submit directly to the server action at this step
+              <form action={formAction} className="flex flex-col gap-4">
+                <input type="hidden" name="email" value={email} />
+                {next && <input type="hidden" name="next" value={next} />}
 
-              <Input
-                name="password"
-                type="password"
-                placeholder="Password"
-                required
-                minLength={6}
-                data-testid="auth-password-input"
-                autoComplete={emailExists ? 'current-password' : 'new-password'}
-                className="h-11"
-              />
+                {passwordError && (
+                  <p
+                    data-testid="auth-form-error"
+                    role="alert"
+                    className="text-sm text-destructive"
+                  >
+                    {passwordError}
+                  </p>
+                )}
 
-              {emailExists === false && (
                 <Input
-                  name="confirm_password"
+                  name="password"
                   type="password"
-                  placeholder="Confirm password"
+                  placeholder="Password"
                   required
                   minLength={6}
-                  data-testid="auth-password-confirm-input"
-                  autoComplete="new-password"
+                  data-testid="auth-password-input"
+                  autoComplete="current-password"
                   className="h-11"
                 />
-              )}
 
-              <Button
-                type="submit"
-                variant="primary"
-                size="lg"
-                disabled={authPending}
-                data-testid={emailExists ? 'auth-signin-button' : 'auth-signup-button'}
-                className="h-11 w-full"
-              >
-                {authPending
-                  ? '…'
-                  : emailExists
-                    ? 'Sign In'
-                    : 'Sign Up'}
-              </Button>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="lg"
+                  disabled={authPending}
+                  data-testid="auth-signin-button"
+                  className="h-11 w-full"
+                >
+                  {authPending ? '…' : 'Sign In'}
+                </Button>
 
-              {emailExists && (
                 <Link
                   href="/auth/forgot-password"
                   data-testid="auth-forgot-password-link"
@@ -299,13 +299,82 @@ export function LoginForm({
                 >
                   Forgot password?
                 </Link>
-              )}
-            </form>
+              </form>
+            ) : (
+              // Sign-up: collect password locally, advance to name on Continue
+              <div className="flex flex-col gap-4">
+                {signUpPasswordError && (
+                  <p
+                    data-testid="auth-form-error"
+                    role="alert"
+                    className="text-sm text-destructive"
+                  >
+                    {signUpPasswordError}
+                  </p>
+                )}
+
+                <Input
+                  type="password"
+                  placeholder="Password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      handleSignUpPasswordContinue()
+                    }
+                  }}
+                  data-testid="auth-password-input"
+                  autoComplete="new-password"
+                  className="h-11"
+                />
+
+                <Input
+                  type="password"
+                  placeholder="Confirm password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      handleSignUpPasswordContinue()
+                    }
+                  }}
+                  data-testid="auth-password-confirm-input"
+                  autoComplete="new-password"
+                  className="h-11"
+                />
+
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="lg"
+                  onClick={handleSignUpPasswordContinue}
+                  data-testid="auth-signup-button"
+                  className="h-11 w-full"
+                >
+                  Continue
+                </Button>
+              </div>
+            )}
           </>
         )}
 
         {effectiveStep === 'name' && (
           <>
+            {!isResume && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setStep('password')}
+                data-testid="auth-back-button"
+                className="-ml-2 self-start"
+              >
+                ← Back
+              </Button>
+            )}
+
             <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
               What should we call you?
             </h1>
@@ -348,13 +417,13 @@ export function LoginForm({
               ← Back
             </Button>
 
-            {onboardingError && (
+            {(isResume ? onboardingError : passwordError) && (
               <p
                 data-testid="auth-form-error"
                 role="alert"
                 className="text-sm text-destructive"
               >
-                {onboardingError}
+                {isResume ? onboardingError : passwordError}
               </p>
             )}
 
@@ -362,8 +431,25 @@ export function LoginForm({
               Where do you go to school?
             </h1>
 
-            <form action={onboardingAction} className="flex flex-col gap-4">
+            {/*
+              Resume path (initialOnboarding / needsOnboarding): user has a session,
+              submit to completeOnboarding which reads the authenticated user from cookies.
+              Fresh sign-up path: no session yet, submit all collected data to authenticate
+              which calls signUp with full_name + school_id stored in user_metadata.
+            */}
+            <form
+              action={isResume ? onboardingAction : formAction}
+              className="flex flex-col gap-4"
+            >
               <input type="hidden" name="full_name" value={fullName} />
+              {!isResume && (
+                <>
+                  <input type="hidden" name="email" value={email} />
+                  <input type="hidden" name="password" value={password} />
+                  <input type="hidden" name="confirm_password" value={confirmPassword} />
+                  {next && <input type="hidden" name="next" value={next} />}
+                </>
+              )}
 
               <div data-testid="auth-school-input">
                 <Combobox
@@ -405,11 +491,11 @@ export function LoginForm({
                 type="submit"
                 variant="primary"
                 size="lg"
-                disabled={onboardingPending || !selectedSchool}
+                disabled={(isResume ? onboardingPending : authPending) || !selectedSchool}
                 data-testid="auth-onboarding-complete-button"
                 className="h-11 w-full"
               >
-                {onboardingPending ? '…' : 'Get Started'}
+                {(isResume ? onboardingPending : authPending) ? '…' : 'Get Started'}
               </Button>
             </form>
           </>
