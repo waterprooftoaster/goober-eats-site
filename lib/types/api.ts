@@ -134,3 +134,21 @@ export const createComplaintSchema = z.object({
 })
 
 export type CreateComplaintInput = z.infer<typeof createComplaintSchema>
+
+// Body for the forgot-password server action. Email is the only field; the
+// redirect URL is built server-side from NEXT_PUBLIC_URL so the client cannot
+// influence where the recovery link points.
+export const forgotPasswordSchema = z.object({
+  email: z.string().trim().email(),
+})
+
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>
+
+// Body for the reset-password server action. Minimum length matches the
+// supabase config.toml `minimum_password_length` floor; the project policy
+// asks for >=8 specifically on reset.
+export const resetPasswordSchema = z.object({
+  password: z.string().min(8),
+})
+
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>

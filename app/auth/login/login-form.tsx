@@ -11,6 +11,7 @@
  * @dependencies app/auth/actions.ts, components/ui/{button,input,combobox}
  */
 
+import Link from 'next/link'
 import { useActionState, useEffect, useState } from 'react'
 import { authenticate, completeOnboarding } from '@/app/auth/actions'
 import { Button } from '@/components/ui/button'
@@ -137,6 +138,30 @@ export function LoginForm({
     authState && 'error' in authState ? authState.error : null
   const onboardingError =
     onboardingState && 'error' in onboardingState ? onboardingState.error : null
+  const checkEmailState =
+    authState && 'checkEmail' in authState
+      ? { email: authState.email }
+      : null
+
+  if (checkEmailState) {
+    return (
+      <main
+        data-testid="auth-login-page"
+        className="mx-auto flex min-h-screen max-w-sm flex-col px-6 pt-16 pb-12 sm:pt-24"
+      >
+        <div className="flex flex-col gap-6">
+          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+            Check your email
+          </h1>
+          <p data-testid="auth-check-email" className="text-base text-muted-foreground">
+            We sent a confirmation link to{' '}
+            <span className="text-foreground">{checkEmailState.email}</span>.
+            Click it to finish creating your account.
+          </p>
+        </div>
+      </main>
+    )
+  }
 
   return (
     <main
@@ -265,6 +290,16 @@ export function LoginForm({
                     ? 'Sign In'
                     : 'Sign Up'}
               </Button>
+
+              {emailExists && (
+                <Link
+                  href="/auth/forgot-password"
+                  data-testid="auth-forgot-password-link"
+                  className="self-center text-sm underline"
+                >
+                  Forgot password?
+                </Link>
+              )}
             </form>
           </>
         )}
