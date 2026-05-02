@@ -218,9 +218,25 @@ export function useMessages(opts: UseMessagesOptions): UseMessagesResult {
     if (!orderId) return
     try {
       const res = await fetch(`/api/messages/${orderId}`)
-      if (!res.ok) return
+      if (!res.ok) {
+        // 404 = no conversation yet (e.g. swiper un-accepted: in_progress→open).
+        // Reset the local view so a stale conversation/resolvedConvId doesn't
+        // leave the realtime subscription pointing at a dead channel.
+        if (res.status === 404) {
+          setConversation(null)
+          setResolvedConvId(null)
+        }
+        return
+      }
       const data: { conversation: Conversation; messages: Message[] } = await res.json()
       setConversation(data.conversation)
+      // Lazy conversation_id upgrade: when an order is `open` at mount, no
+      // conversations row exists yet and Effect 1 returns early. Once a swiper
+      // accepts, chat-view's lastSeenStatusRef effect calls refetch — set
+      // resolvedConvId so Effect 2 (gated on it) attaches the realtime
+      // subscription. Idempotent if already set (state setter is a no-op when
+      // the value matches).
+      setResolvedConvId(data.conversation.id)
       setMessages((prev) => mergeMessages(prev, data.messages))
     } catch {
       // Silent — the next realtime INSERT (or visibility event) will re-attempt

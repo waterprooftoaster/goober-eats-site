@@ -25,12 +25,17 @@ try {
   // .env.local not found — assume env vars are already set
 }
 
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:3000'
+
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: false,
   reporter: 'list',
+  // Cold-compile in dev mode can blow past the default 30s on first-hit routes;
+  // 90s gives enough headroom for the auth-form action + onboarding chain.
+  timeout: 90000,
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: BASE_URL,
     screenshot: 'on',
     trace: 'on',
   },
@@ -40,9 +45,15 @@ export default defineConfig({
       testMatch: /auth\.setup\.ts/,
     },
     {
+      name: 'swiper-setup',
+      testMatch: /swiper\.setup\.ts/,
+    },
+    {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-      testIgnore: /authenticated/,
+      // Exclude setup files (handled by their dedicated projects) and the
+      // authenticated/authenticated-swiper directories (own projects).
+      testIgnore: [/authenticated/, /authenticated-swiper/, /\.setup\.ts$/],
     },
     {
       name: 'authenticated',
@@ -56,10 +67,20 @@ export default defineConfig({
       // so parallel execution causes state interference between test files.
       workers: 1,
     },
+    {
+      name: 'authenticated-swiper',
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: '.auth/swiper.json',
+      },
+      dependencies: ['swiper-setup'],
+      testDir: './tests/e2e/authenticated-swiper',
+      workers: 1,
+    },
   ],
   webServer: {
     command: 'npm run dev',
-    url: 'http://localhost:3000',
+    url: BASE_URL,
     reuseExistingServer: true,
     timeout: 30000,
   },

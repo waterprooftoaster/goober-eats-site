@@ -9,13 +9,30 @@
  */
 
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { useState } from 'react'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 
 vi.mock('next/image', () => ({
   default: ({ alt }: { alt: string }) => <span data-stub-img={alt} />,
 }))
 
+// useSwiperQueue is exercised in its own unit specs; keep these tests focused
+// on the accept state machine by stubbing the hook to a no-op pass-through.
+vi.mock('@/hooks/use-swiper-queue', () => ({
+  useSwiperQueue: ({ initialOrders }: { initialOrders: { id: string }[] }) => {
+    const [orders, setOrders] = useState(initialOrders)
+    return {
+      orders,
+      removeOrder: (orderId: string) =>
+        setOrders((prev) => prev.filter((o) => o.id !== orderId)),
+      refetch: () => Promise.resolve(),
+    }
+  },
+}))
+
 import { PendingOrdersList, type PendingOrder } from '@/app/swiper/orders/pending-orders-list'
+
+const TEST_SCHOOL_ID = '11111111-2222-4333-8444-555555555599'
 
 function buildOrder(id: string, restaurantName = 'Chipotle'): PendingOrder {
   return {
@@ -58,7 +75,7 @@ describe('<PendingOrdersList /> accept state machine', () => {
   it('on 200, hard-redirects to /current-orders', async () => {
     fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({}) })
     const order = buildOrder('order-1', 'Chipotle')
-    render(<PendingOrdersList orders={[order]} />)
+    render(<PendingOrdersList orders={[order]} schoolId={TEST_SCHOOL_ID} />)
 
     fireEvent.click(screen.getByTestId('order-card'))
     expect(screen.getByTestId('swiper-order-detail-modal')).toBeInTheDocument()
@@ -73,7 +90,7 @@ describe('<PendingOrdersList /> accept state machine', () => {
   it('on 409, removes the row from the local queue and renders the race-condition banner', async () => {
     fetchMock.mockResolvedValue({ ok: false, status: 409, json: async () => ({}) })
     const order = buildOrder('order-2')
-    render(<PendingOrdersList orders={[order, buildOrder('order-3')]} />)
+    render(<PendingOrdersList orders={[order, buildOrder('order-3')]} schoolId={TEST_SCHOOL_ID} />)
 
     fireEvent.click(screen.getAllByTestId('order-card')[0])
     fireEvent.click(screen.getByTestId('swiper-accept-button'))
@@ -93,7 +110,7 @@ describe('<PendingOrdersList /> accept state machine', () => {
       json: async () => ({ error: 'Complete Stripe onboarding first.' }),
     })
     const order = buildOrder('order-4')
-    render(<PendingOrdersList orders={[order]} />)
+    render(<PendingOrdersList orders={[order]} schoolId={TEST_SCHOOL_ID} />)
 
     fireEvent.click(screen.getByTestId('order-card'))
     fireEvent.click(screen.getByTestId('swiper-accept-button'))
@@ -109,7 +126,7 @@ describe('<PendingOrdersList /> accept state machine', () => {
     let resolveFetch: (v: { ok: boolean; status: number; json: () => Promise<unknown> }) => void = () => {}
     fetchMock.mockReturnValue(new Promise((resolve) => { resolveFetch = resolve }))
     const order = buildOrder('order-5')
-    render(<PendingOrdersList orders={[order]} />)
+    render(<PendingOrdersList orders={[order]} schoolId={TEST_SCHOOL_ID} />)
 
     fireEvent.click(screen.getByTestId('order-card'))
     fireEvent.click(screen.getByTestId('swiper-accept-button'))
