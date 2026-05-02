@@ -85,7 +85,7 @@ export default async function StripeOnboardCompletePage() {
     }
 
     if (profile?.school_id) {
-      redirect('/?notice=swiper_activated')
+      redirect('/swiper/welcome')
     }
   }
 
