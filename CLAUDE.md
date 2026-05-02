@@ -135,4 +135,7 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
 SUPABASE_SECRET_KEY
 STRIPE_SECRET_KEY
 STRIPE_WEBHOOK_SECRET
+CRON_SECRET                     # Bearer token for /api/cron/sweep-stale-orders.
+                                # Set in Vercel project env (Production + Preview)
+                                # so Vercel Cron's Authorization header matches.
 ```
