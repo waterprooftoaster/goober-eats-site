@@ -2,9 +2,11 @@
 
 /**
  * @file actions.ts
- * @description Server actions for authentication: unified authenticate flow,
- *   sign-up OTP verification, sign-out, onboarding completion, and account
- *   deletion.
+ * @description Server actions for authentication: sign-in (`authenticate`),
+ *   sign-up start (`signUpStart`), OTP verification + profile creation
+ *   (`verifySignupOtp`), OTP resend, sign-out, onboarding completion (resume
+ *   path), and account deletion. Sign-up collects name + school BEFORE the
+ *   OTP is sent so OTP is the final step.
  *   Called by: app/auth/login/login-form.tsx, app/account/account-actions.tsx
  * @dependencies lib/supabase/server.ts, lib/auth/resolve-principal.ts, next/headers, next/cache
  */
@@ -62,10 +64,13 @@ export async function signOut(): Promise<{ success: true } | { error: string }> 
 }
 
 /**
- * Unified sign-in/sign-up server action; distinguishes mode by presence of confirm_password field.
+ * Sign-in server action. Sign-up has been split into `signUpStart` so the
+ * client can collect name + school before triggering the OTP email — making
+ * the OTP the very last step of the sign-up flow.
  * @param _prevState - Previous action state (unused)
- * @param formData - Form data; includes confirm_password only during sign-up
- * @returns Error state, needsOnboarding state, or redirects to / on success
+ * @param formData - Form data with email + password
+ * @returns Error state, needsOnboarding state (returning user with no
+ *   profile), or success
  * @called-by app/auth/login/login-form.tsx
  */
 export async function authenticate(
@@ -74,11 +79,6 @@ export async function authenticate(
 ): Promise<ActionState> {
   const email = formData.get('email') as string
   const password = formData.get('password') as string
-  const rawConfirm = formData.get('confirm_password')
-  // Distinguish sign-up (field present in DOM) from sign-in (field absent).
-  // formData.get returns null when the field isn't rendered at all.
-  const isSignUp = rawConfirm !== null && rawConfirm !== undefined
-  const confirmPassword = rawConfirm as string
 
   if (!email || !EMAIL_REGEX.test(email)) {
     return { error: 'Please enter a valid email address.' }
@@ -92,37 +92,6 @@ export async function authenticate(
 
   const supabase = await createClient()
 
-  if (isSignUp) {
-    // Sign-up flow
-    if (password.length < 6) {
-      return { error: 'Password must be at least 6 characters.' }
-    }
-    if (!confirmPassword || confirmPassword !== password) {
-      return { error: 'Passwords do not match.' }
-    }
-
-    const { data, error } = await supabase.auth.signUp({ email, password })
-    if (error) {
-      return { error: 'Could not create account. Please try again.' }
-    }
-
-    // With email confirmation enabled (config.toml: enable_confirmations = true)
-    // signUp returns no session — Supabase has emailed a 6-digit OTP. Switch
-    // the form into the OTP-entry step so the user finishes verification in
-    // the same tab.
-    if (!data.session) {
-      return { otpSent: true, email: data.user?.email ?? email }
-    }
-
-    // Confirmation disabled fallback (kept for safety): persist the session
-    // explicitly to guard against SSR cookie adapter timing.
-    await supabase.auth.setSession(data.session)
-
-    // New user always needs onboarding — no profile can exist yet
-    return { needsOnboarding: true, email: data.user?.email ?? email }
-  }
-
-  // Sign-in flow
   const { data, error } = await supabase.auth.signInWithPassword({ email, password })
   if (error) {
     return { error: 'Invalid email or password.' }
@@ -170,6 +139,86 @@ export async function authenticate(
 }
 
 /**
+ * Sign-up entry point: validates the full set of onboarding info collected
+ * by the client (email, password, name, school), then creates the auth
+ * user and triggers the OTP confirmation email. The collected name and
+ * school flow back into `verifySignupOtp` via hidden form fields so the
+ * profile row is created the moment the OTP is entered — no separate
+ * onboarding step is needed in the happy path.
+ * @param _prevState - Previous action state (unused; required by useActionState)
+ * @param formData - email, password, confirm_password, full_name, school_id
+ * @returns otpSent on success; error state on validation/signUp failure
+ * @called-by app/auth/login/login-form.tsx
+ */
+export async function signUpStart(
+  _prevState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const email = ((formData.get('email') as string | null) ?? '').trim()
+  const password = (formData.get('password') as string | null) ?? ''
+  const confirmPassword = (formData.get('confirm_password') as string | null) ?? ''
+  const fullName = ((formData.get('full_name') as string | null) ?? '').trim()
+  const schoolId = ((formData.get('school_id') as string | null) ?? '').trim()
+
+  if (!email || !EMAIL_REGEX.test(email)) {
+    return { error: 'Please enter a valid email address.' }
+  }
+  if (!EDU_EMAIL_REGEX.test(email)) {
+    return { error: 'Please use a school email ending in .edu.' }
+  }
+  if (!password || password.length < 6) {
+    return { error: 'Password must be at least 6 characters.' }
+  }
+  if (confirmPassword !== password) {
+    return { error: 'Passwords do not match.' }
+  }
+  if (!fullName || fullName.length > 100 || !FULL_NAME_REGEX.test(fullName)) {
+    return { error: 'Full name may only contain letters, spaces, hyphens, and apostrophes.' }
+  }
+  if (!schoolId) {
+    return { error: 'Please select your school.' }
+  }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.auth.signUp({ email, password })
+  if (error) {
+    console.error('signUpStart: supabase.auth.signUp failed', {
+      code: error.code,
+      status: error.status,
+      message: error.message,
+    })
+    return { error: 'Could not create account. Please try again.' }
+  }
+
+  // Confirmation-disabled fallback: persist the session and create the
+  // profile right here, since OTP entry will not happen.
+  if (data.session) {
+    await supabase.auth.setSession(data.session)
+    if (!data.user?.email) {
+      return { error: 'Account created but missing email.' }
+    }
+    const { error: profileError } = await supabase.from('profiles').insert({
+      id: data.user.id,
+      full_name: fullName,
+      email: data.user.email,
+      school_id: schoolId,
+    })
+    if (profileError) {
+      return { error: 'Could not create profile. Please try again.' }
+    }
+    try {
+      const { claimedOrderIds } = await claimGuestOrders(data.user.id)
+      await clearGuestOrderCookies(claimedOrderIds)
+    } catch (claimError) {
+      console.error('signUpStart: claimGuestOrders failed', claimError)
+    }
+    return { success: true }
+  }
+
+  return { otpSent: true, email: data.user?.email ?? email }
+}
+
+/**
  * Re-sends the 6-digit signup confirmation code to `email`. The client
  * gates the call behind a 20-second cooldown via ResendCodeButton, but
  * Supabase also enforces `max_frequency` server-side as a backstop.
@@ -189,22 +238,26 @@ export async function resendSignupOtp(email: string): Promise<void> {
 }
 
 /**
- * Verifies the 6-digit OTP from the signup confirmation email; on success
- * the session is established in this tab and the form advances to onboarding.
- * Single-tab by construction: no link is sent, so PKCE / link-prefetcher /
- * URL-rewriter failure modes cannot apply.
+ * Verifies the 6-digit OTP from the signup confirmation email and, on
+ * success, creates the user's profile row using the name + school the
+ * client collected before sending the OTP. This is the final step of the
+ * sign-up flow. If the hidden full_name / school_id are missing (e.g. the
+ * user reached this step via a stale tab), we fall back to needsOnboarding
+ * so the resume path can collect them.
  * @param _prevState - Previous action state (unused; required by useActionState)
- * @param formData - Form data; reads `email` (hidden) and `token` (6 digits)
- * @returns needsOnboarding state on success; error state on validation or
- *   verifyOtp failure
+ * @param formData - email, token (6 digits), full_name, school_id
+ * @returns success on full completion; needsOnboarding when the OTP was
+ *   accepted but profile data is missing; error state otherwise
  * @called-by app/auth/login/login-form.tsx
  */
 export async function verifySignupOtp(
   _prevState: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const email = (formData.get('email') as string | null)?.trim() ?? ''
-  const token = (formData.get('token') as string | null)?.trim() ?? ''
+  const email = ((formData.get('email') as string | null) ?? '').trim()
+  const token = ((formData.get('token') as string | null) ?? '').trim()
+  const fullName = ((formData.get('full_name') as string | null) ?? '').trim()
+  const schoolId = ((formData.get('school_id') as string | null) ?? '').trim()
 
   if (!email || !EMAIL_REGEX.test(email)) {
     return { error: 'Please enter a valid email address.' }
@@ -219,9 +272,36 @@ export async function verifySignupOtp(
     return { error: 'Invalid or expired code. Try again or sign up to resend.' }
   }
 
-  // verifyOtp already wrote the session cookies via the SSR adapter; the
-  // profile row will be created in the next step (completeOnboarding).
-  return { needsOnboarding: true, email: data.user?.email ?? email }
+  // Defensive resume path: if the client lost the collected onboarding
+  // data, hand off to the existing inline name/school step.
+  const fullNameValid =
+    fullName.length > 0 && fullName.length <= 100 && FULL_NAME_REGEX.test(fullName)
+  if (!fullNameValid || !schoolId) {
+    return { needsOnboarding: true, email: data.user?.email ?? email }
+  }
+
+  if (!data.user?.email) {
+    return { error: 'Your account does not have an email address.' }
+  }
+
+  const { error: profileError } = await supabase.from('profiles').insert({
+    id: data.user.id,
+    full_name: fullName,
+    email: data.user.email,
+    school_id: schoolId,
+  })
+  if (profileError) {
+    return { error: 'Could not create profile. Please try again.' }
+  }
+
+  try {
+    const { claimedOrderIds } = await claimGuestOrders(data.user.id)
+    await clearGuestOrderCookies(claimedOrderIds)
+  } catch (claimError) {
+    console.error('verifySignupOtp: claimGuestOrders failed', claimError)
+  }
+
+  return { success: true }
 }
 
 /**

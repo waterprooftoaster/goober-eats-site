@@ -43,5 +43,10 @@ export async function resetPassword(
     return { error: 'Could not update password. Please try again.' }
   }
 
+  // Invalidate the recovery session so it cannot be reused for further
+  // updateUser() calls. The form does a hard reload to /auth/login after
+  // success; signing out aligns server-side state with that intent.
+  await supabase.auth.signOut()
+
   return { success: true }
 }

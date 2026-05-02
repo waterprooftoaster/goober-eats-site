@@ -8,14 +8,15 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const { mockUpdateUser } = vi.hoisted(() => ({
+const { mockUpdateUser, mockSignOut } = vi.hoisted(() => ({
   mockUpdateUser: vi.fn(),
+  mockSignOut: vi.fn(),
 }))
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(() =>
     Promise.resolve({
-      auth: { updateUser: mockUpdateUser },
+      auth: { updateUser: mockUpdateUser, signOut: mockSignOut },
     }),
   ),
 }))
@@ -25,6 +26,7 @@ import { resetPassword } from '@/app/auth/reset-password/actions'
 describe('resetPassword', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockSignOut.mockResolvedValue({ error: null })
   })
 
   it('returns an error state when password is missing', async () => {
@@ -50,10 +52,11 @@ describe('resetPassword', () => {
     const result = await resetPassword(null, formData)
 
     expect(mockUpdateUser).toHaveBeenCalledWith({ password: 'newpassword123' })
+    expect(mockSignOut).toHaveBeenCalledTimes(1)
     expect(result).toEqual({ success: true })
   })
 
-  it('returns an error state when supabase reports a failure', async () => {
+  it('does not sign out when the password update fails', async () => {
     mockUpdateUser.mockResolvedValue({
       error: { message: 'session expired' },
     })
@@ -63,5 +66,6 @@ describe('resetPassword', () => {
     const result = await resetPassword(null, formData)
 
     expect(result).toEqual({ error: expect.any(String) })
+    expect(mockSignOut).not.toHaveBeenCalled()
   })
 })

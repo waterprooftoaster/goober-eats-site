@@ -1,8 +1,9 @@
 /**
  * @file actions.test.ts
- * @description Unit tests for the authenticate + verifySignupOtp server
- *   actions — the suspension gate on sign-in, and the OTP-only signup
- *   verification path that replaced the old /auth/callback magic-link flow.
+ * @description Unit tests for authenticate (sign-in) + verifySignupOtp
+ *   (final step of sign-up) — the suspension gate on sign-in, and the
+ *   OTP-then-profile-creation path now that the OTP is the very last
+ *   step of the sign-up flow.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -118,21 +119,53 @@ describe('authenticate — suspension gate (sign-in path)', () => {
 })
 
 describe('verifySignupOtp', () => {
-  function otpForm(email: string, token: string): FormData {
+  const FULL_NAME = 'Jane Student'
+  const SCHOOL_ID = '11111111-1111-4111-8111-111111111111'
+
+  function otpForm(
+    email: string,
+    token: string,
+    extras: { full_name?: string; school_id?: string } = {},
+  ): FormData {
     const fd = new FormData()
     fd.set('email', email)
     fd.set('token', token)
+    if (extras.full_name !== undefined) fd.set('full_name', extras.full_name)
+    if (extras.school_id !== undefined) fd.set('school_id', extras.school_id)
     return fd
+  }
+
+  function makeVerifyClient(opts: {
+    verifyOtpResult?: unknown
+    profileInsertError?: { message: string } | null
+  }) {
+    const verifyOtp = vi.fn().mockResolvedValue(
+      opts.verifyOtpResult ?? {
+        data: { session: { access_token: 'fake' }, user: { id: USER_ID, email: EMAIL } },
+        error: null,
+      },
+    )
+    const insert = vi.fn().mockResolvedValue({ error: opts.profileInsertError ?? null })
+    const client = {
+      auth: { verifyOtp },
+      from: (_: string) => ({ insert }),
+    }
+    return { client, verifyOtp, insert }
   }
 
   it('rejects a missing or malformed email', async () => {
     const verifyOtp = vi.fn()
     mockCreateClient.mockResolvedValue({ auth: { verifyOtp } })
 
-    expect(await verifySignupOtp(null, otpForm('', '123456'))).toEqual({ error: expect.any(String) })
-    expect(await verifySignupOtp(null, otpForm('not-an-email', '123456'))).toEqual({
-      error: expect.any(String),
-    })
+    expect(
+      await verifySignupOtp(null, otpForm('', '123456', { full_name: FULL_NAME, school_id: SCHOOL_ID })),
+    ).toEqual({ error: expect.any(String) })
+    expect(
+      await verifySignupOtp(
+        null,
+        otpForm('not-an-email', '123456', { full_name: FULL_NAME, school_id: SCHOOL_ID }),
+      ),
+    ).toEqual({ error: expect.any(String) })
     expect(verifyOtp).not.toHaveBeenCalled()
   })
 
@@ -140,37 +173,66 @@ describe('verifySignupOtp', () => {
     const verifyOtp = vi.fn()
     mockCreateClient.mockResolvedValue({ auth: { verifyOtp } })
 
-    expect(await verifySignupOtp(null, otpForm(EMAIL, '12ab56'))).toEqual({
-      error: expect.any(String),
-    })
-    expect(await verifySignupOtp(null, otpForm(EMAIL, '12345'))).toEqual({
-      error: expect.any(String),
-    })
+    expect(
+      await verifySignupOtp(null, otpForm(EMAIL, '12ab56', { full_name: FULL_NAME, school_id: SCHOOL_ID })),
+    ).toEqual({ error: expect.any(String) })
+    expect(
+      await verifySignupOtp(null, otpForm(EMAIL, '12345', { full_name: FULL_NAME, school_id: SCHOOL_ID })),
+    ).toEqual({ error: expect.any(String) })
     expect(verifyOtp).not.toHaveBeenCalled()
   })
 
-  it('returns needsOnboarding on a verifyOtp success', async () => {
-    const verifyOtp = vi.fn().mockResolvedValue({
-      data: { session: { access_token: 'fake' }, user: { id: USER_ID, email: EMAIL } },
-      error: null,
+  it('creates the profile and returns success when name + school are provided', async () => {
+    const { client, verifyOtp, insert } = makeVerifyClient({})
+    mockCreateClient.mockResolvedValue(client)
+
+    const result = await verifySignupOtp(
+      null,
+      otpForm(EMAIL, '123456', { full_name: FULL_NAME, school_id: SCHOOL_ID }),
+    )
+
+    expect(verifyOtp).toHaveBeenCalledWith({ email: EMAIL, token: '123456', type: 'signup' })
+    expect(insert).toHaveBeenCalledWith({
+      id: USER_ID,
+      full_name: FULL_NAME,
+      email: EMAIL,
+      school_id: SCHOOL_ID,
     })
-    mockCreateClient.mockResolvedValue({ auth: { verifyOtp } })
+    expect(result).toEqual({ success: true })
+  })
+
+  it('falls back to needsOnboarding when name/school are missing (resume path)', async () => {
+    const { client, verifyOtp, insert } = makeVerifyClient({})
+    mockCreateClient.mockResolvedValue(client)
 
     const result = await verifySignupOtp(null, otpForm(EMAIL, '123456'))
 
     expect(verifyOtp).toHaveBeenCalledWith({ email: EMAIL, token: '123456', type: 'signup' })
+    expect(insert).not.toHaveBeenCalled()
     expect(result).toEqual({ needsOnboarding: true, email: EMAIL })
   })
 
   it('returns an error state when supabase rejects the code', async () => {
-    const verifyOtp = vi.fn().mockResolvedValue({
-      data: { session: null, user: null },
-      error: { message: 'invalid token' },
+    const { client } = makeVerifyClient({
+      verifyOtpResult: { data: { session: null, user: null }, error: { message: 'invalid token' } },
     })
-    mockCreateClient.mockResolvedValue({ auth: { verifyOtp } })
+    mockCreateClient.mockResolvedValue(client)
 
-    expect(await verifySignupOtp(null, otpForm(EMAIL, '999999'))).toEqual({
-      error: expect.any(String),
+    expect(
+      await verifySignupOtp(null, otpForm(EMAIL, '999999', { full_name: FULL_NAME, school_id: SCHOOL_ID })),
+    ).toEqual({ error: expect.any(String) })
+  })
+
+  it('returns an error when the profile insert fails', async () => {
+    const { client } = makeVerifyClient({
+      profileInsertError: { message: 'unique violation' },
     })
+    mockCreateClient.mockResolvedValue(client)
+
+    const result = await verifySignupOtp(
+      null,
+      otpForm(EMAIL, '123456', { full_name: FULL_NAME, school_id: SCHOOL_ID }),
+    )
+    expect(result).toEqual({ error: expect.any(String) })
   })
 })
