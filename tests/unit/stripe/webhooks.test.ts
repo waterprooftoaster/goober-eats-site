@@ -104,19 +104,38 @@ function authMetadata(overrides: Record<string, string> = {}) {
   }
 }
 
-function guestPiEvent(overrides: Record<string, string> = {}) {
-  return makeEvent('payment_intent.succeeded', {
+function guestCapturableEvent(overrides: Record<string, string> = {}) {
+  return makeEvent('payment_intent.amount_capturable_updated', {
     id: VALID_PI_ID,
     amount: 1500,
+    amount_capturable: 1500,
     metadata: guestMetadata(overrides),
   })
 }
 
-function authPiEvent(overrides: Record<string, string> = {}) {
+function authCapturableEvent(overrides: Record<string, string> = {}) {
+  return makeEvent('payment_intent.amount_capturable_updated', {
+    id: VALID_PI_ID,
+    amount: 1500,
+    amount_capturable: 1500,
+    metadata: authMetadata(overrides),
+  })
+}
+
+function pmSucceededEvent() {
   return makeEvent('payment_intent.succeeded', {
     id: VALID_PI_ID,
     amount: 1500,
-    metadata: authMetadata(overrides),
+    amount_received: 1500,
+    metadata: authMetadata(),
+  })
+}
+
+function pmCanceledEvent() {
+  return makeEvent('payment_intent.canceled', {
+    id: VALID_PI_ID,
+    amount: 1500,
+    metadata: authMetadata(),
   })
 }
 
@@ -170,13 +189,16 @@ describe('POST /api/stripe/webhooks', () => {
     })
   })
 
-  // ── payment_intent.succeeded ─────────────────────────────────────────
+  // ── payment_intent.amount_capturable_updated ────────────────────────
+  // Order creation moved here from payment_intent.succeeded after the
+  // manual-capture switch. Funds are authorized (uncaptured); payments.status
+  // starts at 'pending' and flips to 'succeeded' on the later capture event.
 
-  describe('payment_intent.succeeded (guest)', () => {
+  describe('payment_intent.amount_capturable_updated (guest)', () => {
     it('creates an order with null orderer_id, guest_name, school_id, and cart_screenshot_urls', async () => {
       const { ordersInsert, paymentsInsert } = setupHappyPath()
 
-      const res = await POST(buildSignedRequest(guestPiEvent()))
+      const res = await POST(buildSignedRequest(guestCapturableEvent()))
       expect(res.status).toBe(200)
 
       expect(ordersInsert.insert).toHaveBeenCalledWith(
@@ -203,7 +225,7 @@ describe('POST /api/stripe/webhooks', () => {
           stripe_payment_intent_id: VALID_PI_ID,
           amount_cents: 1500,
           platform_fee_cents: 250,
-          status: 'succeeded',
+          status: 'pending',
           payer_id: null,
           payee_id: null,
         })
@@ -215,18 +237,18 @@ describe('POST /api/stripe/webhooks', () => {
       const path2 = VALID_PATH.replace('.png', '.webp')
       const res = await POST(
         buildSignedRequest(
-          guestPiEvent({ cart_screenshot_paths: `${VALID_PATH},${path2}` })
+          guestCapturableEvent({ cart_screenshot_paths: `${VALID_PATH},${path2}` })
         )
       )
       expect(res.status).toBe(200)
     })
   })
 
-  describe('payment_intent.succeeded (auth)', () => {
+  describe('payment_intent.amount_capturable_updated (auth)', () => {
     it('creates order with orderer_id and null guest fields', async () => {
       const { ordersInsert, paymentsInsert } = setupHappyPath()
 
-      const res = await POST(buildSignedRequest(authPiEvent()))
+      const res = await POST(buildSignedRequest(authCapturableEvent()))
       expect(res.status).toBe(200)
 
       expect(ordersInsert.insert).toHaveBeenCalledWith(
@@ -244,10 +266,10 @@ describe('POST /api/stripe/webhooks', () => {
     })
   })
 
-  describe('payment_intent.succeeded idempotency + recovery', () => {
+  describe('payment_intent.amount_capturable_updated idempotency + recovery', () => {
     it('skips duplicate PI delivery', async () => {
       mockServiceFrom.mockReturnValueOnce(dbResult({ data: { id: 'existing-payment' } }))
-      const res = await POST(buildSignedRequest(guestPiEvent()))
+      const res = await POST(buildSignedRequest(guestCapturableEvent()))
       expect(res.status).toBe(200)
       expect(mockServiceFrom).toHaveBeenCalledTimes(1)
     })
@@ -264,7 +286,7 @@ describe('POST /api/stripe/webhooks', () => {
         .mockReturnValueOnce(dbResult({ data: { id: orphanId } }))
         .mockReturnValueOnce(dbResult({ data: null, error: null }))
 
-      const res = await POST(buildSignedRequest(guestPiEvent()))
+      const res = await POST(buildSignedRequest(guestCapturableEvent()))
       expect(res.status).toBe(200)
       expect(mockServiceFrom).toHaveBeenCalledTimes(4)
     })
@@ -278,7 +300,7 @@ describe('POST /api/stripe/webhooks', () => {
         .mockReturnValueOnce(dbResult({ data: null, error: { code: '23514', message: 'check constraint' } }))
         .mockReturnValueOnce(dbResult({ data: null }))
 
-      const res = await POST(buildSignedRequest(guestPiEvent()))
+      const res = await POST(buildSignedRequest(guestCapturableEvent()))
       expect(res.status).toBe(200)
     })
 
@@ -288,28 +310,28 @@ describe('POST /api/stripe/webhooks', () => {
         .mockReturnValueOnce(dbResult({ data: null, error: { code: '08006', message: 'connection failure' } }))
         .mockReturnValueOnce(dbResult({ data: null }))
 
-      const res = await POST(buildSignedRequest(guestPiEvent()))
+      const res = await POST(buildSignedRequest(guestCapturableEvent()))
       expect(res.status).toBe(500)
     })
   })
 
-  describe('payment_intent.succeeded metadata validation', () => {
+  describe('payment_intent.amount_capturable_updated metadata validation', () => {
     it('skips when school_id is not a UUID', async () => {
-      const res = await POST(buildSignedRequest(guestPiEvent({ school_id: INVALID_UUID })))
+      const res = await POST(buildSignedRequest(guestCapturableEvent({ school_id: INVALID_UUID })))
       expect(res.status).toBe(200)
       expect(mockServiceFrom).not.toHaveBeenCalled()
     })
 
     it('skips when cart_screenshot_paths contains invalid path', async () => {
       const res = await POST(
-        buildSignedRequest(guestPiEvent({ cart_screenshot_paths: 'orders/foo.png' }))
+        buildSignedRequest(guestCapturableEvent({ cart_screenshot_paths: 'orders/foo.png' }))
       )
       expect(res.status).toBe(200)
       expect(mockServiceFrom).not.toHaveBeenCalled()
     })
 
     it('skips when subtotal_cents is non-numeric', async () => {
-      const res = await POST(buildSignedRequest(guestPiEvent({ subtotal_cents: 'banana' })))
+      const res = await POST(buildSignedRequest(guestCapturableEvent({ subtotal_cents: 'banana' })))
       expect(res.status).toBe(200)
       expect(mockServiceFrom).not.toHaveBeenCalled()
     })
@@ -318,7 +340,7 @@ describe('POST /api/stripe/webhooks', () => {
       const { paymentsInsert } = setupHappyPath()
       // Attacker-controlled platform_fee_cents in metadata — should be ignored.
       const res = await POST(
-        buildSignedRequest(guestPiEvent({ platform_fee_cents: '0', total_cents: '99999' }))
+        buildSignedRequest(guestCapturableEvent({ platform_fee_cents: '0', total_cents: '99999' }))
       )
       expect(res.status).toBe(200)
       expect(paymentsInsert.insert).toHaveBeenCalledWith(
@@ -327,28 +349,125 @@ describe('POST /api/stripe/webhooks', () => {
     })
 
     it('skips when restaurant_name is empty after trim', async () => {
-      const res = await POST(buildSignedRequest(guestPiEvent({ restaurant_name: '   ' })))
+      const res = await POST(buildSignedRequest(guestCapturableEvent({ restaurant_name: '   ' })))
       expect(res.status).toBe(200)
       expect(mockServiceFrom).not.toHaveBeenCalled()
     })
 
     it('skips when screenshot count exceeds 5', async () => {
       const tooMany = Array(6).fill(VALID_PATH).join(',')
-      const res = await POST(buildSignedRequest(guestPiEvent({ cart_screenshot_paths: tooMany })))
+      const res = await POST(buildSignedRequest(guestCapturableEvent({ cart_screenshot_paths: tooMany })))
       expect(res.status).toBe(200)
       expect(mockServiceFrom).not.toHaveBeenCalled()
     })
 
     it('skips guest payload missing guest_name', async () => {
-      const res = await POST(buildSignedRequest(guestPiEvent({ guest_name: '' })))
+      const res = await POST(buildSignedRequest(guestCapturableEvent({ guest_name: '' })))
       expect(res.status).toBe(200)
       expect(mockServiceFrom).not.toHaveBeenCalled()
     })
 
     it('skips auth payload with invalid orderer_id UUID', async () => {
-      const res = await POST(buildSignedRequest(authPiEvent({ orderer_id: INVALID_UUID })))
+      const res = await POST(buildSignedRequest(authCapturableEvent({ orderer_id: INVALID_UUID })))
       expect(res.status).toBe(200)
       expect(mockServiceFrom).not.toHaveBeenCalled()
+    })
+  })
+
+  // ── payment_intent.succeeded (post-capture) ──────────────────────────
+  // After the manual-capture switch this event fires AFTER funds are
+  // captured (i.e. after lib/stripe/capture-and-transfer.ts calls
+  // paymentIntents.capture during order completion). The handler flips the
+  // existing payments row from 'pending' to 'succeeded'. Idempotent because
+  // re-delivery just re-issues the same UPDATE.
+
+  describe('payment_intent.succeeded (post-capture)', () => {
+    it('flips payments.status to succeeded for the matching PI', async () => {
+      const update = dbResult({ data: null, error: null })
+      mockServiceFrom.mockReturnValueOnce(update)
+
+      const res = await POST(buildSignedRequest(pmSucceededEvent()))
+      expect(res.status).toBe(200)
+      expect(update.update).toHaveBeenCalledWith({ status: 'succeeded' })
+      expect(update.eq).toHaveBeenCalledWith('stripe_payment_intent_id', VALID_PI_ID)
+    })
+
+    it('is idempotent on re-delivery (same UPDATE re-issued)', async () => {
+      const first = dbResult({ data: null, error: null })
+      const second = dbResult({ data: null, error: null })
+      mockServiceFrom.mockReturnValueOnce(first).mockReturnValueOnce(second)
+
+      const r1 = await POST(buildSignedRequest(pmSucceededEvent()))
+      const r2 = await POST(buildSignedRequest(pmSucceededEvent()))
+      expect(r1.status).toBe(200)
+      expect(r2.status).toBe(200)
+      expect(first.update).toHaveBeenCalledTimes(1)
+      expect(second.update).toHaveBeenCalledTimes(1)
+    })
+
+    it('no-ops silently when no payments row exists yet (race)', async () => {
+      // Postgres update with 0 affected rows does not error.
+      const update = dbResult({ data: null, error: null })
+      mockServiceFrom.mockReturnValueOnce(update)
+
+      const res = await POST(buildSignedRequest(pmSucceededEvent()))
+      expect(res.status).toBe(200)
+    })
+
+    it('returns 500 (Stripe will retry) on DB error', async () => {
+      const update = dbResult({ data: null, error: { code: '08006', message: 'connection failure' } })
+      mockServiceFrom.mockReturnValueOnce(update)
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      const res = await POST(buildSignedRequest(pmSucceededEvent()))
+      expect(res.status).toBe(500)
+      consoleSpy.mockRestore()
+    })
+  })
+
+  // ── payment_intent.canceled ─────────────────────────────────────────
+  // Fires when the auth hold is released — orderer cancel (Phase 3),
+  // 24h sweep (Phase 4), or Stripe-side expiry. Mirrors to orders.status
+  // = 'cancelled'. Idempotent because re-delivery re-issues the same UPDATE.
+
+  describe('payment_intent.canceled', () => {
+    it('flips orders.status to cancelled for the matching PI', async () => {
+      const update = dbResult({ data: null, error: null })
+      mockServiceFrom.mockReturnValueOnce(update)
+
+      const res = await POST(buildSignedRequest(pmCanceledEvent()))
+      expect(res.status).toBe(200)
+      expect(update.update).toHaveBeenCalledWith({ status: 'cancelled' })
+      expect(update.eq).toHaveBeenCalledWith('stripe_payment_intent_id', VALID_PI_ID)
+    })
+
+    it('is idempotent on re-delivery', async () => {
+      const first = dbResult({ data: null, error: null })
+      const second = dbResult({ data: null, error: null })
+      mockServiceFrom.mockReturnValueOnce(first).mockReturnValueOnce(second)
+
+      const r1 = await POST(buildSignedRequest(pmCanceledEvent()))
+      const r2 = await POST(buildSignedRequest(pmCanceledEvent()))
+      expect(r1.status).toBe(200)
+      expect(r2.status).toBe(200)
+    })
+
+    it('no-ops silently when no order exists for the PI (canceled before authorize)', async () => {
+      const update = dbResult({ data: null, error: null })
+      mockServiceFrom.mockReturnValueOnce(update)
+
+      const res = await POST(buildSignedRequest(pmCanceledEvent()))
+      expect(res.status).toBe(200)
+    })
+
+    it('returns 500 on DB error', async () => {
+      const update = dbResult({ data: null, error: { code: '08006', message: 'connection failure' } })
+      mockServiceFrom.mockReturnValueOnce(update)
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      const res = await POST(buildSignedRequest(pmCanceledEvent()))
+      expect(res.status).toBe(500)
+      consoleSpy.mockRestore()
     })
   })
 

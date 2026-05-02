@@ -134,7 +134,12 @@ export async function POST(request: NextRequest) {
       return_url: returnUrl,
       metadata,
       line_items: lineItems,
-      payment_intent_data: { metadata },
+      // Manual capture: Stripe authorizes the card now and only debits funds
+      // when lib/stripe/capture-and-transfer.ts calls paymentIntents.capture
+      // at order completion. Cancel paths (orderer cancel, 24h sweep,
+      // mid-order swiper suspension) release the auth via paymentIntents.cancel
+      // instead of refunding a captured charge.
+      payment_intent_data: { capture_method: 'manual', metadata },
       ...(realAuthProfile && user?.email && { customer_email: user.email }),
     })
   } catch (err) {
