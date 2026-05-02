@@ -69,9 +69,10 @@ export async function captureAndTransfer(
     return { ok: false, reason: 'capture_failed' }
   }
 
+  let capturedPI: { latest_charge?: string | { id: string } | null } | null = null
   if (payment.status === 'pending') {
     try {
-      await getStripe().paymentIntents.capture(
+      capturedPI = await getStripe().paymentIntents.capture(
         payment.stripe_payment_intent_id,
         {},
         { idempotencyKey: `capture-${orderId}` }
@@ -120,12 +121,22 @@ export async function captureAndTransfer(
 
   const transferAmount = payment.amount_cents - payment.platform_fee_cents
 
+  // Resolve the originating charge so the transfer debits the captured charge
+  // (Stripe `source_transaction`) instead of the platform's available balance.
+  // Without this, the transfer fails with `balance_insufficient` whenever the
+  // captures haven't cleared yet (typically T+2 in standard payouts).
+  const sourceCharge = await resolveLatestCharge(
+    capturedPI,
+    payment.stripe_payment_intent_id
+  )
+
   try {
     await getStripe().transfers.create(
       {
         amount: transferAmount,
         currency: 'usd',
         destination: stripeAccount.stripe_account_id,
+        ...(sourceCharge ? { source_transaction: sourceCharge } : {}),
         metadata: { order_id: orderId },
       },
       { idempotencyKey: `transfer-${orderId}` }
@@ -149,4 +160,48 @@ export async function captureAndTransfer(
     .is('payee_id', null)
 
   return { ok: true }
+}
+
+// --- Helpers ---
+
+/**
+ * Returns the charge ID to use as `source_transaction` on the transfer.
+ * Prefers the just-captured PI's `latest_charge`; falls back to
+ * `paymentIntents.retrieve` for the idempotent-retry path where capture
+ * was already done by a prior call.
+ * @param capturedPI - PI returned by paymentIntents.capture, or null when
+ *   capture was skipped (status was already 'succeeded')
+ * @param paymentIntentId - PI ID for the retrieve fallback
+ * @returns The charge ID, or null if it cannot be resolved (caller falls
+ *   back to a balance-debit transfer)
+ * @called-by captureAndTransfer
+ */
+async function resolveLatestCharge(
+  capturedPI: { latest_charge?: string | { id: string } | null } | null,
+  paymentIntentId: string
+): Promise<string | null> {
+  const fromCapture = readChargeId(capturedPI?.latest_charge)
+  if (fromCapture) return fromCapture
+  try {
+    const pi = await getStripe().paymentIntents.retrieve(paymentIntentId)
+    return readChargeId(pi.latest_charge)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error'
+    console.error(`resolveLatestCharge: retrieve(${paymentIntentId}) failed: ${message}`)
+    return null
+  }
+}
+
+/**
+ * Normalises Stripe's `latest_charge` field which is `string | Charge | null`.
+ * @param value - The raw value from a PI response
+ * @returns The charge ID string, or null when absent
+ * @called-by resolveLatestCharge
+ */
+function readChargeId(
+  value: string | { id: string } | null | undefined
+): string | null {
+  if (!value) return null
+  if (typeof value === 'string') return value
+  return value.id ?? null
 }

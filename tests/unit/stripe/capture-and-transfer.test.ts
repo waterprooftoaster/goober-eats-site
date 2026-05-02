@@ -12,10 +12,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // capture-and-transfer.ts imports `server-only`, which throws under jsdom.
 vi.mock('server-only', () => ({}))
 
-const { mockServiceFrom, mockTransfersCreate, mockPaymentIntentsCapture } = vi.hoisted(() => ({
+const {
+  mockServiceFrom,
+  mockTransfersCreate,
+  mockPaymentIntentsCapture,
+  mockPaymentIntentsRetrieve,
+} = vi.hoisted(() => ({
   mockServiceFrom: vi.fn(),
   mockTransfersCreate: vi.fn(),
   mockPaymentIntentsCapture: vi.fn(),
+  mockPaymentIntentsRetrieve: vi.fn(),
 }))
 
 vi.mock('@/lib/supabase/service', () => ({
@@ -25,7 +31,10 @@ vi.mock('@/lib/supabase/service', () => ({
 vi.mock('@/lib/stripe/client', () => ({
   getStripe: vi.fn(() => ({
     transfers: { create: mockTransfersCreate },
-    paymentIntents: { capture: mockPaymentIntentsCapture },
+    paymentIntents: {
+      capture: mockPaymentIntentsCapture,
+      retrieve: mockPaymentIntentsRetrieve,
+    },
   })),
 }))
 
@@ -34,6 +43,7 @@ import { captureAndTransfer } from '@/lib/stripe/capture-and-transfer'
 const ORDER_ID = '00000000-0000-4000-8000-000000000100'
 const SWIPER_ID = '00000000-0000-4000-8000-000000000001'
 const PI_ID = 'pi_test_123'
+const CHARGE_ID = 'ch_test_456'
 
 function chain(result: { data?: unknown; error?: unknown } = { data: null, error: null }) {
   const mock: Record<string, unknown> = {}
@@ -69,7 +79,16 @@ function transferredPayment() {
 beforeEach(() => {
   vi.clearAllMocks()
   mockTransfersCreate.mockResolvedValue({ id: 'tr_test_1' })
-  mockPaymentIntentsCapture.mockResolvedValue({ id: PI_ID, status: 'succeeded' })
+  mockPaymentIntentsCapture.mockResolvedValue({
+    id: PI_ID,
+    status: 'succeeded',
+    latest_charge: CHARGE_ID,
+  })
+  mockPaymentIntentsRetrieve.mockResolvedValue({
+    id: PI_ID,
+    status: 'succeeded',
+    latest_charge: CHARGE_ID,
+  })
 })
 
 describe('captureAndTransfer', () => {
@@ -98,10 +117,46 @@ describe('captureAndTransfer', () => {
           amount: 1800,
           currency: 'usd',
           destination: 'acct_swiper',
+          source_transaction: CHARGE_ID,
           metadata: { order_id: ORDER_ID },
         }),
         expect.objectContaining({ idempotencyKey: `transfer-${ORDER_ID}` })
       )
+      expect(mockPaymentIntentsRetrieve).not.toHaveBeenCalled()
+    })
+
+    it('falls back to paymentIntents.retrieve to resolve source_transaction when capture is skipped', async () => {
+      mockServiceFrom
+        .mockReturnValueOnce(chain({ data: capturedPayment() }))
+        .mockReturnValueOnce(chain({ data: { stripe_account_id: 'acct_swiper' } }))
+        .mockReturnValueOnce(chain({ data: null, error: null }))
+
+      const result = await captureAndTransfer(ORDER_ID, SWIPER_ID)
+      expect(result).toEqual({ ok: true })
+
+      expect(mockPaymentIntentsCapture).not.toHaveBeenCalled()
+      expect(mockPaymentIntentsRetrieve).toHaveBeenCalledWith(PI_ID)
+      expect(mockTransfersCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ source_transaction: CHARGE_ID }),
+        expect.anything()
+      )
+    })
+
+    it('omits source_transaction when latest_charge cannot be resolved (best-effort fallback)', async () => {
+      mockServiceFrom
+        .mockReturnValueOnce(chain({ data: capturedPayment() }))
+        .mockReturnValueOnce(chain({ data: { stripe_account_id: 'acct_swiper' } }))
+        .mockReturnValueOnce(chain({ data: null, error: null }))
+
+      mockPaymentIntentsRetrieve.mockResolvedValueOnce({
+        id: PI_ID,
+        latest_charge: null,
+      })
+
+      await captureAndTransfer(ORDER_ID, SWIPER_ID)
+
+      const [body] = mockTransfersCreate.mock.calls[0]
+      expect(body).not.toHaveProperty('source_transaction')
     })
   })
 
