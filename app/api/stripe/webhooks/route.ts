@@ -25,6 +25,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { apiError, apiSuccess } from '@/lib/api/helpers'
 import { computeSplit } from '@/lib/pricing'
 import { CART_TOTAL_MAX_CENTS } from '@/lib/constants'
+import { sendOrderPlacedEmail, sendNewOrderToSwipers } from '@/lib/email/send'
 import type Stripe from 'stripe'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -220,6 +221,17 @@ async function handlePaymentIntentAmountCapturable(
     console.error('payment_intent.amount_capturable_updated: failed to record payment', paymentError)
     return isPermanentDbError(paymentError) ? null : apiError('Failed to record payment', 500)
   }
+
+  void sendOrderPlacedEmail({
+    ordererId,
+    isGuest,
+    guestName,
+    pi,
+    restaurantName,
+    totalCents: split.ordererPaysCents,
+    orderId,
+  })
+  void sendNewOrderToSwipers({ schoolId, restaurantName })
 
   return null
 }
