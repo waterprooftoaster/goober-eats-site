@@ -14,6 +14,7 @@ export const CONTACT_EMAIL = 'goobereats@gmail.com'
 
 export const PENDING_SCREENSHOTS_KEY = 'pending_screenshots'
 export const PENDING_SCHOOL_ID_KEY = 'pending_school_id'
+export const PENDING_PRICE_CENTS_KEY = 'pending_price_cents'
 
 /**
  * Supabase Realtime channel name for message INSERTs in a conversation.
