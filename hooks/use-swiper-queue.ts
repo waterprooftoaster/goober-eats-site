@@ -47,8 +47,11 @@ export function useSwiperQueue(opts: UseSwiperQueueOptions): UseSwiperQueueResul
     try {
       const res = await fetch('/api/swiper/pending')
       if (!res.ok) return
-      const data: PendingOrder[] = await res.json()
-      setOrders(data)
+      const data = (await res.json()) as unknown
+      // Defensive runtime guard: a deploy-rollout where server returns an
+      // unexpected shape would otherwise set state with garbage and crash render.
+      if (!Array.isArray(data)) return
+      setOrders(data as PendingOrder[])
     } catch {
       // Silent — visibility refetch / next realtime event will retry
     }

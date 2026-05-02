@@ -39,8 +39,14 @@ export function OrdererCancelBanner({ orderId, onStatusChange }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'cancelled' }),
       })
-      if (res.ok) {
-        onStatusChange?.('cancelled')
+      // Hard reload on success OR the known race-409. The
+      // payment_intent.canceled webhook (app/api/stripe/webhooks/route.ts)
+      // can flip orders.status='cancelled' before our route's CAS lands,
+      // making the route return "Order status was changed by another
+      // request" even though the cancellation actually succeeded. A fresh
+      // document load re-runs the SSR query so the cancelled order is gone.
+      if (res.ok || res.status === 409) {
+        window.location.reload()
         return
       }
       const json = await res.json().catch(() => ({}))

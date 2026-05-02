@@ -116,7 +116,7 @@ describe('GET /api/cron/sweep-stale-orders', () => {
       })
       mockServiceFrom
         .mockReturnValueOnce(ordersQuery)
-        // For each order: orders.update + conversations.select (no conv → no message insert)
+        // For each order: payments.select (no row) + orders.update + conversations.select
         .mockReturnValue(chain({ data: null, error: null }))
 
       const res = await GET(buildRequest(`Bearer ${CRON_SECRET}`))
@@ -137,19 +137,87 @@ describe('GET /api/cron/sweep-stale-orders', () => {
       )
     })
 
-    it('flips orders.status to cancelled even when paymentIntents.cancel throws', async () => {
+    it('skips cancel + status flip when payments.status is succeeded (already-captured guard)', async () => {
       const ordersQuery = chain({
         data: [{ id: ORDER_A, stripe_payment_intent_id: PI_A }],
       })
+      const paymentLookup = chain({ data: { status: 'succeeded' } })
+
+      mockServiceFrom
+        .mockReturnValueOnce(ordersQuery)
+        .mockReturnValueOnce(paymentLookup)
+
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      const res = await GET(buildRequest(`Bearer ${CRON_SECRET}`))
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      // Settled payment = early return (counted as swept since allSettled fulfills); no DB mutation, no Stripe call.
+      expect(body.swept).toBe(1)
+      expect(mockPaymentIntentsCancel).not.toHaveBeenCalled()
+      // Only the orders query + the payments lookup were issued.
+      expect(mockServiceFrom).toHaveBeenCalledTimes(2)
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining(`order ${ORDER_A} has settled payment (succeeded)`)
+      )
+
+      consoleSpy.mockRestore()
+    })
+
+    it('skips cancel + status flip when payments.status is refunded (already-refunded guard)', async () => {
+      const ordersQuery = chain({
+        data: [{ id: ORDER_A, stripe_payment_intent_id: PI_A }],
+      })
+      const paymentLookup = chain({ data: { status: 'refunded' } })
+
+      mockServiceFrom
+        .mockReturnValueOnce(ordersQuery)
+        .mockReturnValueOnce(paymentLookup)
+
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      const res = await GET(buildRequest(`Bearer ${CRON_SECRET}`))
+      expect(res.status).toBe(200)
+      expect(mockPaymentIntentsCancel).not.toHaveBeenCalled()
+
+      consoleSpy.mockRestore()
+    })
+
+    it('proceeds with cancel when payments.status is pending (auth-only)', async () => {
+      const ordersQuery = chain({
+        data: [{ id: ORDER_A, stripe_payment_intent_id: PI_A }],
+      })
+      const paymentLookup = chain({ data: { status: 'pending' } })
       const orderUpdate = chain({ data: null, error: null })
       const conversationLookup = chain({ data: null })
 
       mockServiceFrom
         .mockReturnValueOnce(ordersQuery)
+        .mockReturnValueOnce(paymentLookup)
         .mockReturnValueOnce(orderUpdate)
         .mockReturnValueOnce(conversationLookup)
 
-      mockPaymentIntentsCancel.mockRejectedValueOnce(new Error('PI already captured'))
+      const res = await GET(buildRequest(`Bearer ${CRON_SECRET}`))
+      expect(res.status).toBe(200)
+      expect(mockPaymentIntentsCancel).toHaveBeenCalledWith(PI_A, undefined, expect.any(Object))
+      expect(orderUpdate.update).toHaveBeenCalledWith({ status: 'cancelled' })
+    })
+
+    it('flips orders.status to cancelled even when paymentIntents.cancel throws (auth not yet captured)', async () => {
+      const ordersQuery = chain({
+        data: [{ id: ORDER_A, stripe_payment_intent_id: PI_A }],
+      })
+      const paymentLookup = chain({ data: { status: 'pending' } })
+      const orderUpdate = chain({ data: null, error: null })
+      const conversationLookup = chain({ data: null })
+
+      mockServiceFrom
+        .mockReturnValueOnce(ordersQuery)
+        .mockReturnValueOnce(paymentLookup)
+        .mockReturnValueOnce(orderUpdate)
+        .mockReturnValueOnce(conversationLookup)
+
+      mockPaymentIntentsCancel.mockRejectedValueOnce(new Error('PI already canceled'))
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
       const res = await GET(buildRequest(`Bearer ${CRON_SECRET}`))
@@ -167,12 +235,14 @@ describe('GET /api/cron/sweep-stale-orders', () => {
       const ordersQuery = chain({
         data: [{ id: ORDER_A, stripe_payment_intent_id: PI_A }],
       })
+      const paymentLookup = chain({ data: null })
       const orderUpdate = chain({ data: null, error: null })
       const conversationLookup = chain({ data: { id: 'conv-1' } })
       const messageInsert = chain({ data: null, error: null })
 
       mockServiceFrom
         .mockReturnValueOnce(ordersQuery)
+        .mockReturnValueOnce(paymentLookup)
         .mockReturnValueOnce(orderUpdate)
         .mockReturnValueOnce(conversationLookup)
         .mockReturnValueOnce(messageInsert)
@@ -198,13 +268,25 @@ describe('GET /api/cron/sweep-stale-orders', () => {
         ],
       })
 
-      mockServiceFrom
-        .mockReturnValueOnce(ordersQuery)
-        // ORDER_A: orders.update fails
-        .mockReturnValueOnce(chain({ data: null, error: { message: 'db down' } }))
-        // ORDER_B: orders.update succeeds + conversations.select misses
-        .mockReturnValueOnce(chain({ data: null, error: null }))
-        .mockReturnValueOnce(chain({ data: null }))
+      // Both orders run in parallel via Promise.allSettled, so mockServiceFrom
+      // is called in interleaved order. Dispatch by table name + per-table
+      // call counter to make ordering deterministic.
+      let ordersTableCalls = 0
+      let updateCalls = 0
+      mockServiceFrom.mockImplementation((table: string) => {
+        if (table === 'orders') {
+          ordersTableCalls += 1
+          if (ordersTableCalls === 1) return ordersQuery
+          // 2nd+ calls to orders are the per-order .update(...) chains.
+          updateCalls += 1
+          return updateCalls === 1
+            ? chain({ data: null, error: { message: 'db down' } })
+            : chain({ data: null, error: null })
+        }
+        if (table === 'payments') return chain({ data: null })
+        if (table === 'conversations') return chain({ data: null })
+        return chain({ data: null, error: null })
+      })
 
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
@@ -212,6 +294,7 @@ describe('GET /api/cron/sweep-stale-orders', () => {
       expect(res.status).toBe(200)
       const body = await res.json()
       expect(body.total).toBe(2)
+      // One order's update threw (rejected), the other resolved.
       expect(body.swept).toBe(1)
       expect(body.failed).toBe(1)
 
@@ -224,6 +307,7 @@ describe('GET /api/cron/sweep-stale-orders', () => {
       })
       mockServiceFrom
         .mockReturnValueOnce(ordersQuery)
+        // No payments lookup because PI is null; jump straight to orders.update + conversations.
         .mockReturnValueOnce(chain({ data: null, error: null }))
         .mockReturnValueOnce(chain({ data: null }))
 

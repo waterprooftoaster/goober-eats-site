@@ -96,7 +96,6 @@ export default async function NewComplaintPage({ params }: PageProps) {
       <ComplaintForm
         orderId={orderId}
         restaurantName={order.restaurant_name}
-        totalCents={order.total_cents}
       />
     </main>
   )

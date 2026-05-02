@@ -56,8 +56,19 @@ export async function captureAndTransfer(
     return { ok: false, reason: 'no_payment' }
   }
 
-  // Capture (only if not already captured). Status==='succeeded' means a
-  // prior call already captured (idempotent retry); skip and proceed to transfer.
+  // Three legal payment.status values reach this point:
+  //   'pending'   — auth-only, capture has not run yet → run capture now
+  //   'succeeded' — a prior call (or the webhook) already captured → skip to transfer
+  //   'refunded'  — should not be possible (order completion implies no prior refund)
+  // Anything else (e.g., a hypothetical 'failed' ever added to the enum) is a
+  // programming error: bail rather than silently re-capturing.
+  if (payment.status !== 'pending' && payment.status !== 'succeeded') {
+    console.error(
+      `captureAndTransfer: unexpected payment.status='${payment.status}' for order ${orderId}; refusing to capture`
+    )
+    return { ok: false, reason: 'capture_failed' }
+  }
+
   if (payment.status === 'pending') {
     try {
       await getStripe().paymentIntents.capture(

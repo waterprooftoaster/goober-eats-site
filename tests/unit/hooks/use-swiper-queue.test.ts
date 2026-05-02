@@ -202,6 +202,31 @@ describe('useSwiperQueue', () => {
     })
   })
 
+  it('ignores a malformed (non-array) /api/swiper/pending response — guards against deploy schema-skew', async () => {
+    const initial = [makeOrder('order-keep')]
+    mockFetch.mockResolvedValue(
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ unexpected: 'shape' }),
+      })
+    )
+
+    const { result } = renderHook(() =>
+      useSwiperQueue({ schoolId: SCHOOL_ID, initialOrders: initial })
+    )
+    await waitFor(() => expect(mockChannel.on).toHaveBeenCalledTimes(2))
+
+    const insertHandler = mockChannel.on.mock.calls.find(
+      ([, cfg]) => (cfg as { event: string }).event === 'INSERT'
+    )?.[2] as (() => void) | undefined
+    if (insertHandler) act(() => insertHandler())
+
+    await new Promise((r) => setTimeout(r, 5))
+    // Local state preserved — the bad payload was rejected.
+    expect(result.current.orders).toEqual(initial)
+  })
+
   it('removeOrder drops a row from local state without refetching', async () => {
     const initial = [makeOrder('order-1'), makeOrder('order-2')]
     const { result } = renderHook(() =>

@@ -19,6 +19,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { updateOrderStatusSchema } from '@/lib/types/api'
 import { canTransition } from '@/lib/orders/state-machine'
 import { apiError, apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
+import { validateGuestOrder } from '@/lib/api/guest-auth'
 import { captureAndTransfer } from '@/lib/stripe/capture-and-transfer'
 import { getStripe } from '@/lib/stripe/client'
 import { signCartScreenshotPaths } from '@/lib/storage/sign-screenshots'
@@ -66,7 +67,15 @@ export async function PATCH(
   const isSwiper = order.swiper_id === user.id
 
   if (newStatus === 'cancelled') {
-    if (!isOrderer) {
+    // Allow either the authenticated orderer OR a guest holding the matching
+    // guest_access_token cookie. Guest orders have orderer_id NULL by design,
+    // so isOrderer is always false for them — we re-check via validateGuestOrder.
+    let canCancel = isOrderer
+    if (!canCancel && order.orderer_id === null) {
+      const { error: guestErr } = await validateGuestOrder(id)
+      canCancel = guestErr === null
+    }
+    if (!canCancel) {
       return apiError('Only the orderer can cancel an order', 403)
     }
     // Release the auth hold before flipping status. paymentIntents.cancel is
@@ -178,12 +187,23 @@ export async function PATCH(
     const result = await captureAndTransfer(updated.id, updated.swiper_id)
     if (!result.ok) {
       // Rollback: WHERE id=X AND status='completed' — only this request can
-      // be in this state, so the rollback is unambiguous.
-      await supabase
+      // be in this state, so the rollback is unambiguous. Service client is
+      // required because a concurrent un-accept could have nulled swiper_id,
+      // and clearing completed_at to null also avoids the orders_update RLS
+      // WITH CHECK on the user-scoped client (same precedent as the un-accept
+      // branch above). Clearing completed_at preserves the complaint window
+      // so the eventual successful completion gets the full 24h.
+      const { error: rollbackError } = await createServiceClient()
         .from('orders')
-        .update({ status: 'in_progress' })
+        .update({ status: 'in_progress', completed_at: null })
         .eq('id', updated.id)
         .eq('status', 'completed')
+      if (rollbackError) {
+        console.error(
+          `Capture failed AND rollback failed for order ${updated.id}`,
+          rollbackError
+        )
+      }
 
       if (result.reason === 'capture_failed') {
         return apiError(

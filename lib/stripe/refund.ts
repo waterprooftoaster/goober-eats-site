@@ -60,6 +60,9 @@ export async function refundOrder(
       `refundOrder: order ${orderId} not refundable (payment status=${payment.status})`
     )
   }
+  if (!payment.stripe_payment_intent_id) {
+    throw new Error(`refundOrder: order ${orderId} payment has no stripe_payment_intent_id`)
+  }
 
   const refund = await getStripe().refunds.create(
     {

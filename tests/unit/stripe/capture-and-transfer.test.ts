@@ -135,6 +135,23 @@ describe('captureAndTransfer', () => {
       expect(mockPaymentIntentsCapture).not.toHaveBeenCalled()
       expect(mockTransfersCreate).toHaveBeenCalledTimes(1)
     })
+
+    it('returns capture_failed without calling Stripe when payment.status is unexpected (defense-in-depth)', async () => {
+      mockServiceFrom.mockReturnValueOnce(
+        chain({ data: { ...pendingPayment(), status: 'refunded' } })
+      )
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      const result = await captureAndTransfer(ORDER_ID, SWIPER_ID)
+      expect(result).toEqual({ ok: false, reason: 'capture_failed' })
+      expect(mockPaymentIntentsCapture).not.toHaveBeenCalled()
+      expect(mockTransfersCreate).not.toHaveBeenCalled()
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining(`unexpected payment.status='refunded' for order ${ORDER_ID}`)
+      )
+
+      consoleSpy.mockRestore()
+    })
   })
 
   describe('transfer branch', () => {

@@ -24,6 +24,7 @@ import { getStripe } from '@/lib/stripe/client'
 import { createServiceClient } from '@/lib/supabase/service'
 import { apiError, apiSuccess } from '@/lib/api/helpers'
 import { computeSplit } from '@/lib/pricing'
+import { CART_TOTAL_MAX_CENTS } from '@/lib/constants'
 import type Stripe from 'stripe'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -261,6 +262,10 @@ async function handlePaymentIntentCanceled(
   pi: Stripe.PaymentIntent,
   supabase: ServiceClient
 ): Promise<Response | null> {
+  // Zero-row UPDATE is the deliberate no-op when cancel arrives before the
+  // matching order is created (e.g. user abandoned checkout before card auth,
+  // or amount_capturable_updated never fired). Supabase does not error on a
+  // zero-row UPDATE, so this safely acks Stripe with no DB mutation.
   const { error } = await supabase
     .from('orders')
     .update({ status: 'cancelled' })
@@ -306,7 +311,7 @@ type MetadataErr = { ok: false; reason: string }
  * @param guestName - Pre-extracted guest name (or null for auth flow)
  * @param ordererId - Pre-extracted orderer id (or null for guest flow)
  * @returns Discriminated union: ok=true with parsed fields, or ok=false with a reason
- * @called-by handlePaymentIntentSucceeded
+ * @called-by handlePaymentIntentAmountCapturable
  */
 function validatePaymentIntentMetadata(
   meta: Stripe.Metadata,
@@ -330,7 +335,7 @@ function validatePaymentIntentMetadata(
   const subtotalCents = parseInt(subtotalCentsRaw, 10)
   // Mirrors createCheckoutSchema bounds in lib/types/api.ts. Defends against
   // post-checkout metadata tampering by a compromised platform key.
-  if (!Number.isInteger(subtotalCents) || subtotalCents < 50 || subtotalCents > 50_000) {
+  if (!Number.isInteger(subtotalCents) || subtotalCents < 50 || subtotalCents > CART_TOTAL_MAX_CENTS) {
     return { ok: false, reason: 'invalid subtotal_cents' }
   }
   if (!screenshotPathsRaw) return { ok: false, reason: 'missing cart_screenshot_paths' }

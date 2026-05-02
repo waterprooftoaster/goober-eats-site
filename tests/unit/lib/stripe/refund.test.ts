@@ -101,6 +101,18 @@ describe('refundOrder', () => {
     expect(mockRefundsCreate).not.toHaveBeenCalled()
   })
 
+  it('throws with a clear message when stripe_payment_intent_id is null', async () => {
+    const orphanChain = chain({
+      data: paymentRow({ status: 'succeeded', stripe_payment_intent_id: null }),
+    })
+    mockServiceFrom.mockReturnValueOnce(orphanChain)
+
+    await expect(refundOrder(ORDER_ID, IDEMPOTENCY)).rejects.toThrow(
+      /no stripe_payment_intent_id/i
+    )
+    expect(mockRefundsCreate).not.toHaveBeenCalled()
+  })
+
   it('propagates Stripe errors (route layer logs + leaves verdict pending)', async () => {
     const paymentChain = chain({ data: paymentRow() })
     mockServiceFrom.mockReturnValueOnce(paymentChain)

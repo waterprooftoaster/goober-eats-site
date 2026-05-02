@@ -23,7 +23,6 @@ import type { ComplaintVerdict } from '@/lib/types/database'
 interface Props {
   orderId: string
   restaurantName: string
-  totalCents: number
 }
 
 interface ResolvedComplaint {
