@@ -1,8 +1,9 @@
 /**
  * @file page.tsx
  * @description Reset-password landing page; guards on the recovery session
- *   established by /auth/callback. Anonymous visitors are redirected to
- *   /auth/forgot-password since the form would have nothing to update.
+ *   established by app/auth/forgot-password's verifyRecoveryOtp action.
+ *   Anonymous visitors are redirected to /auth/forgot-password since the
+ *   form would have nothing to update.
  *   Called by: Next.js routing (/auth/reset-password)
  * @dependencies lib/supabase/server.ts, app/auth/reset-password/reset-form.tsx
  */

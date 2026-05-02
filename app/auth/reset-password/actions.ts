@@ -3,8 +3,8 @@
 /**
  * @file actions.ts
  * @description Server action that updates the authenticated user's password.
- *   Reaches the user via the recovery session established by the
- *   /auth/callback exchange that fires when the email link is clicked.
+ *   Reaches the user via the recovery session established by
+ *   app/auth/forgot-password's verifyRecoveryOtp action.
  *   Called by: app/auth/reset-password/reset-form.tsx
  * @dependencies lib/supabase/server.ts, lib/types/api.ts
  */

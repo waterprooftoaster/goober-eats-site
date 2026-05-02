@@ -229,8 +229,11 @@ otp_expiry = 3600
 # admin_email = "noreply@goobereats.net"
 # sender_name = "Goober Eats"
 
-# Customize email templates — strip the 6-digit OTP from the default
-# Supabase wording since we have no verifyOtp UI; keep the magic link only.
+# Customize email templates — render the 6-digit OTP token instead of the
+# magic link. Sign-up and password reset both verify the token via
+# supabase.auth.verifyOtp from the same tab the flow started in (no PKCE
+# code exchange, no /auth/callback hop), eliminating cross-browser and
+# link-prefetch failures.
 [auth.email.template.recovery]
 subject = "Reset your password"
 content_path = "./supabase/templates/recovery.html"

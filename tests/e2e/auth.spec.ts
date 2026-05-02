@@ -95,6 +95,7 @@ test.describe('Authentication flow', () => {
 
 const FORM_SIGNUP_EMAIL = 'signup-via-form@goobereats.edu'
 const FORM_SIGNUP_PASSWORD = 'form123456'
+const MAILPIT_BASE = process.env.MAILPIT_BASE ?? 'http://127.0.0.1:64364'
 
 test.describe('Signup via form', () => {
   let insertedSchoolId: string | null = null
@@ -122,6 +123,11 @@ test.describe('Signup via form', () => {
         .single()
       insertedSchoolId = inserted?.id ?? null
     }
+
+    // Drain the mailbox so the OTP we read is the one this test triggers.
+    await fetch(`${MAILPIT_BASE}/api/v1/messages`, { method: 'DELETE' }).catch(
+      () => undefined,
+    )
   })
 
   test.afterAll(async () => {
@@ -141,7 +147,7 @@ test.describe('Signup via form', () => {
     }
   })
 
-  test('signup with full name, Enter-to-select school, onboarding completes', async ({
+  test('signup → OTP verification → onboarding completes', async ({
     page,
   }) => {
     test.setTimeout(60000)
@@ -158,7 +164,16 @@ test.describe('Signup via form', () => {
     await page.getByTestId('auth-password-confirm-input').fill(FORM_SIGNUP_PASSWORD)
     await page.getByTestId('auth-signup-button').click()
 
-    // Step 3: Onboarding — full name with spaces
+    // Step 3: OTP — the form auto-advances after signUp; the user types the
+    // 6-digit code from the email into the same tab.
+    await expect(page.getByTestId('auth-otp-input')).toBeVisible({ timeout: 15000 })
+    const token = await fetchOtpToken(FORM_SIGNUP_EMAIL)
+    await page.getByTestId('auth-otp-input').fill(token)
+    await page.getByTestId('auth-otp-verify-button').click()
+
+    // Step 4: Onboarding — verifyOtp succeeds, the form hard-loads
+    // /auth/login, and the server-side onboarding-resume branch surfaces
+    // the name step.
     await expect(page.getByTestId('auth-fullname-input')).toBeVisible({ timeout: 15000 })
     await page.getByTestId('auth-fullname-input').fill('Jane Doe')
     await page.getByTestId('auth-name-continue-button').click()
@@ -180,3 +195,40 @@ test.describe('Signup via form', () => {
     await expect(page.getByTestId('home-page')).toBeVisible()
   })
 })
+
+// --- Helpers ---
+
+/**
+ * Polls the local Inbucket REST API for the most-recent message addressed
+ * to `email` and extracts the 6-digit OTP from its body.
+ * @param email - The recipient address to look for
+ * @returns The 6-digit numeric token rendered by the confirmation template
+ * @called-by the signup-via-form spec above
+ */
+async function fetchOtpToken(email: string): Promise<string> {
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const listRes = await fetch(`${MAILPIT_BASE}/api/v1/messages`)
+    if (listRes.ok) {
+      const list = (await listRes.json()) as {
+        messages?: Array<{ ID: string; To?: Array<{ Address: string }> }>
+      }
+      const match = list.messages?.find(
+        (m) => m.To?.some((t) => t.Address.toLowerCase() === email.toLowerCase()),
+      )
+      if (match) {
+        const detailRes = await fetch(`${MAILPIT_BASE}/api/v1/message/${match.ID}`)
+        if (detailRes.ok) {
+          const detail = (await detailRes.json()) as { Text?: string; HTML?: string }
+          const body = detail.Text ?? detail.HTML ?? ''
+          const tokenMatch = body.match(/\b(\d{6})\b/)
+          if (tokenMatch) {
+            return tokenMatch[1]
+          }
+        }
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+  }
+
+  throw new Error(`No confirmation email arrived in mailbox for ${email}`)
+}
