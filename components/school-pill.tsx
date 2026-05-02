@@ -13,6 +13,11 @@ import Link from 'next/link'
 import { ArrowRight, ChevronDown } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
 import { cn } from '@/lib/utils'
+import {
+    PillDropdownContent,
+    PillDropdownItem,
+    PillDropdownEmpty,
+} from '@/components/ui/pill-dropdown'
 
 interface SearchPillItem {
     id: string
@@ -179,21 +184,22 @@ export default function SearchPill<T extends SearchPillItem>({
             </div>
 
             {open && (
-                <ul
+                <PillDropdownContent
                     role="listbox"
                     aria-label="Options"
-                    className="absolute top-full left-0 right-0 mt-3 bg-white rounded-sm shadow-lg overflow-hidden z-50"
+                    className="absolute top-full left-0 right-0 mt-3 z-50"
                 >
                     {filteredItems.length === 0 ? (
-                        <li className="px-5 py-4 text-base font-bold text-black/40">
+                        <PillDropdownEmpty>
                             {query ? noResultsMessage : emptyMessage}
-                        </li>
+                        </PillDropdownEmpty>
                     ) : (
                         filteredItems.map((item, index) => (
-                            <li
+                            <PillDropdownItem
                                 key={item.id}
                                 role="option"
                                 aria-selected={selected?.id === item.id}
+                                active={selected?.id === item.id || index === highlighted}
                                 onMouseEnter={() => setHighlighted(-1)}
                                 onMouseDown={e => e.preventDefault()}
                                 onClick={() => {
@@ -203,17 +209,12 @@ export default function SearchPill<T extends SearchPillItem>({
                                     setHighlighted(-1)
                                     onSelect?.(item)
                                 }}
-                                className={cn(
-                                    'flex items-center px-5 min-h-14 text-base text-black font-bold rounded cursor-pointer',
-                                    'transition-colors hover:bg-foreground/15',
-                                    (selected?.id === item.id || index === highlighted) && 'bg-foreground/15',
-                                )}
                             >
                                 {getLabel(item)}
-                            </li>
+                            </PillDropdownItem>
                         ))
                     )}
-                </ul>
+                </PillDropdownContent>
             )}
         </div>
     )
