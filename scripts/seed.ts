@@ -175,18 +175,14 @@ async function seedUsers(schoolIds: SchoolIds): Promise<Record<string, string>> 
 
 /**
  * Returns the existing auth.users id for the email, creating the user if absent.
- * Uses the public /auth/v1/signup endpoint instead of supabase.auth.admin.* —
- * the local GoTrue container is configured for ES256-signed JWTs and rejects
- * the new sb_secret_ HS256 keys at admin endpoints, but accepts them at the
- * public signup endpoint where they're forwarded only as the apikey header.
+ * Uses supabase.auth.admin.createUser with email_confirm:true so the demo
+ * accounts are usable immediately under the project's enable_confirmations=true
+ * config. On "already registered" we look the user up via admin.listUsers.
  * @param email - Login email for the demo user
  * @param fullName - Display name
  * @returns Auth user UUID
  */
 async function getOrCreateAuthUser(email: string, fullName: string): Promise<string> {
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-  if (!anonKey) throw new Error('Missing NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY')
-
   // Fast path: if a profile already exists with this email, reuse its id.
   const { data: existingProfile } = await supabase
     .from('profiles')
@@ -195,35 +191,29 @@ async function getOrCreateAuthUser(email: string, fullName: string): Promise<str
     .maybeSingle()
   if (existingProfile?.id) return existingProfile.id
 
-  // Try signup; on "already registered" fall back to password sign-in.
-  const signupRes = await fetch(`${supabaseUrl}/auth/v1/signup`, {
-    method: 'POST',
-    headers: { apikey: anonKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      email,
-      password: DEMO_PASSWORD,
-      data: { full_name: fullName },
-    }),
+  const { data: created, error: createError } = await supabase.auth.admin.createUser({
+    email,
+    password: DEMO_PASSWORD,
+    email_confirm: true,
+    user_metadata: { full_name: fullName },
   })
-  if (signupRes.ok) {
-    const json = (await signupRes.json()) as { user?: { id: string } }
-    if (json.user?.id) return json.user.id
+  if (created?.user?.id) {
+    return created.user.id
   }
 
-  const signinRes = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
-    method: 'POST',
-    headers: { apikey: anonKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password: DEMO_PASSWORD }),
-  })
-  if (!signinRes.ok) {
-    const body = await signinRes.text()
-    throw new Error(`signup+signin failed for ${email}: ${body}`)
+  // createUser failed — most commonly because the user already exists in
+  // auth.users without a profiles row (a partial prior run). Look them up.
+  const { data: listed, error: listError } = await supabase.auth.admin.listUsers()
+  if (listError) {
+    throw new Error(
+      `getOrCreateAuthUser: createUser failed (${createError?.message}) and listUsers failed (${listError.message}) for ${email}`,
+    )
   }
-  const signinJson = (await signinRes.json()) as { user?: { id: string } }
-  if (!signinJson.user?.id) {
-    throw new Error(`signin returned no user for ${email}`)
+  const found = listed?.users?.find((u) => u.email === email)
+  if (!found) {
+    throw new Error(`getOrCreateAuthUser: no user for ${email} after createUser failure: ${createError?.message}`)
   }
-  return signinJson.user.id
+  return found.id
 }
 
 /**

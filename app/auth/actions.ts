@@ -5,10 +5,13 @@
  * @description Server actions for authentication: unified authenticate flow,
  *   sign-out, onboarding completion, and account deletion.
  *   Called by: app/auth/login/login-form.tsx, app/account/account-actions.tsx
- * @dependencies lib/supabase/server.ts
+ * @dependencies lib/supabase/server.ts, lib/auth/resolve-principal.ts, next/headers, next/cache
  */
 
+import { cookies } from 'next/headers'
+import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { GUEST_COOKIE_PREFIX } from '@/lib/auth/resolve-principal'
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const EDU_EMAIL_REGEX = /\.edu$/i
@@ -17,11 +20,16 @@ const FULL_NAME_REGEX = /^[\p{L} \-']+$/u
 type ActionState =
   | { error: string }
   | { needsOnboarding: true; email: string }
+  | { checkEmail: true; email: string }
   | { success: true }
   | null
 
 /**
- * Signs out the current user.
+ * Signs out the current user and force-clears every auth artifact in the
+ * response cookies — Supabase access/refresh tokens AND any guest_order_token_*
+ * cookies the resolvePrincipal helper would otherwise treat as a guest
+ * session. Uses scope:'global' so the refresh token is revoked at the auth
+ * server, defending against stale cookies that might survive the response.
  * @returns { success: true } on success; { error } if Supabase signOut fails.
  *   The client triggers a hard reload to / so all in-memory state (chat
  *   panels, Realtime subs, useState) is replaced along with the document.
@@ -29,11 +37,25 @@ type ActionState =
  */
 export async function signOut(): Promise<{ success: true } | { error: string }> {
   const supabase = await createClient()
-  const { error } = await supabase.auth.signOut()
+  const { error } = await supabase.auth.signOut({ scope: 'global' })
   if (error) {
     console.error('signOut: supabase.auth.signOut failed', error)
     return { error: error.message }
   }
+
+  // The SSR cookie adapter wraps cookieStore.set in a try/catch (lib/supabase/server.ts)
+  // that silently swallows write failures. Manually delete every auth-related
+  // cookie here so the response we return to the client is unambiguously logged out.
+  const cookieStore = await cookies()
+  for (const c of cookieStore.getAll()) {
+    if (c.name.startsWith('sb-') || c.name.startsWith(GUEST_COOKIE_PREFIX)) {
+      cookieStore.delete(c.name)
+    }
+  }
+
+  // Drop the cached RSC tree built for the prior user.
+  revalidatePath('/', 'layout')
+
   return { success: true }
 }
 
@@ -77,17 +99,24 @@ export async function authenticate(
       return { error: 'Passwords do not match.' }
     }
 
-    const { data, error } = await supabase.auth.signUp({ email, password })
+    const emailRedirectTo = `${process.env.NEXT_PUBLIC_URL ?? 'http://localhost:3000'}/auth/callback?next=/auth/login`
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { emailRedirectTo },
+    })
     if (error) {
       return { error: 'Could not create account. Please try again.' }
     }
 
+    // With email confirmation enabled (config.toml: enable_confirmations = true)
+    // signUp returns no session — surface a "check your email" panel and stop here.
     if (!data.session) {
-      return { error: 'Account created. Please confirm your email before continuing.' }
+      return { checkEmail: true, email: data.user?.email ?? email }
     }
 
-    // Explicitly persist the session — guards against SSR cookie adapter
-    // timing issues when the action returns a value instead of redirecting.
+    // Confirmation disabled fallback (kept for safety): persist the session
+    // explicitly to guard against SSR cookie adapter timing.
     await supabase.auth.setSession(data.session)
 
     // New user always needs onboarding — no profile can exist yet

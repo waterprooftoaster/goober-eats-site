@@ -135,4 +135,25 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
 SUPABASE_SECRET_KEY
 STRIPE_SECRET_KEY
 STRIPE_WEBHOOK_SECRET
+RESEND_API_KEY                # SMTP password for Supabase auth emails
+NEXT_PUBLIC_URL               # Base URL used for password-reset / email-confirm callback links
 ```
+
+## Production SMTP
+
+Local dev relays auth emails through Inbucket (`http://localhost:54384`). Production uses Resend. The Supabase config block is committed in `supabase/config.toml`, but the hosted Supabase project is configured manually — paste these into Dashboard → Authentication → SMTP Settings after deploy:
+
+| Field | Value |
+|---|---|
+| Enable Custom SMTP | on |
+| Sender email | `noreply@goobereats.net` |
+| Sender name | `Goober Eats` |
+| Host | `smtp.resend.com` |
+| Port | `465` |
+| Username | `resend` |
+| Password | the `RESEND_API_KEY` env var (project secret) |
+| Minimum interval between emails | leave default |
+
+`goobereats.net` is verified in the Resend dashboard.
+
+**Email templates.** The local CLI cluster picks up `supabase/templates/recovery.html` and `supabase/templates/confirmation.html` (link-only — Supabase's default templates also include a 6-digit OTP we don't have a UI for, so we strip it). Custom templates set in `config.toml` only apply to local dev. After deploy, paste the contents of those two files into Dashboard → Authentication → Email Templates → **Confirm signup** and **Reset Password** so the prod emails also drop the OTP line. Leave the **Invite user** and **Magic Link** templates at Supabase defaults — those flows aren't used.
