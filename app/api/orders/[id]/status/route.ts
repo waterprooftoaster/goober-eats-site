@@ -1,12 +1,16 @@
 /**
  * @file route.ts
  * @description PATCH endpoint to advance an order through the state machine.
- *   Validates transitions, enforces per-role authorization, guards completion (payment + delivery photo),
- *   triggers Stripe transfer on completion. Status notifications are NOT persisted here — the chat UI
- *   renders them client-side as pseudo-messages derived from order.status + viewer role.
+ *   Validates transitions, enforces per-role authorization, guards completion
+ *   (payment + completion photo). Under manual-capture, completion captures
+ *   the orderer's authorized PI and transfers the net to the swiper via
+ *   lib/stripe/capture-and-transfer.ts BEFORE the status flips to 'completed'
+ *   — capture failure leaves the order at in_progress so ops can resolve.
+ *   Status notifications are NOT persisted here — the chat UI renders them
+ *   client-side as pseudo-messages derived from order.status + viewer role.
  *   Called by: swiper/orderer order action buttons
  * @dependencies lib/supabase/server.ts, lib/supabase/service.ts, lib/orders/state-machine.ts,
- *               lib/stripe/transfer.ts
+ *               lib/stripe/capture-and-transfer.ts
  */
 
 import { NextRequest } from 'next/server'
@@ -15,7 +19,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { updateOrderStatusSchema } from '@/lib/types/api'
 import { canTransition } from '@/lib/orders/state-machine'
 import { apiError, apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
-import { transferToSwiper } from '@/lib/stripe/transfer'
+import { captureAndTransfer } from '@/lib/stripe/capture-and-transfer'
 import { signCartScreenshotPaths } from '@/lib/storage/sign-screenshots'
 import type { OrderStatus } from '@/lib/types/database'
 
@@ -71,19 +75,20 @@ export async function PATCH(
     }
   }
 
-  // Completion guards: payment must exist + delivery photo required
-  // Uses service client: RLS on payments only allows payer/payee to SELECT, but
-  // the swiper is neither (payer_id = orderer, payee_id = null at this point).
+  // Completion guards: payment must exist (in pending/succeeded — i.e. not
+  // failed/refunded) + completion photo required. Uses service client because
+  // RLS on payments only allows payer/payee to SELECT, but the swiper is
+  // neither (payer_id = orderer, payee_id = null until transfer succeeds).
   if (newStatus === 'completed') {
     const { data: payment } = await createServiceClient()
       .from('payments')
-      .select('id')
+      .select('id, status')
       .eq('order_id', id)
-      .eq('status', 'succeeded')
+      .in('status', ['pending', 'succeeded'])
       .maybeSingle()
 
     if (!payment) {
-      return apiError('Order cannot be completed: payment not confirmed', 400)
+      return apiError('Order cannot be completed: payment not in a completable state', 400)
     }
 
     const { data: conv } = await supabase
@@ -141,11 +146,33 @@ export async function PATCH(
       .eq('order_id', id)
   }
 
-  // Transfer funds to swiper (payment captured at checkout for both guest and auth).
-  // transferToSwiper reads amount and platform fee from the payment row so the
-  // realized split always matches what was committed at checkout.
+  // Capture the orderer's authorized PI + transfer the net to the swiper.
+  // CAS already succeeded so the order is now 'completed' in DB; if capture
+  // fails we roll the status back to 'in_progress' and respond 409. The
+  // briefly-visible 'completed' state during the Stripe call is acceptable
+  // (single Stripe round-trip; idempotent retries).
   if (newStatus === 'completed' && updated.swiper_id) {
-    await transferToSwiper(updated.id, updated.swiper_id)
+    const result = await captureAndTransfer(updated.id, updated.swiper_id)
+    if (!result.ok) {
+      // Rollback: WHERE id=X AND status='completed' — only this request can
+      // be in this state, so the rollback is unambiguous.
+      await supabase
+        .from('orders')
+        .update({ status: 'in_progress' })
+        .eq('id', updated.id)
+        .eq('status', 'completed')
+
+      if (result.reason === 'capture_failed') {
+        return apiError(
+          'Payment authorization expired or declined; order cannot be completed.',
+          409
+        )
+      }
+      // no_payment: completion guard would have caught this; defensive fallback.
+      return apiError('Order cannot be completed: payment record not found', 400)
+    }
+    // result.transferStuck is logged inside captureAndTransfer; the order
+    // still completes (food was delivered, orderer was charged).
   }
 
   const cart_screenshot_urls = await signCartScreenshotPaths(
