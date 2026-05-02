@@ -105,3 +105,23 @@ export const updateProfileSchema = z
   })
 
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>
+
+// Body for POST /api/orders/[id]/complaints. Mirrors the public.complaint_category
+// enum in supabase/migrations/20260430000001_complaints_table.sql; reason_text
+// length matches the CHECK on complaints.reason_text.
+export const complaintCategoryEnum = z.enum([
+  'wrong_items',
+  'missing_items',
+  'never_delivered',
+  'damaged',
+  'other',
+])
+
+export type ComplaintCategory = z.infer<typeof complaintCategoryEnum>
+
+export const createComplaintSchema = z.object({
+  category: complaintCategoryEnum,
+  reason_text: z.string().trim().min(20).max(1000),
+})
+
+export type CreateComplaintInput = z.infer<typeof createComplaintSchema>

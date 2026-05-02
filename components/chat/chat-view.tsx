@@ -102,6 +102,7 @@ function ChatViewCore({
         const isSwiper = currentUserId !== null && currentUserId === conversation?.swiper_id
         return (
             <OrderCompletedView
+                orderId={orderId}
                 viewerRole={isSwiper ? 'swiper' : 'orderer'}
                 deliveryPhoto={completionPhoto}
             />

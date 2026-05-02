@@ -16,6 +16,7 @@ import { Header } from "@/components/header"
 import { Banner } from "@/components/banner"
 import { ChatPanelProvider } from "@/components/chat-panel"
 import { BottomDock } from "@/components/bottom-dock"
+import { ToastProvider } from "@/components/ui/toast"
 import { createClient } from "@/lib/supabase/server"
 import { resolvePrincipal, type Principal } from "@/lib/auth/resolve-principal"
 
@@ -53,12 +54,14 @@ export default async function RootLayout({
       data-testid="root-layout"
     >
       <body>
-        <ChatPanelProvider userId={userId}>
-          <Header principal={principal} />
-          <Banner isSwiper={isSwiper} isLoggedIn={isLoggedIn} />
-          <main className="px-6 pb-24">{children}</main>
-          <BottomDock isSwiper={isSwiper} pendingOrderCount={pendingOrderCount} />
-        </ChatPanelProvider>
+        <ToastProvider>
+          <ChatPanelProvider userId={userId}>
+            <Header principal={principal} />
+            <Banner isSwiper={isSwiper} isLoggedIn={isLoggedIn} />
+            <main className="px-6 pb-24">{children}</main>
+            <BottomDock isSwiper={isSwiper} pendingOrderCount={pendingOrderCount} />
+          </ChatPanelProvider>
+        </ToastProvider>
       </body>
     </html>
   )

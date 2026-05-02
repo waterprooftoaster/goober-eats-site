@@ -109,9 +109,14 @@ export async function PATCH(
   // Uses service client because the orders_update RLS WITH CHECK only permits
   // rows where the updater remains orderer or swiper — clearing swiper_id to
   // null would fail the check on the new row even though USING passes.
-  const updatePayload = newStatus === 'open'
-    ? { status: newStatus, swiper_id: null }
-    : { status: newStatus }
+  // completed: stamp completed_at so the complaint feature has a canonical
+  // completion timestamp (lib/orders/complaint-eligibility.ts reads it).
+  const updatePayload =
+    newStatus === 'open'
+      ? { status: newStatus, swiper_id: null }
+      : newStatus === 'completed'
+        ? { status: newStatus, completed_at: new Date().toISOString() }
+        : { status: newStatus }
   const updateClient = newStatus === 'open' ? createServiceClient() : supabase
 
   // Atomic: only update if status still matches what we read (prevents race)
@@ -121,7 +126,7 @@ export async function PATCH(
     .eq('id', id)
     .eq('status', order.status)
     .select(
-      'id, orderer_id, swiper_id, school_id, restaurant_name, cart_screenshot_urls, status, subtotal_cents, total_cents, guest_name, guest_email, created_at, updated_at'
+      'id, orderer_id, swiper_id, school_id, restaurant_name, cart_screenshot_urls, status, subtotal_cents, total_cents, guest_name, guest_email, created_at, updated_at, completed_at'
     )
     .single()
 
