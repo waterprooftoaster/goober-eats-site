@@ -13,6 +13,7 @@ import { useMessages, type OptimisticMessage } from '@/hooks/use-messages'
 import { ChatThread } from '@/components/chat/chat-thread'
 import { ChatInput } from '@/components/chat/chat-input'
 import { CompletionBanner } from '@/components/chat/completion-banner'
+import { OrdererCancelBanner } from '@/components/chat/orderer-cancel-banner'
 import { OrderCompletedView } from '@/components/chat/order-completion-notice'
 import CartScreenshotLightbox from '@/components/chat/cart-screenshot-lightbox'
 import type { Conversation } from '@/lib/types/messaging'
@@ -136,6 +137,11 @@ function ChatViewCore({
                 currentUserId === conversation?.swiper_id &&
                 orderStatus === 'in_progress' && (
                     <CompletionBanner orderId={orderId} onStatusChange={onStatusChange} />
+                )}
+            {currentUserId !== null &&
+                orderStatus === 'open' &&
+                (conversation === null || currentUserId !== conversation.swiper_id) && (
+                    <OrdererCancelBanner orderId={orderId} onStatusChange={onStatusChange} />
                 )}
             <ChatInput
                 onSend={sendMessage}

@@ -20,6 +20,7 @@ import { updateOrderStatusSchema } from '@/lib/types/api'
 import { canTransition } from '@/lib/orders/state-machine'
 import { apiError, apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
 import { captureAndTransfer } from '@/lib/stripe/capture-and-transfer'
+import { getStripe } from '@/lib/stripe/client'
 import { signCartScreenshotPaths } from '@/lib/storage/sign-screenshots'
 import type { OrderStatus } from '@/lib/types/database'
 
@@ -47,7 +48,7 @@ export async function PATCH(
 
   const { data: order } = await supabase
     .from('orders')
-    .select('id, orderer_id, swiper_id, status')
+    .select('id, orderer_id, swiper_id, status, stripe_payment_intent_id')
     .eq('id', id)
     .single()
 
@@ -67,6 +68,23 @@ export async function PATCH(
   if (newStatus === 'cancelled') {
     if (!isOrderer) {
       return apiError('Only the orderer can cancel an order', 403)
+    }
+    // Release the auth hold before flipping status. paymentIntents.cancel is
+    // itself idempotent (Stripe returns the canceled PI if called again);
+    // wrapping with idempotencyKey 'cancel-${orderId}' guards against retry
+    // amplification on transient network errors. On error (rare: PI already
+    // captured/canceled) we still flip status so the order doesn't get stuck.
+    if (order.stripe_payment_intent_id) {
+      try {
+        await getStripe().paymentIntents.cancel(
+          order.stripe_payment_intent_id,
+          undefined,
+          { idempotencyKey: `cancel-${id}` }
+        )
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error'
+        console.error(`Cancel failed for order ${id} (PI ${order.stripe_payment_intent_id}): ${message}. Flipping status anyway.`)
+      }
     }
   } else {
     // open (un-accept) and completed — swiper only

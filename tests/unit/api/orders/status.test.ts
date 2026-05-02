@@ -9,14 +9,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
 
-const { mockGetUser, mockServerFrom, mockServiceFrom, mockCaptureAndTransfer, mockSignCartScreenshotPaths } =
-  vi.hoisted(() => ({
-    mockGetUser: vi.fn(),
-    mockServerFrom: vi.fn(),
-    mockServiceFrom: vi.fn(),
-    mockCaptureAndTransfer: vi.fn().mockResolvedValue({ ok: true }),
-    mockSignCartScreenshotPaths: vi.fn(),
-  }))
+const {
+  mockGetUser,
+  mockServerFrom,
+  mockServiceFrom,
+  mockCaptureAndTransfer,
+  mockSignCartScreenshotPaths,
+  mockPaymentIntentsCancel,
+} = vi.hoisted(() => ({
+  mockGetUser: vi.fn(),
+  mockServerFrom: vi.fn(),
+  mockServiceFrom: vi.fn(),
+  mockCaptureAndTransfer: vi.fn().mockResolvedValue({ ok: true }),
+  mockSignCartScreenshotPaths: vi.fn(),
+  mockPaymentIntentsCancel: vi.fn().mockResolvedValue({ id: 'pi_cancelled' }),
+}))
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(async () => ({
@@ -31,6 +38,12 @@ vi.mock('@/lib/supabase/service', () => ({
 
 vi.mock('@/lib/stripe/capture-and-transfer', () => ({
   captureAndTransfer: mockCaptureAndTransfer,
+}))
+
+vi.mock('@/lib/stripe/client', () => ({
+  getStripe: vi.fn(() => ({
+    paymentIntents: { cancel: mockPaymentIntentsCancel },
+  })),
 }))
 
 vi.mock('@/lib/storage/sign-screenshots', () => ({
@@ -180,6 +193,7 @@ describe('PATCH /api/orders/[id]/status — does not persist system messages', (
           orderer_id: ORDERER_ID,
           swiper_id: null,
           status: 'open',
+          stripe_payment_intent_id: 'pi_test_cancel',
         },
       })
     )
@@ -330,6 +344,114 @@ describe('PATCH /api/orders/[id]/status — completion branches under manual cap
     expect(rollbackChain.update).toHaveBeenCalledWith({ status: 'in_progress' })
     expect(rollbackChain.eq).toHaveBeenCalledWith('id', ORDER_ID)
     expect(rollbackChain.eq).toHaveBeenCalledWith('status', 'completed')
+  })
+
+  it('calls paymentIntents.cancel with idempotency key cancel-${orderId} on orderer cancel', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: ORDERER_ID } }, error: null })
+    primeSuspensionMock()
+    mockServerFrom.mockReturnValueOnce(
+      dbResult({
+        data: {
+          id: ORDER_ID,
+          orderer_id: ORDERER_ID,
+          swiper_id: null,
+          status: 'open',
+          stripe_payment_intent_id: 'pi_test_cancel',
+        },
+      })
+    )
+    mockServerFrom.mockReturnValueOnce(
+      dbResult({
+        data: {
+          id: ORDER_ID,
+          orderer_id: ORDERER_ID,
+          swiper_id: null,
+          school_id: '00000000-0000-4000-8000-000000000aaa',
+          restaurant_name: 'Chipotle',
+          cart_screenshot_urls: [],
+          status: 'cancelled',
+          subtotal_cents: 2500,
+          total_cents: 1500,
+          guest_name: null,
+          guest_email: null,
+          created_at: '2026-04-22T00:00:00Z',
+          updated_at: '2026-04-22T00:00:00Z',
+        },
+      })
+    )
+
+    const res = await callPatch('cancelled')
+    expect(res.status).toBe(200)
+
+    expect(mockPaymentIntentsCancel).toHaveBeenCalledWith(
+      'pi_test_cancel',
+      undefined,
+      expect.objectContaining({ idempotencyKey: `cancel-${ORDER_ID}` })
+    )
+  })
+
+  it('still flips orders.status to cancelled when paymentIntents.cancel throws (PI already captured/canceled)', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: ORDERER_ID } }, error: null })
+    primeSuspensionMock()
+    mockServerFrom.mockReturnValueOnce(
+      dbResult({
+        data: {
+          id: ORDER_ID,
+          orderer_id: ORDERER_ID,
+          swiper_id: null,
+          status: 'open',
+          stripe_payment_intent_id: 'pi_already_captured',
+        },
+      })
+    )
+    const cancelUpdate = dbResult({
+      data: {
+        id: ORDER_ID,
+        orderer_id: ORDERER_ID,
+        swiper_id: null,
+        school_id: '00000000-0000-4000-8000-000000000aaa',
+        restaurant_name: 'Chipotle',
+        cart_screenshot_urls: [],
+        status: 'cancelled',
+        subtotal_cents: 2500,
+        total_cents: 1500,
+        guest_name: null,
+        guest_email: null,
+        created_at: '2026-04-22T00:00:00Z',
+        updated_at: '2026-04-22T00:00:00Z',
+      },
+    })
+    mockServerFrom.mockReturnValueOnce(cancelUpdate)
+
+    mockPaymentIntentsCancel.mockRejectedValueOnce(new Error('PI already captured'))
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const res = await callPatch('cancelled')
+    expect(res.status).toBe(200)
+    expect(cancelUpdate.update).toHaveBeenCalledWith({ status: 'cancelled' })
+
+    consoleSpy.mockRestore()
+  })
+
+  it('rejects cancel from non-orderer with 403', async () => {
+    // Authenticated as the swiper, not the orderer
+    mockGetUser.mockResolvedValue({ data: { user: { id: SWIPER_ID } }, error: null })
+    primeSuspensionMock()
+    mockServerFrom.mockReturnValueOnce(
+      dbResult({
+        data: {
+          id: ORDER_ID,
+          orderer_id: ORDERER_ID,
+          swiper_id: null,
+          status: 'open',
+          stripe_payment_intent_id: 'pi_test',
+        },
+      })
+    )
+
+    const res = await callPatch('cancelled')
+    expect(res.status).toBe(403)
+    expect(mockPaymentIntentsCancel).not.toHaveBeenCalled()
   })
 
   it('returns 400 when payment guard rejects (no payment row in pending/succeeded state)', async () => {
