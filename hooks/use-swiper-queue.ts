@@ -13,11 +13,13 @@
  * @dependencies @/lib/realtime/channel-registry, @/lib/constants, @/hooks/use-visibility-refetch
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { swiperQueueChannel } from '@/lib/constants'
 import { subscribeChannel, type RegistryHandle } from '@/lib/realtime/channel-registry'
 import { useVisibilityRefetch } from '@/hooks/use-visibility-refetch'
 import type { PendingOrder } from '@/app/swiper/orders/pending-orders-list'
+
+const REFETCH_DEBOUNCE_MS = 250
 
 export interface UseSwiperQueueOptions {
   schoolId: string
@@ -42,18 +44,45 @@ export interface UseSwiperQueueResult {
 export function useSwiperQueue(opts: UseSwiperQueueOptions): UseSwiperQueueResult {
   const { schoolId, initialOrders } = opts
   const [orders, setOrders] = useState<PendingOrder[]>(initialOrders)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const inflightRef = useRef<boolean>(false)
 
-  const refetch = useCallback(async () => {
-    try {
-      const res = await fetch('/api/swiper/pending')
-      if (!res.ok) return
-      const data = (await res.json()) as unknown
-      // Defensive runtime guard: a deploy-rollout where server returns an
-      // unexpected shape would otherwise set state with garbage and crash render.
-      if (!Array.isArray(data)) return
-      setOrders(data as PendingOrder[])
-    } catch {
-      // Silent — visibility refetch / next realtime event will retry
+  // Debounced + serialised. Bursty realtime traffic (e.g. 5 INSERTs hitting at
+  // once during a school's lunch rush) coalesces into one /api/swiper/pending
+  // call. inflightRef short-circuits a second fetch when one is already pending,
+  // schedules a follow-up to capture state changes that landed mid-fetch.
+  const refetch = useCallback((): Promise<void> => {
+    return new Promise<void>((resolve) => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+      debounceRef.current = setTimeout(async () => {
+        debounceRef.current = null
+        if (inflightRef.current) {
+          // A fetch is already in flight; let it finish, then re-arm so we
+          // pick up state changes that happened after it started.
+          resolve()
+          return
+        }
+        inflightRef.current = true
+        try {
+          const res = await fetch('/api/swiper/pending')
+          if (!res.ok) return
+          const data = (await res.json()) as unknown
+          if (!Array.isArray(data)) return
+          setOrders(data as PendingOrder[])
+        } catch {
+          // Silent — next realtime event / visibility refetch will retry
+        } finally {
+          inflightRef.current = false
+          resolve()
+        }
+      }, REFETCH_DEBOUNCE_MS)
+    })
+  }, [])
+
+  // Cancel any pending debounced fetch on unmount so we don't setState after.
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
     }
   }, [])
 

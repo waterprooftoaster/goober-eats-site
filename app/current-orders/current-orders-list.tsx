@@ -24,6 +24,10 @@ interface CurrentOrderListItem {
   status: OrderStatus
   restaurantName: string
   cartScreenshotUrl: string | null
+  // Pre-resolved by the server query's LEFT JOIN on conversations(id) so
+  // the embedded ChatView's useMessages skips its own conversation lookup.
+  // Null when no conversation exists yet (status='open' before swiper accepts).
+  conversationId: string | null
 }
 
 interface Props {
@@ -135,6 +139,7 @@ export function CurrentOrdersList({ orders, currentUserId }: Props) {
               orderStatus={order.status}
               eateryName={order.restaurantName}
               cartScreenshotUrl={order.cartScreenshotUrl}
+              conversationId={order.conversationId}
               onStatusChange={(status) => handleStatusChange(order.id, status)}
             />
           </div>

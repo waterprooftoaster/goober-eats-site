@@ -88,43 +88,42 @@ export async function claimGuestOrders(userId: string): Promise<ClaimResult> {
     return { claimedOrderIds: [] }
   }
 
-  // Update conversations FIRST (additive: just sets orderer_id), then orders
-  // (destructive: clears guest_access_token and anon_user_id). Order matters:
-  // if the conversation update fails first, we abort before touching the
-  // order, so all guest access paths remain intact and the next sign-in can
-  // retry. If the order update fails after the conversation succeeded, the
-  // conversation orderer_id is harmlessly mirrored to the eventual claimer
-  // (idempotent — re-running with the same userId is a no-op semantically).
-  const updates = await Promise.all(
-    matched.map(async (row) => {
-      const { error: convError } = await supabase
-        .from('conversations')
-        .update({ orderer_id: userId })
-        .eq('order_id', row.id)
-      if (convError) {
-        console.error('claimGuestOrders: conversation update failed', {
-          orderId: row.id,
-          convError,
-        })
-        return null
-      }
-      const { error: orderError } = await supabase
-        .from('orders')
-        .update({
-          orderer_id: userId,
-          guest_access_token: null,
-          anon_user_id: null,
-        })
-        .eq('id', row.id)
-        .is('orderer_id', null)
-      if (orderError) {
-        console.error('claimGuestOrders: order update failed', { orderId: row.id, orderError })
-        return null
-      }
-      return row.id
+  // Two batched writes (one DB roundtrip each) instead of N×2 per-row updates.
+  // Conversations FIRST (additive: just sets orderer_id), then orders
+  // (destructive: clears guest_access_token + anon_user_id). Order matters:
+  // if the conversation update fails, abort before touching the order so
+  // the cookie still validates for the next sign-in retry. If the order
+  // update fails after the conversation succeeded, the conversation
+  // orderer_id is harmlessly mirrored to the eventual claimer (idempotent).
+  const matchedIds = matched.map((m) => m.id)
+
+  const { error: convError } = await supabase
+    .from('conversations')
+    .update({ orderer_id: userId })
+    .in('order_id', matchedIds)
+  if (convError) {
+    console.error('claimGuestOrders: conversation update failed', {
+      matchedIds,
+      convError,
     })
-  )
-  return { claimedOrderIds: updates.filter((id): id is string => id !== null) }
+    return { claimedOrderIds: [] }
+  }
+
+  const { error: orderError } = await supabase
+    .from('orders')
+    .update({
+      orderer_id: userId,
+      guest_access_token: null,
+      anon_user_id: null,
+    })
+    .in('id', matchedIds)
+    .is('orderer_id', null)
+  if (orderError) {
+    console.error('claimGuestOrders: order update failed', { matchedIds, orderError })
+    return { claimedOrderIds: [] }
+  }
+
+  return { claimedOrderIds: matchedIds }
 }
 
 /**

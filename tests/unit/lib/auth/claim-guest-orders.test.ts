@@ -42,8 +42,8 @@ const {
             }),
           }),
           update: (patch: unknown) => ({
-            eq: (_col: string, _id: string) => ({
-              is: () => mockOrdersUpdate(patch, _id),
+            in: (_col: string, ids: string[]) => ({
+              is: () => mockOrdersUpdate(patch, ids),
             }),
           }),
         }
@@ -51,7 +51,7 @@ const {
       if (table === 'conversations') {
         return {
           update: (patch: unknown) => ({
-            eq: (_col: string, _orderId: string) => mockConvUpdate(patch, _orderId),
+            in: (_col: string, ids: string[]) => mockConvUpdate(patch, ids),
           }),
         }
       }
@@ -153,15 +153,17 @@ describe('claimGuestOrders', () => {
     const result = await claimGuestOrders(USER_ID)
 
     expect(result).toEqual({ claimedOrderIds: [ORDER_A] })
+    expect(mockOrdersUpdate).toHaveBeenCalledTimes(1)
     expect(mockOrdersUpdate).toHaveBeenCalledWith(
       {
         orderer_id: USER_ID,
         guest_access_token: null,
         anon_user_id: null,
       },
-      ORDER_A
+      [ORDER_A]
     )
-    expect(mockConvUpdate).toHaveBeenCalledWith({ orderer_id: USER_ID }, ORDER_A)
+    expect(mockConvUpdate).toHaveBeenCalledTimes(1)
+    expect(mockConvUpdate).toHaveBeenCalledWith({ orderer_id: USER_ID }, [ORDER_A])
   })
 
   it('skips a row where the cookie token does NOT match the DB token', async () => {
@@ -209,9 +211,11 @@ describe('claimGuestOrders', () => {
     const result = await claimGuestOrders(USER_ID)
 
     expect(result).toEqual({ claimedOrderIds: [ORDER_A] })
-    // Only ORDER_A's update should have fired.
-    expect(mockOrdersUpdate.mock.calls.map((c) => c[1])).toEqual([ORDER_A])
-    expect(mockConvUpdate.mock.calls.map((c) => c[1])).toEqual([ORDER_A])
+    // Both updates batched into one call each, scoped to the matched id only.
+    expect(mockOrdersUpdate).toHaveBeenCalledTimes(1)
+    expect(mockOrdersUpdate.mock.calls[0][1]).toEqual([ORDER_A])
+    expect(mockConvUpdate).toHaveBeenCalledTimes(1)
+    expect(mockConvUpdate.mock.calls[0][1]).toEqual([ORDER_A])
   })
 
   it('returns empty and writes nothing when the SELECT errors', async () => {
