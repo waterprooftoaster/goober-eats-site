@@ -32,6 +32,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.test.example
 
 # vercel
 .vercel
@@ -48,6 +49,7 @@ AGENTS.md
 
 #supabase
 supabase/.temp/
+supabase-test/.temp/
 
 
 #testing
@@ -56,3 +58,10 @@ supabase/.temp/
 /.auth/
 /screenshots/
 /verification/
+
+#stripe + test runtime artifacts
+.stripe-listen.pid
+.stripe-whsec
+.test-dev.pid
+.test-dev.log
+*.whsec

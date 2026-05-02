@@ -1,69 +1,154 @@
 /**
  * @file auth.setup.ts
- * @description Playwright global setup that creates a test user in Supabase and writes
- *   browser auth state to .auth/user.json for the authenticated test project.
- *   Called by: Playwright "authenticated" project (playwright.config.ts)
+ * @description Playwright global setup that creates two test users in the *test* Supabase
+ *   (an orderer and a swiper with a real Stripe Connect Express account) and writes
+ *   storage states for both. Targets the test DB exclusively — never touches the dev
+ *   Supabase. Both downstream Playwright projects (`authenticated`, `live-money`)
+ *   depend on this.
+ *   Called by: Playwright "authenticated" + "live-money" projects (playwright.config.ts)
+ * @dependencies @supabase/supabase-js, scripts/lib/stripe-seed.ts
  */
 
 import { test as setup } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
+import { getOrCreateSeededStripeAccount, assertStripeTestMode } from '../../scripts/lib/stripe-seed'
 
-const TEST_EMAIL = 'test@goobereats.edu'
-const TEST_PASSWORD = 'testpassword123'
-const TEST_FULL_NAME = 'Test User'
+const ORDERER_EMAIL = 'orderer@goobereats.edu'
+const ORDERER_PASSWORD = 'testpassword123'
+const ORDERER_FULL_NAME = 'Test Orderer'
 
-setup('create test user and authenticate', async ({ page }) => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-  const serviceKey = process.env.SUPABASE_SECRET_KEY!
-  const supabase = createClient(supabaseUrl, serviceKey)
+const SWIPER_EMAIL = 'swiper@goobereats.edu'
+const SWIPER_PASSWORD = 'testpassword123'
+const SWIPER_FULL_NAME = 'Test Swiper'
 
-  // Delete existing test user if present (idempotent setup)
-  const { data: existing } = await supabase.auth.admin.listUsers()
-  const existingUser = existing?.users?.find((u) => u.email === TEST_EMAIL)
-  if (existingUser) {
-    await supabase.from('profiles').delete().eq('id', existingUser.id)
-    await supabase.auth.admin.deleteUser(existingUser.id)
+setup('create orderer', async ({ page }) => {
+  const supabase = buildTestAdminClient()
+  const schoolId = await ensureSchoolId(supabase)
+  const userId = await idempotentlyCreateUser(supabase, ORDERER_EMAIL, ORDERER_PASSWORD)
+  await upsertProfile(supabase, {
+    id: userId,
+    full_name: ORDERER_FULL_NAME,
+    email: ORDERER_EMAIL,
+    school_id: schoolId,
+    is_swiper: false,
+  })
+  await signInAndSaveState(page, ORDERER_EMAIL, ORDERER_PASSWORD, '.auth/orderer.json')
+})
+
+setup('create swiper with stripe connect', async ({ page }) => {
+  const supabase = buildTestAdminClient()
+  const schoolId = await ensureSchoolId(supabase)
+  const userId = await idempotentlyCreateUser(supabase, SWIPER_EMAIL, SWIPER_PASSWORD)
+  await upsertProfile(supabase, {
+    id: userId,
+    full_name: SWIPER_FULL_NAME,
+    email: SWIPER_EMAIL,
+    school_id: schoolId,
+    is_swiper: true,
+  })
+
+  // Attach a real Stripe Connect Express account so transfers settle in test mode.
+  // Stripe access requires test mode — guard against accidental live-key seeding.
+  if (process.env.STRIPE_SECRET_KEY) {
+    assertStripeTestMode()
+    const acctId = await getOrCreateSeededStripeAccount(userId, SWIPER_EMAIL)
+    await supabase.from('stripe_accounts').upsert(
+      {
+        user_id: userId,
+        stripe_account_id: acctId,
+        onboarding_complete: true,
+      },
+      { onConflict: 'user_id' }
+    )
   }
 
-  // Create test user via admin API (auto-confirmed)
-  const { data: created, error: createError } = await supabase.auth.admin.createUser({
-    email: TEST_EMAIL,
-    password: TEST_PASSWORD,
+  await signInAndSaveState(page, SWIPER_EMAIL, SWIPER_PASSWORD, '.auth/swiper.json')
+})
+
+// --- Helpers ---
+
+function buildTestAdminClient() {
+  const url = process.env.TEST_SUPABASE_URL
+  const key = process.env.TEST_SUPABASE_SECRET_KEY
+  if (!url || !key) {
+    throw new Error(
+      'TEST_SUPABASE_URL / TEST_SUPABASE_SECRET_KEY not set — run `cp .env.test.example .env.test` and fill in values from `npx supabase status --workdir supabase-test`'
+    )
+  }
+  return createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+}
+
+async function ensureSchoolId(supabase: ReturnType<typeof buildTestAdminClient>): Promise<string> {
+  const { data: existing } = await supabase.from('schools').select('id').limit(1)
+  if (existing?.[0]?.id) return existing[0].id
+
+  // Insert a placeholder school for fresh test DBs that lack seed data
+  const { data: created, error } = await supabase
+    .from('schools')
+    .insert({ name: 'Test University', slug: 'test-u' })
+    .select('id')
+    .single()
+  if (error || !created) {
+    throw new Error(`Failed to seed test school: ${error?.message ?? 'no row returned'}`)
+  }
+  return created.id
+}
+
+async function idempotentlyCreateUser(
+  supabase: ReturnType<typeof buildTestAdminClient>,
+  email: string,
+  password: string
+): Promise<string> {
+  const { data: list } = await supabase.auth.admin.listUsers()
+  const existing = list?.users?.find((u) => u.email === email)
+  if (existing) {
+    await supabase.from('profiles').delete().eq('id', existing.id)
+    await supabase.from('stripe_accounts').delete().eq('user_id', existing.id)
+    await supabase.auth.admin.deleteUser(existing.id)
+  }
+
+  const { data: created, error } = await supabase.auth.admin.createUser({
+    email,
+    password,
     email_confirm: true,
   })
-  if (createError || !created.user) {
-    throw new Error(`Failed to create test user: ${createError?.message}`)
+  if (error || !created.user) {
+    throw new Error(`Failed to create test user ${email}: ${error?.message}`)
   }
+  return created.user.id
+}
 
-  // Ensure at least one school exists for the profile
-  const { data: schools } = await supabase.from('schools').select('id').limit(1)
-  const schoolId = schools?.[0]?.id ?? null
+interface ProfileRow {
+  id: string
+  full_name: string
+  email: string
+  school_id: string
+  is_swiper: boolean
+}
 
-  // Create profile for the user
-  const { error: profileError } = await supabase.from('profiles').insert({
-    id: created.user.id,
-    full_name: TEST_FULL_NAME,
-    email: TEST_EMAIL,
-    school_id: schoolId,
-  })
-  if (profileError) {
-    throw new Error(`Failed to create profile: ${profileError.message}`)
+async function upsertProfile(
+  supabase: ReturnType<typeof buildTestAdminClient>,
+  row: ProfileRow
+): Promise<void> {
+  const { error } = await supabase.from('profiles').insert(row)
+  if (error) {
+    throw new Error(`Failed to insert profile for ${row.email}: ${error.message}`)
   }
+}
 
-  // Sign in via the login page
+async function signInAndSaveState(
+  page: Parameters<Parameters<typeof setup>[1]>[0]['page'],
+  email: string,
+  password: string,
+  storagePath: string
+): Promise<void> {
   await page.goto('/auth/login')
-
-  // Step 1: Enter email
-  await page.getByTestId('auth-email-input').fill(TEST_EMAIL)
+  await page.getByTestId('auth-email-input').fill(email)
   await page.getByTestId('auth-continue-button').click()
-
-  // Step 2: Enter password (existing user = single password field, sign-in mode)
-  await page.getByTestId('auth-password-input').fill(TEST_PASSWORD)
+  await page.getByTestId('auth-password-input').fill(password)
   await page.getByTestId('auth-signin-button').click()
-
-  // Wait for redirect to homepage
   await page.waitForURL('/', { timeout: 10000 })
-
-  // Save auth state
-  await page.context().storageState({ path: '.auth/user.json' })
-})
+  await page.context().storageState({ path: storagePath })
+}

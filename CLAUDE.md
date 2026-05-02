@@ -12,18 +12,36 @@ npm run lint         # ESLint
 npm run test         # Run all unit tests (Vitest + jsdom)
 npx vitest run tests/unit/path/to/file.test.ts   # Run a single unit test
 
-npx playwright test               # Run all E2E tests
+npx playwright test               # Run all E2E tests (auto-starts the test dev server on :3100)
 npx playwright test tests/e2e/home.spec.ts        # Run a single E2E spec
 
-npx tsx scripts/seed.ts           # Seed local Supabase (schools + demo profiles + demo order)
+npx tsx scripts/seed.ts           # Seed local DEV Supabase (schools + demo profiles + demo order)
 
-supabase start       # Start local Supabase (Docker required)
+supabase start       # Start local DEV Supabase (Docker required)
 supabase stop
-supabase db push     # Apply migrations to local DB
+supabase db push     # Apply migrations to local DEV DB
 supabase migration new <name>     # Create a new migration file
 ```
 
-E2E tests auto-start the dev server if not already running. The `authenticated/` test suite depends on `auth.setup.ts` running first, which writes `.auth/user.json`.
+### Test database (separate Supabase instance — never touches dev)
+
+E2E specs and the optional Stripe-CLI roundtrip test target a dedicated test Supabase, NOT the dev DB. Two parallel `supabase` instances coexist: `supabase/` (dev, default project_id) and `supabase-test/` (project_id "test", ports 64361-64364).
+
+```bash
+npm run test:db:up                                     # Start the test Supabase (one-time per boot)
+npm run test:db:down                                   # Stop it
+npm run test:db:reset                                  # Re-apply migrations (e.g. after a destructive test)
+
+# Live-money flow (real Stripe test-mode money + real webhook)
+eval $(bash scripts/test-money-up.sh)                  # Spawn test dev server on :3100 + `stripe listen`; exports STRIPE_WEBHOOK_SECRET
+RUN_LIVE_MONEY=1 npx playwright test --project=live-money    # Real Stripe test-mode money flow against the test DB
+STRIPE_CLI=1 npx vitest run tests/unit/stripe/webhook-cli-roundtrip.test.ts   # `stripe trigger` → real webhook → test DB
+bash scripts/test-money-down.sh                        # Tear down the test dev server + stripe listen (test DB stays up)
+```
+
+The `authenticated/` and `live-money` Playwright projects depend on `auth.setup.ts` running first, which creates two seeded users (`orderer@goobereats.edu`, `swiper@goobereats.edu`) in the test Supabase and writes `.auth/orderer.json` + `.auth/swiper.json`. The swiper gets a real Stripe Connect Express account so transfers settle in test mode.
+
+Setup requirements: copy `.env.test.example` → `.env.test` and paste the keys printed by `npx supabase status --workdir supabase-test`. STRIPE_SECRET_KEY (test mode, `sk_test_*`) must also be set in `.env.local`.
 
 ## Architecture
 
