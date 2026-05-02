@@ -69,8 +69,8 @@ function HeroSection({ schools }: { schools: School[] }) {
                     <SchoolSearchPill
                         schools={schools}
                         ctaHref="/"
-                        ctaColor="#A1C935"
-                        ctaArrowColor="#000000"
+                        ctaColor="var(--primary)"
+                        ctaArrowColor="var(--primary-foreground)"
                         placeholder="Select your school"
                         emptyMessage="No schools available"
                         noResultsMessage="No schools found"
@@ -129,7 +129,7 @@ function Step({ n, title, body }: { n: string; title: string; body: string }) {
         <li>
             <p
                 className="font-display text-7xl md:text-8xl font-extrabold leading-none mb-5 tabular-nums"
-                style={{ color: 'var(--color-lime)' }}
+                style={{ color: 'var(--primary)' }}
             >
                 {n}
             </p>
@@ -224,7 +224,7 @@ function CoverFooter() {
         <footer className="bg-background border-t border-border py-10">
             <div className={`${CONTAINER} flex flex-col gap-3 md:flex-row md:items-center md:justify-between`}>
                 <p className="font-display text-xl font-extrabold tracking-tight">
-                    Goober<span style={{ color: 'var(--color-lime)' }}>.</span>
+                    Goober<span style={{ color: 'var(--primary)' }}>.</span>
                 </p>
                 <p className="text-xs text-muted-foreground">
                     &copy; {new Date().getFullYear()} &middot; Built for college students

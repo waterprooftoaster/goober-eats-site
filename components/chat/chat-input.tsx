@@ -68,9 +68,9 @@ export function ChatInput({ onSend, disabled, disabledPlaceholder = 'Conversatio
           placeholder={disabled ? disabledPlaceholder : 'Type a message…'}
           data-testid={disabled ? 'chat-input-waiting' : 'chat-input-active'}
           className={cn(
-            'flex-1 resize-none rounded-lg border border-border bg-transparent px-3 py-2 text-sm',
+            'flex-1 resize-none rounded-sm border border-input bg-transparent px-3 py-2 text-sm font-bold',
             'placeholder:text-muted-foreground outline-none',
-            'focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40',
+            'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
             'disabled:cursor-not-allowed disabled:opacity-50',
             'min-h-[36px] max-h-[120px] overflow-y-auto',
           )}

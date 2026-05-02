@@ -51,7 +51,7 @@ export function AccountActions() {
 
   return (
     <div className="flex flex-col gap-3">
-      <Button variant="subtle" asChild>
+      <Button variant="secondary" asChild>
         <Link href="/orders">My orders</Link>
       </Button>
 
@@ -103,7 +103,7 @@ export function AccountActions() {
             </Button>
             <Button
               type="button"
-              variant="subtle"
+              variant="secondary"
               size="default"
               onClick={() => { setConfirming(false); setError(null) }}
               className="flex-1"
