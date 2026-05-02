@@ -1,7 +1,7 @@
 /**
  * @file button.tsx
  * @description shadcn/ui Button primitive with cva-driven variants for the redesigned
- *   OKLCH-126 design system. `primary` is the lime CTA (one per screen per .impeccable.md);
+ *   OKLCH-126 design system. `primary` is the forest-green CTA (one per screen per .impeccable.md);
  *   `subtle` is the tinted-neutral fill used for non-primary actions.
  *   Called by: most interactive components across the app
  */
@@ -13,12 +13,12 @@ import { Slot } from "radix-ui"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 active:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/button inline-flex shrink-0 items-center justify-center rounded-sm border border-transparent bg-clip-padding text-sm font-bold whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 active:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
         primary:
-          "bg-primary text-primary-foreground hover:bg-[--color-accent-hover] aria-expanded:bg-[--color-accent-hover]",
+          "bg-primary text-primary-foreground hover:bg-[--color-lime-hover] aria-expanded:bg-[--color-lime-hover]",
         subtle:
           "bg-secondary text-secondary-foreground hover:bg-secondary/70 aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
         outline:
