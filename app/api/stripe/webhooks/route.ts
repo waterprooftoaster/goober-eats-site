@@ -354,6 +354,54 @@ function validatePaymentIntentMetadata(
 }
 
 /**
+ * Pulls every in_progress order assigned to this swiper back to 'open' with
+ * swiper_id=null, detaches conversations, and posts a system message into
+ * each conversation. Mirrors the un-accept side-effect in
+ * app/api/orders/[id]/status/route.ts but driven from the webhook side
+ * because the swiper has been terminated and can no longer act.
+ * @param userId - The swiper's user_id (from stripe_accounts.user_id)
+ * @param supabase - Service-role Supabase client
+ * @called-by handleAccountUpdated (rejection branch)
+ */
+async function unacceptInflightOrders(
+  userId: string,
+  supabase: ServiceClient
+): Promise<void> {
+  const { data: orders } = await supabase
+    .from('orders')
+    .update({ status: 'open', swiper_id: null })
+    .eq('swiper_id', userId)
+    .eq('status', 'in_progress')
+    .select('id')
+
+  if (!orders || orders.length === 0) return
+  const orderIds = (orders as Array<{ id: string }>).map((o) => o.id)
+
+  // Detach conversations (mirrors the un-accept side-effect at
+  // app/api/orders/[id]/status/route.ts:137-142). Without this, the prior
+  // swiper retains conversation RLS access to messages.
+  await supabase
+    .from('conversations')
+    .update({ swiper_id: null, swiper_assigned_at: null })
+    .in('order_id', orderIds)
+
+  // Look up conversation ids to post a system message into each.
+  const { data: convs } = await supabase
+    .from('conversations')
+    .select('id, order_id')
+    .in('order_id', orderIds)
+
+  if (!convs || convs.length === 0) return
+  const messageRows = (convs as Array<{ id: string; order_id: string }>).map((c) => ({
+    conversation_id: c.id,
+    sender_id: null,
+    message_type: 'system',
+    body: 'Your swiper became unavailable. Order returned to queue.',
+  }))
+  await supabase.from('messages').insert(messageRows)
+}
+
+/**
  * On Stripe Connect onboarding completion, marks stripe_accounts.onboarding_complete
  * and auto-activates is_swiper for users who already have a school_id.
  * @param account - The Stripe.Account object from the account.updated event
@@ -384,6 +432,11 @@ async function handleAccountUpdated(
   // and do NOT trigger suspension.
   const disabledReason = account.requirements?.disabled_reason ?? null
   if (disabledReason && disabledReason.startsWith('rejected.')) {
+    // Order matters: unaccept first, suspend second. If we crash between,
+    // the orders are already back in queue; the suspension flag will land
+    // on a redelivered webhook (Stripe redelivers on non-2xx).
+    await unacceptInflightOrders(existing.user_id, supabase)
+
     await supabase
       .from('stripe_accounts')
       .update({ suspended: true })

@@ -543,6 +543,126 @@ describe('POST /api/stripe/webhooks', () => {
       )
     })
 
+    it('unaccepts in-progress orders, detaches conversations, posts system messages, THEN suspends', async () => {
+      const ORDER_1 = '00000000-0000-4000-8000-000000000301'
+      const ORDER_2 = '00000000-0000-4000-8000-000000000302'
+
+      const callLog: string[] = []
+
+      const stripeLookup = dbResult({ data: { id: 'sa-1', user_id: ACCT_USER_ID } })
+      const ordersUnaccept = dbResult({ data: [{ id: ORDER_1 }, { id: ORDER_2 }] })
+      const conversationsDetach = dbResult({ data: null, error: null })
+      const conversationsLookup = dbResult({
+        data: [
+          { id: 'conv-1', order_id: ORDER_1 },
+          { id: 'conv-2', order_id: ORDER_2 },
+        ],
+      })
+      const messagesInsert = dbResult({ data: null, error: null })
+      const stripeSuspend = dbResult({ data: null, error: null })
+
+      const sequence = [
+        { table: 'stripe_accounts', chain: stripeLookup, label: 'stripe_lookup' },
+        { table: 'orders', chain: ordersUnaccept, label: 'orders_unaccept' },
+        { table: 'conversations', chain: conversationsDetach, label: 'conversations_detach' },
+        { table: 'conversations', chain: conversationsLookup, label: 'conversations_lookup' },
+        { table: 'messages', chain: messagesInsert, label: 'messages_insert' },
+        { table: 'stripe_accounts', chain: stripeSuspend, label: 'stripe_suspend' },
+      ]
+      let i = 0
+      mockServiceFrom.mockImplementation((table: string) => {
+        const expected = sequence[i]
+        if (!expected || expected.table !== table) {
+          callLog.push(`UNEXPECTED ${table} (call #${i})`)
+          return dbResult()
+        }
+        callLog.push(expected.label)
+        i += 1
+        return expected.chain
+      })
+
+      const res = await POST(
+        buildSignedRequest(
+          makeEvent('account.updated', {
+            id: 'acct_test_suspend_with_orders',
+            details_submitted: true,
+            charges_enabled: false,
+            requirements: { disabled_reason: 'rejected.fraud' },
+          })
+        )
+      )
+      expect(res.status).toBe(200)
+
+      expect(callLog).toEqual([
+        'stripe_lookup',
+        'orders_unaccept',
+        'conversations_detach',
+        'conversations_lookup',
+        'messages_insert',
+        'stripe_suspend',
+      ])
+
+      expect(ordersUnaccept.update).toHaveBeenCalledWith({ status: 'open', swiper_id: null })
+      expect(ordersUnaccept.eq).toHaveBeenCalledWith('swiper_id', ACCT_USER_ID)
+      expect(ordersUnaccept.eq).toHaveBeenCalledWith('status', 'in_progress')
+
+      expect(conversationsDetach.update).toHaveBeenCalledWith({
+        swiper_id: null,
+        swiper_assigned_at: null,
+      })
+      expect(conversationsDetach.in).toHaveBeenCalledWith('order_id', [ORDER_1, ORDER_2])
+
+      expect(messagesInsert.insert).toHaveBeenCalledWith([
+        expect.objectContaining({
+          conversation_id: 'conv-1',
+          sender_id: null,
+          message_type: 'system',
+          body: 'Your swiper became unavailable. Order returned to queue.',
+        }),
+        expect.objectContaining({
+          conversation_id: 'conv-2',
+          message_type: 'system',
+        }),
+      ])
+
+      expect(stripeSuspend.update).toHaveBeenCalledWith(
+        expect.objectContaining({ suspended: true })
+      )
+    })
+
+    it('skips conversations/messages writes when the swiper has no in_progress orders', async () => {
+      const stripeLookup = dbResult({ data: { id: 'sa-1', user_id: ACCT_USER_ID } })
+      const ordersUnaccept = dbResult({ data: [] })
+      const stripeSuspend = dbResult({ data: null, error: null })
+
+      const tables: string[] = []
+      mockServiceFrom.mockImplementation((table: string) => {
+        tables.push(table)
+        if (table === 'stripe_accounts') {
+          const stripeCallCount = tables.filter((t) => t === 'stripe_accounts').length
+          return stripeCallCount === 1 ? stripeLookup : stripeSuspend
+        }
+        if (table === 'orders') return ordersUnaccept
+        return dbResult()
+      })
+
+      const res = await POST(
+        buildSignedRequest(
+          makeEvent('account.updated', {
+            id: 'acct_no_orders',
+            requirements: { disabled_reason: 'rejected.terms_of_service' },
+          })
+        )
+      )
+      expect(res.status).toBe(200)
+
+      expect(tables.filter((t) => t === 'conversations')).toHaveLength(0)
+      expect(tables.filter((t) => t === 'messages')).toHaveLength(0)
+      expect(stripeSuspend.update).toHaveBeenCalledWith(
+        expect.objectContaining({ suspended: true })
+      )
+    })
+
     it('does NOT suspend on transient disabled_reason (e.g. requirements.past_due)', async () => {
       const calls: Array<{ table: string; chain: ReturnType<typeof dbResult> }> = []
       mockServiceFrom.mockImplementation((table: string) => {
