@@ -62,14 +62,17 @@ export function useSwiperQueue(opts: UseSwiperQueueOptions): UseSwiperQueueResul
   }, [])
 
   // --- Realtime subscription ---
-  // RLS on `orders` already restricts which rows the swiper's session can
-  // SELECT (status='open' AND swiper_id IS NULL AND school_id matches their
-  // profile's school_id), so payloads delivered here are authorized. The
-  // school_id postgres-side filter further reduces noise.
+  // RLS on `orders` restricts the swiper's session to (status='open' AND
+  // swiper_id IS NULL AND school_id matches their profile). For UPDATE events,
+  // Supabase realtime applies that policy to the NEW row state — so a status
+  // flip out of 'open' (cancelled, in_progress) silently filters the event
+  // before it reaches us. The broadcast listener bypasses this: a postgres
+  // trigger (supabase/migrations/20260502000002_orders_queue_broadcast.sql)
+  // fires `realtime.send` on every status change, so the queue refetches
+  // regardless of whether the new row passes RLS.
   useEffect(() => {
     let handle: RegistryHandle | null = null
-    // INSERT and UPDATE deliver the same shape and both reconcile via refetch
-    // — one wrapper closure for both.
+    // All three events reconcile via refetch — one wrapper closure for all.
     const onChange = () => {
       void refetch()
     }
@@ -98,7 +101,8 @@ export function useSwiperQueue(opts: UseSwiperQueueOptions): UseSwiperQueueResul
                 filter: `school_id=eq.${schoolId}`,
               },
               onChange
-            ),
+            )
+            .on('broadcast', { event: 'queue_changed' }, onChange),
       })
     } catch {
       // §11 fail-closed: refuse the subscription if schoolId is malformed.

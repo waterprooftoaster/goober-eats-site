@@ -220,8 +220,10 @@ describe('PATCH /api/orders/[id]/status — does not persist system messages', (
       created_at: '2026-04-22T00:00:00Z',
       updated_at: '2026-04-22T00:00:00Z',
     }
-    // Cancel uses the user (server) client for the orders update — not service
-    mockServerFrom.mockReturnValueOnce(dbResult({ data: cancelledOrder }))
+    // Cancel uses the service client for the orders update (post-fix —
+    // RLS would block the user-client UPDATE for guests; auth was already
+    // checked above).
+    mockServiceFrom.mockReturnValueOnce(dbResult({ data: cancelledOrder }))
 
     const res = await callPatch('cancelled')
     expect(res.status).toBe(200)
@@ -390,7 +392,7 @@ describe('PATCH /api/orders/[id]/status — completion branches under manual cap
         },
       })
     )
-    mockServerFrom.mockReturnValueOnce(
+    mockServiceFrom.mockReturnValueOnce(
       dbResult({
         data: {
           id: ORDER_ID,
@@ -451,7 +453,7 @@ describe('PATCH /api/orders/[id]/status — completion branches under manual cap
         updated_at: '2026-04-22T00:00:00Z',
       },
     })
-    mockServerFrom.mockReturnValueOnce(cancelUpdate)
+    mockServiceFrom.mockReturnValueOnce(cancelUpdate)
 
     mockPaymentIntentsCancel.mockRejectedValueOnce(new Error('PI already captured'))
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -507,7 +509,7 @@ describe('PATCH /api/orders/[id]/status — completion branches under manual cap
       error: null,
     })
 
-    mockServerFrom.mockReturnValueOnce(
+    mockServiceFrom.mockReturnValueOnce(
       dbResult({
         data: {
           id: ORDER_ID,
@@ -562,6 +564,53 @@ describe('PATCH /api/orders/[id]/status — completion branches under manual cap
     const res = await callPatch('cancelled')
     expect(res.status).toBe(403)
     expect(mockPaymentIntentsCancel).not.toHaveBeenCalled()
+  })
+
+  it('returns idempotent 200 on cancel when CAS fails because the payment_intent.canceled webhook already flipped status', async () => {
+    // Race: stripe.paymentIntents.cancel above fires the webhook, which
+    // flips orders.status='cancelled' before our route's CAS UPDATE lands.
+    // CAS .eq('status','open') matches 0 rows → re-read shows 'cancelled' →
+    // return 200 instead of a misleading 409.
+    mockGetUser.mockResolvedValue({ data: { user: { id: ORDERER_ID } }, error: null })
+    primeSuspensionMock()
+    mockServerFrom.mockReturnValueOnce(
+      dbResult({
+        data: {
+          id: ORDER_ID,
+          orderer_id: ORDERER_ID,
+          swiper_id: null,
+          status: 'open',
+          stripe_payment_intent_id: 'pi_race',
+        },
+      })
+    )
+    // CAS update returns no row (webhook beat us)
+    mockServiceFrom.mockReturnValueOnce(dbResult({ data: null, error: null }))
+    // Re-read shows status='cancelled' — idempotent success
+    mockServiceFrom.mockReturnValueOnce(
+      dbResult({
+        data: {
+          id: ORDER_ID,
+          orderer_id: ORDERER_ID,
+          swiper_id: null,
+          school_id: '00000000-0000-4000-8000-000000000aaa',
+          restaurant_name: 'Chipotle',
+          cart_screenshot_urls: [],
+          status: 'cancelled',
+          subtotal_cents: 2500,
+          total_cents: 1500,
+          guest_name: null,
+          guest_email: null,
+          created_at: '2026-04-22T00:00:00Z',
+          updated_at: '2026-04-22T00:00:00Z',
+        },
+      })
+    )
+
+    const res = await callPatch('cancelled')
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.status).toBe('cancelled')
   })
 
   it('returns 400 when payment guard rejects (no payment row in pending/succeeded state)', async () => {
