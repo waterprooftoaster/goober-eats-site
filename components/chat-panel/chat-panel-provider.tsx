@@ -16,7 +16,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { ordersOrdererChannel } from '@/lib/constants'
+import { ordersOrdererChannel, ordersSwiperChannel } from '@/lib/constants'
 import { subscribeChannel, type RegistryHandle } from '@/lib/realtime/channel-registry'
 import { useVisibilityRefetch } from '@/hooks/use-visibility-refetch'
 import { ChatPanelContext } from './chat-panel-context'
@@ -149,9 +149,13 @@ export function ChatPanelProvider({ userId, children }: Props) {
       .in('status', ACTIVE_STATUSES)
       .order('created_at', { ascending: true })
 
+    // Authenticated users can be either the orderer or the swiper; mirror
+    // the server-side query in app/current-orders/page.tsx so the bottom-dock
+    // pill counts swiper-accepted orders. Anonymous users only ever own
+    // orders via anon_user_id.
     const { data } = isAnon
       ? await query.eq('anon_user_id', userId)
-      : await query.eq('orderer_id', userId)
+      : await query.or(`orderer_id.eq.${userId},swiper_id.eq.${userId}`)
 
     for (const order of data ?? []) {
       const restaurantName = (order as { restaurant_name?: string }).restaurant_name ?? ''
@@ -183,15 +187,43 @@ export function ChatPanelProvider({ userId, children }: Props) {
   useEffect(() => {
     if (!userId) return
     const uid: string = userId
-    let handle: RegistryHandle | null = null
+    let ordererHandle: RegistryHandle | null = null
+    let swiperHandle: RegistryHandle | null = null
+
+    /**
+     * Common UPDATE handler for both orderer and swiper subscriptions.
+     * Both channels deliver the same payload shape; the only difference is
+     * the postgres-side filter field.
+     */
+    function onOrderUpdate(payload: { new: { id: string; status: OrderStatus } }) {
+      const id = payload.new.id
+      if (ordersRef.current[id]) {
+        updateOrderStatus(id, payload.new.status)
+        return
+      }
+      // Order is not currently in state — most likely user dismissed
+      // it. A status change is a meaningful lifecycle event that
+      // should re-engage the user (e.g. swiper un-accept reverts
+      // in_progress → open; orderer needs to see the panel again).
+      // Skip terminal statuses: re-opening a dismissed panel just to
+      // immediately remove it via TERMINAL_STATUSES causes a flash render.
+      if (
+        dismissedOrderIdsRef.current.has(id) &&
+        !TERMINAL_STATUSES.includes(payload.new.status)
+      ) {
+        dismissedOrderIdsRef.current.delete(id)
+        openPanel(id, payload.new.status)
+      }
+    }
 
     async function subscribe() {
       const supabase = createClient()
-      const isAnon = await resolveIsAnonymous(supabase)
-      const filterField = isAnon ? 'anon_user_id' : 'orderer_id'
+      const { data: { user } } = await supabase.auth.getUser()
+      const isAnon = user?.is_anonymous ?? false
+      const ordererFilterField = isAnon ? 'anon_user_id' : 'orderer_id'
 
       try {
-        handle = subscribeChannel({
+        ordererHandle = subscribeChannel({
           channelName: ordersOrdererChannel(uid),
           validateUuid: uid,
           configure: (channel) =>
@@ -201,38 +233,46 @@ export function ChatPanelProvider({ userId, children }: Props) {
                 event: 'UPDATE',
                 schema: 'public',
                 table: 'orders',
-                filter: `${filterField}=eq.${uid}`,
+                filter: `${ordererFilterField}=eq.${uid}`,
               },
-              (payload) => {
-                const id = payload.new.id
-                if (ordersRef.current[id]) {
-                  updateOrderStatus(id, payload.new.status)
-                  return
-                }
-                // Order is not currently in state — most likely user dismissed
-                // it. A status change is a meaningful lifecycle event that
-                // should re-engage the user (e.g. swiper un-accept reverts
-                // in_progress → open; orderer needs to see the panel again).
-                // Clear the dismissal and call openPanel; the visibility-
-                // refetch path will additionally backfill restaurantName + the
-                // joined conversationId on the next foreground.
-                if (dismissedOrderIdsRef.current.has(id)) {
-                  dismissedOrderIdsRef.current.delete(id)
-                  openPanel(id, payload.new.status)
-                }
-              }
+              onOrderUpdate
             ),
         })
       } catch {
         // §11 fail-closed: if registry refuses subscribe (e.g. malformed userId),
         // the visibility-refetch path keeps the panel list eventually consistent.
       }
+
+      // Authenticated users may also be a swiper for some orders. Anonymous
+      // users can never be swipers (Stripe Connect onboarding requires auth),
+      // so skip the second subscription for them.
+      if (isAnon) return
+      try {
+        swiperHandle = subscribeChannel({
+          channelName: ordersSwiperChannel(uid),
+          validateUuid: uid,
+          configure: (channel) =>
+            channel.on<{ id: string; status: OrderStatus }>(
+              'postgres_changes',
+              {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'orders',
+                filter: `swiper_id=eq.${uid}`,
+              },
+              onOrderUpdate
+            ),
+        })
+      } catch {
+        // §11 fail-closed
+      }
     }
 
     void subscribe()
 
     return () => {
-      handle?.unsubscribe()
+      ordererHandle?.unsubscribe()
+      swiperHandle?.unsubscribe()
     }
   }, [userId, updateOrderStatus, openPanel, resolveIsAnonymous])
 

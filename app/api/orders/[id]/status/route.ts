@@ -1,12 +1,16 @@
 /**
  * @file route.ts
  * @description PATCH endpoint to advance an order through the state machine.
- *   Validates transitions, enforces per-role authorization, guards completion (payment + delivery photo),
- *   triggers Stripe transfer on completion. Status notifications are NOT persisted here — the chat UI
- *   renders them client-side as pseudo-messages derived from order.status + viewer role.
+ *   Validates transitions, enforces per-role authorization, guards completion
+ *   (payment + completion photo). Under manual-capture, completion captures
+ *   the orderer's authorized PI and transfers the net to the swiper via
+ *   lib/stripe/capture-and-transfer.ts BEFORE the status flips to 'completed'
+ *   — capture failure leaves the order at in_progress so ops can resolve.
+ *   Status notifications are NOT persisted here — the chat UI renders them
+ *   client-side as pseudo-messages derived from order.status + viewer role.
  *   Called by: swiper/orderer order action buttons
  * @dependencies lib/supabase/server.ts, lib/supabase/service.ts, lib/orders/state-machine.ts,
- *               lib/stripe/transfer.ts
+ *               lib/stripe/capture-and-transfer.ts
  */
 
 import { NextRequest } from 'next/server'
@@ -15,7 +19,9 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { updateOrderStatusSchema } from '@/lib/types/api'
 import { canTransition } from '@/lib/orders/state-machine'
 import { apiError, apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
-import { transferToSwiper } from '@/lib/stripe/transfer'
+import { validateGuestOrder } from '@/lib/api/guest-auth'
+import { captureAndTransfer } from '@/lib/stripe/capture-and-transfer'
+import { getStripe } from '@/lib/stripe/client'
 import { signCartScreenshotPaths } from '@/lib/storage/sign-screenshots'
 import type { OrderStatus } from '@/lib/types/database'
 
@@ -43,7 +49,7 @@ export async function PATCH(
 
   const { data: order } = await supabase
     .from('orders')
-    .select('id, orderer_id, swiper_id, status')
+    .select('id, orderer_id, swiper_id, status, stripe_payment_intent_id')
     .eq('id', id)
     .single()
 
@@ -61,8 +67,33 @@ export async function PATCH(
   const isSwiper = order.swiper_id === user.id
 
   if (newStatus === 'cancelled') {
-    if (!isOrderer) {
+    // Allow either the authenticated orderer OR a guest holding the matching
+    // guest_access_token cookie. Guest orders have orderer_id NULL by design,
+    // so isOrderer is always false for them — we re-check via validateGuestOrder.
+    let canCancel = isOrderer
+    if (!canCancel && order.orderer_id === null) {
+      const { error: guestErr } = await validateGuestOrder(id)
+      canCancel = guestErr === null
+    }
+    if (!canCancel) {
       return apiError('Only the orderer can cancel an order', 403)
+    }
+    // Release the auth hold before flipping status. paymentIntents.cancel is
+    // itself idempotent (Stripe returns the canceled PI if called again);
+    // wrapping with idempotencyKey 'cancel-${orderId}' guards against retry
+    // amplification on transient network errors. On error (rare: PI already
+    // captured/canceled) we still flip status so the order doesn't get stuck.
+    if (order.stripe_payment_intent_id) {
+      try {
+        await getStripe().paymentIntents.cancel(
+          order.stripe_payment_intent_id,
+          undefined,
+          { idempotencyKey: `cancel-${id}` }
+        )
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error'
+        console.error(`Cancel failed for order ${id} (PI ${order.stripe_payment_intent_id}): ${message}. Flipping status anyway.`)
+      }
     }
   } else {
     // open (un-accept) and completed — swiper only
@@ -71,19 +102,20 @@ export async function PATCH(
     }
   }
 
-  // Completion guards: payment must exist + delivery photo required
-  // Uses service client: RLS on payments only allows payer/payee to SELECT, but
-  // the swiper is neither (payer_id = orderer, payee_id = null at this point).
+  // Completion guards: payment must exist (in pending/succeeded — i.e. not
+  // failed/refunded) + completion photo required. Uses service client because
+  // RLS on payments only allows payer/payee to SELECT, but the swiper is
+  // neither (payer_id = orderer, payee_id = null until transfer succeeds).
   if (newStatus === 'completed') {
     const { data: payment } = await createServiceClient()
       .from('payments')
-      .select('id')
+      .select('id, status')
       .eq('order_id', id)
-      .eq('status', 'succeeded')
+      .in('status', ['pending', 'succeeded'])
       .maybeSingle()
 
     if (!payment) {
-      return apiError('Order cannot be completed: payment not confirmed', 400)
+      return apiError('Order cannot be completed: payment not in a completable state', 400)
     }
 
     const { data: conv } = await supabase
@@ -109,9 +141,14 @@ export async function PATCH(
   // Uses service client because the orders_update RLS WITH CHECK only permits
   // rows where the updater remains orderer or swiper — clearing swiper_id to
   // null would fail the check on the new row even though USING passes.
-  const updatePayload = newStatus === 'open'
-    ? { status: newStatus, swiper_id: null }
-    : { status: newStatus }
+  // completed: stamp completed_at so the complaint feature has a canonical
+  // completion timestamp (lib/orders/complaint-eligibility.ts reads it).
+  const updatePayload =
+    newStatus === 'open'
+      ? { status: newStatus, swiper_id: null }
+      : newStatus === 'completed'
+        ? { status: newStatus, completed_at: new Date().toISOString() }
+        : { status: newStatus }
   const updateClient = newStatus === 'open' ? createServiceClient() : supabase
 
   // Atomic: only update if status still matches what we read (prevents race)
@@ -121,7 +158,7 @@ export async function PATCH(
     .eq('id', id)
     .eq('status', order.status)
     .select(
-      'id, orderer_id, swiper_id, school_id, restaurant_name, cart_screenshot_urls, status, subtotal_cents, total_cents, guest_name, guest_email, created_at, updated_at'
+      'id, orderer_id, swiper_id, school_id, restaurant_name, cart_screenshot_urls, status, subtotal_cents, total_cents, guest_name, guest_email, created_at, updated_at, completed_at'
     )
     .single()
 
@@ -141,11 +178,44 @@ export async function PATCH(
       .eq('order_id', id)
   }
 
-  // Transfer funds to swiper (payment captured at checkout for both guest and auth).
-  // transferToSwiper reads amount and platform fee from the payment row so the
-  // realized split always matches what was committed at checkout.
+  // Capture the orderer's authorized PI + transfer the net to the swiper.
+  // CAS already succeeded so the order is now 'completed' in DB; if capture
+  // fails we roll the status back to 'in_progress' and respond 409. The
+  // briefly-visible 'completed' state during the Stripe call is acceptable
+  // (single Stripe round-trip; idempotent retries).
   if (newStatus === 'completed' && updated.swiper_id) {
-    await transferToSwiper(updated.id, updated.swiper_id)
+    const result = await captureAndTransfer(updated.id, updated.swiper_id)
+    if (!result.ok) {
+      // Rollback: WHERE id=X AND status='completed' — only this request can
+      // be in this state, so the rollback is unambiguous. Service client is
+      // required because a concurrent un-accept could have nulled swiper_id,
+      // and clearing completed_at to null also avoids the orders_update RLS
+      // WITH CHECK on the user-scoped client (same precedent as the un-accept
+      // branch above). Clearing completed_at preserves the complaint window
+      // so the eventual successful completion gets the full 24h.
+      const { error: rollbackError } = await createServiceClient()
+        .from('orders')
+        .update({ status: 'in_progress', completed_at: null })
+        .eq('id', updated.id)
+        .eq('status', 'completed')
+      if (rollbackError) {
+        console.error(
+          `Capture failed AND rollback failed for order ${updated.id}`,
+          rollbackError
+        )
+      }
+
+      if (result.reason === 'capture_failed') {
+        return apiError(
+          'Payment authorization expired or declined; order cannot be completed.',
+          409
+        )
+      }
+      // no_payment: completion guard would have caught this; defensive fallback.
+      return apiError('Order cannot be completed: payment record not found', 400)
+    }
+    // result.transferStuck is logged inside captureAndTransfer; the order
+    // still completes (food was delivered, orderer was charged).
   }
 
   const cart_screenshot_urls = await signCartScreenshotPaths(

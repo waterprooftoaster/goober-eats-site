@@ -14,6 +14,16 @@ export const CONTACT_EMAIL = 'goobereats@gmail.com'
 
 export const PENDING_SCREENSHOTS_KEY = 'pending_screenshots'
 export const PENDING_SCHOOL_ID_KEY = 'pending_school_id'
+export const PENDING_SUBTOTAL_CENTS_KEY = 'pending_subtotal_cents'
+
+// Cart-total bounds shared by the server-side extractor (lib/ai/extract-cart-total.ts)
+// and the client-side prefill effect (app/checkout/page.tsx). Lives here so the
+// client can import without dragging server-only modules into the browser bundle.
+//   MIN: matches createCheckoutSchema.subtotal_cents.min(50) — Stripe's floor.
+//   MAX: $1000 sanity ceiling; values above almost always indicate OCR
+//        hallucination, so we drop them and let the user type.
+export const CART_TOTAL_MIN_CENTS = 50
+export const CART_TOTAL_MAX_CENTS = 100_000
 
 /**
  * Supabase Realtime channel name for message INSERTs in a conversation.
@@ -33,4 +43,26 @@ export function messagesChannel(conversationId: string): string {
  */
 export function ordersOrdererChannel(userId: string): string {
   return `orders:orderer:${userId}`
+}
+
+/**
+ * Supabase Realtime channel name for order status UPDATEs filtered to a given swiper.
+ * Mirrors `ordersOrdererChannel` for the swiper-assigned-orders subscription.
+ * @param userId - UUID of the swiper (authenticated)
+ * @returns Channel name: `orders:swiper:<userId>`
+ * @called-by components/chat-panel/chat-panel-provider.tsx
+ */
+export function ordersSwiperChannel(userId: string): string {
+  return `orders:swiper:${userId}`
+}
+
+/**
+ * Supabase Realtime channel name for new/changing open orders within a school.
+ * Drives the swiper /swiper/orders queue's live updates.
+ * @param schoolId - UUID of the school
+ * @returns Channel name: `orders:queue:<schoolId>`
+ * @called-by hooks/use-swiper-queue.ts
+ */
+export function swiperQueueChannel(schoolId: string): string {
+  return `orders:queue:${schoolId}`
 }

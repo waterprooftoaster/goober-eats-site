@@ -7,6 +7,8 @@
 
 import { z } from 'zod'
 
+import { CART_TOTAL_MAX_CENTS } from '@/lib/constants'
+
 // Pre-checkout screenshot session id: 10-char nanoid. Emitted by
 // /api/cart-screenshots/upload-url; echoed back by the client on subsequent
 // uploads and the final checkout submission.
@@ -60,14 +62,15 @@ export type SendMessageInput = z.infer<typeof sendMessageSchema>
 //   - cart_screenshot_paths are bucket paths minted by
 //     /api/cart-screenshots/upload-url, 1..5 entries.
 //   - subtotal_cents is the GrubHub subtotal the orderer enters; the orderer
-//     is charged 60% of this per lib/pricing.ts:computeSplit. 50c minimum is
-//     Stripe's floor. No upper bound.
+//     is charged 40% of this per lib/pricing.ts:computeSplit. 50c minimum is
+//     Stripe's floor; CART_TOTAL_MAX_CENTS ceiling guards against an outsized
+//     auth hold and is mirrored in the webhook metadata validator.
 //   - school_id is only required for guests; for authenticated users it is
 //     derived server-side from the profile and any body value is ignored.
 export const createCheckoutSchema = z.object({
   restaurant_name: z.string().trim().min(1).max(80),
   cart_screenshot_paths: z.array(z.string().regex(SCREENSHOT_PATH_RE)).min(1).max(5),
-  subtotal_cents: z.number().int().min(50),
+  subtotal_cents: z.number().int().min(50).max(CART_TOTAL_MAX_CENTS),
   school_id: z.string().uuid().optional(),
   guest_name: z.string().trim().min(1).max(100).optional(),
 })
@@ -95,6 +98,15 @@ export const screenshotSignSchema = z.object({
 
 export type ScreenshotSignInput = z.infer<typeof screenshotSignSchema>
 
+// Body for POST /api/orders/extract-price.
+// Same path layout + bounds as screenshotSignSchema; the route downloads each
+// path with the service client and asks Gemini for the cart total.
+export const extractPriceSchema = z.object({
+  paths: z.array(z.string().regex(SCREENSHOT_PATH_RE)).min(1).max(5),
+})
+
+export type ExtractPriceInput = z.infer<typeof extractPriceSchema>
+
 export const updateProfileSchema = z
   .object({
     school_id: z.string().uuid().optional(),
@@ -105,3 +117,41 @@ export const updateProfileSchema = z
   })
 
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>
+
+// Body for POST /api/orders/[id]/complaints. Mirrors the public.complaint_category
+// enum in supabase/migrations/20260430000001_complaints_table.sql; reason_text
+// length matches the CHECK on complaints.reason_text.
+export const complaintCategoryEnum = z.enum([
+  'wrong_items',
+  'missing_items',
+  'never_delivered',
+  'damaged',
+  'other',
+])
+
+export type ComplaintCategory = z.infer<typeof complaintCategoryEnum>
+
+export const createComplaintSchema = z.object({
+  category: complaintCategoryEnum,
+  reason_text: z.string().trim().min(20).max(1000),
+})
+
+export type CreateComplaintInput = z.infer<typeof createComplaintSchema>
+
+// Body for the forgot-password server action. Email is the only field; the
+// redirect URL is built server-side from NEXT_PUBLIC_URL so the client cannot
+// influence where the recovery link points.
+export const forgotPasswordSchema = z.object({
+  email: z.string().trim().email(),
+})
+
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>
+
+// Body for the reset-password server action. Minimum length matches the
+// supabase config.toml `minimum_password_length` floor; the project policy
+// asks for >=8 specifically on reset.
+export const resetPasswordSchema = z.object({
+  password: z.string().min(8),
+})
+
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>

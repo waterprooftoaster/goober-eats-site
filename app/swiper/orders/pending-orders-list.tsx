@@ -18,6 +18,7 @@ import { CartScreenshot } from '@/components/order/cart-screenshot'
 import { Modal, ModalContent, ModalTitle, ModalDescription } from '@/components/ui/modal'
 import { Button } from '@/components/ui/button'
 import { computeSplit } from '@/lib/pricing'
+import { useSwiperQueue } from '@/hooks/use-swiper-queue'
 
 export type PendingOrder = {
   id: string
@@ -29,17 +30,20 @@ export type PendingOrder = {
 
 interface Props {
   orders: PendingOrder[]
+  schoolId: string
 }
 
 /**
  * Swiper queue with detail modal + accept action. Soft-disable state machine
- * (no optimistic transitions; money-moving — see master plan §10).
- * @param orders - Open unclaimed orders for the swiper's school, oldest first
+ * (no optimistic transitions; money-moving — see master plan §10). Live queue
+ * updates come from useSwiperQueue (Realtime + visibility refetch).
+ * @param orders - Open unclaimed orders for the swiper's school, oldest first (server-rendered initial)
+ * @param schoolId - The swiper's school UUID; drives the realtime subscription
  * @returns Queue list, with the detail modal mounted alongside
  * @called-by app/swiper/orders/page.tsx
  */
-export function PendingOrdersList({ orders: initialOrders }: Props) {
-  const [orders, setOrders] = useState<PendingOrder[]>(initialOrders)
+export function PendingOrdersList({ orders: initialOrders, schoolId }: Props) {
+  const { orders, removeOrder } = useSwiperQueue({ schoolId, initialOrders })
   const [selectedOrder, setSelectedOrder] = useState<PendingOrder | null>(null)
   const [accepting, setAccepting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -57,7 +61,7 @@ export function PendingOrdersList({ orders: initialOrders }: Props) {
         return
       } else if (res.status === 409) {
         // Race: another swiper claimed it first. Drop the row + close the modal.
-        setOrders((prev) => prev.filter((o) => o.id !== selectedOrder.id))
+        removeOrder(selectedOrder.id)
         setSelectedOrder(null)
         setError('That order was just accepted by another swiper.')
       } else {

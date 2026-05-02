@@ -8,9 +8,9 @@ import { test, expect } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'node:crypto'
 
-const TEST_EMAIL = 'test@goobereats.edu'
+const TEST_EMAIL = 'orderer@goobereats.edu'
 const ORDER_SUBTOTAL_CENTS = 2500
-const ORDER_TOTAL_CENTS = 1500
+const ORDER_TOTAL_CENTS = 1000
 
 let supabase: ReturnType<typeof createClient>
 let userId: string

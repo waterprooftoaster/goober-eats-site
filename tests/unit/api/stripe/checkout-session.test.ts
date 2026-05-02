@@ -78,7 +78,7 @@ beforeEach(() => {
   mockStripeSessionsCreate.mockResolvedValue({ client_secret: 'cs_test_secret' })
 })
 
-// Subtotal $25 → orderer pays $15 (60%), platform $2.50, swiper $12.50.
+// Subtotal $25 → orderer pays $10 (40%), platform $2.50, swiper $7.50.
 const baseBody = {
   restaurant_name: 'Chipotle',
   cart_screenshot_paths: [VALID_PATH],
@@ -151,7 +151,7 @@ describe('POST /api/stripe/checkout-session', () => {
       expect(res.status).toBe(400)
     })
 
-    it('charges 60% of subtotal_cents (orderer pays after the 40% discount)', async () => {
+    it('charges 40% of subtotal_cents (orderer pays after the 60% discount)', async () => {
       mockAuthUser()
       await POST(buildRequest(baseBody))
       const [[arg]] = mockStripeSessionsCreate.mock.calls
@@ -161,13 +161,13 @@ describe('POST /api/stripe/checkout-session', () => {
           quantity: 1,
           price_data: expect.objectContaining({
             currency: 'usd',
-            unit_amount: 1500,
+            unit_amount: 1000,
             product_data: { name: 'Chipotle' },
           }),
         })
       )
       expect(arg.metadata.subtotal_cents).toBe('2500')
-      expect(arg.metadata.total_cents).toBe('1500')
+      expect(arg.metadata.total_cents).toBe('1000')
       expect(arg.metadata.platform_fee_cents).toBe('250')
     })
 
@@ -192,6 +192,13 @@ describe('POST /api/stripe/checkout-session', () => {
       await POST(buildRequest(baseBody))
       const [[arg]] = mockStripeSessionsCreate.mock.calls
       expect(arg.payment_intent_data?.metadata).toEqual(arg.metadata)
+    })
+
+    it('passes capture_method: manual on payment_intent_data (auth hold, captured at completion)', async () => {
+      mockAuthUser()
+      await POST(buildRequest(baseBody))
+      const [[arg]] = mockStripeSessionsCreate.mock.calls
+      expect(arg.payment_intent_data?.capture_method).toBe('manual')
     })
   })
 

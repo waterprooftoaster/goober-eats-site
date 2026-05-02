@@ -1,27 +1,14 @@
 /**
  * @file client.ts
- * @description Lazily-initialized singleton Stripe SDK client (server-only).
+ * @description Server-only re-export of the Stripe SDK singleton. Routes and other
+ *   server-rendered code should import from here so the build catches accidental
+ *   client-side imports; non-server-rendered scripts (tsx) must import from `./sdk`
+ *   directly because `server-only` throws under any resolver that doesn't set the
+ *   `react-server` condition.
  *   Called by: lib/stripe/connect.ts, lib/stripe/transfer.ts, app/api/stripe/webhooks/route.ts
- * @dependencies stripe
+ * @dependencies lib/stripe/sdk.ts
  */
 
 import 'server-only'
 
-import Stripe from 'stripe'
-
-let _stripe: Stripe | null = null
-
-/**
- * Returns the lazily-initialized Stripe SDK singleton.
- * @returns Stripe instance configured with the server-side secret key
- * @called-by lib/stripe/connect.ts, lib/stripe/transfer.ts, app/api/stripe/webhooks/route.ts
- */
-export function getStripe(): Stripe {
-  if (!_stripe) {
-    _stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-      apiVersion: '2026-02-25.clover',
-      typescript: true,
-    })
-  }
-  return _stripe
-}
+export { getStripe } from './sdk'

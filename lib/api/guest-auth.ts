@@ -6,6 +6,7 @@
  */
 
 import { cookies } from 'next/headers'
+import { timingSafeEqual } from 'crypto'
 import { NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 
@@ -60,10 +61,30 @@ export async function validateGuestOrder(orderId: string): Promise<GuestAuthResu
     return { order: null, error: NextResponse.json({ error: 'Order not found' }, { status: 404 }) }
   }
 
-  // Reject if token doesn't match or if this is an authenticated user's order
-  if (order.guest_access_token !== token || order.orderer_id !== null) {
+  // Reject if token doesn't match or if this is an authenticated user's order.
+  // Constant-time compare on the token (defense-in-depth — UUIDs have 128 bits
+  // of entropy and the check is gated behind a DB round-trip, but matching the
+  // CRON_SECRET pattern keeps the convention consistent across the codebase).
+  if (!tokensMatch(order.guest_access_token, token) || order.orderer_id !== null) {
     return { order: null, error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
   }
 
   return { order: order as GuestOrderValid['order'], error: null }
+}
+
+// --- Helpers ---
+
+/**
+ * Constant-time comparison of two ASCII tokens.
+ * @param expected - Token from the DB (guest_access_token, never null in this branch)
+ * @param actual - Token from the cookie
+ * @returns true iff the bytes match exactly
+ * @called-by validateGuestOrder
+ */
+function tokensMatch(expected: string | null, actual: string): boolean {
+  if (!expected) return false
+  const a = Buffer.from(expected)
+  const b = Buffer.from(actual)
+  if (a.length !== b.length) return false
+  return timingSafeEqual(a, b)
 }
