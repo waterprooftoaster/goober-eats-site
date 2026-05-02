@@ -14,6 +14,16 @@ export const CONTACT_EMAIL = 'goobereats@gmail.com'
 
 export const PENDING_SCREENSHOTS_KEY = 'pending_screenshots'
 export const PENDING_SCHOOL_ID_KEY = 'pending_school_id'
+export const PENDING_SUBTOTAL_CENTS_KEY = 'pending_subtotal_cents'
+
+// Cart-total bounds shared by the server-side extractor (lib/ai/extract-cart-total.ts)
+// and the client-side prefill effect (app/checkout/page.tsx). Lives here so the
+// client can import without dragging server-only modules into the browser bundle.
+//   MIN: matches createCheckoutSchema.subtotal_cents.min(50) — Stripe's floor.
+//   MAX: $1000 sanity ceiling; values above almost always indicate OCR
+//        hallucination, so we drop them and let the user type.
+export const CART_TOTAL_MIN_CENTS = 50
+export const CART_TOTAL_MAX_CENTS = 100_000
 
 /**
  * Supabase Realtime channel name for message INSERTs in a conversation.

@@ -21,6 +21,7 @@ import { DesktopUploadDock } from '@/components/desktop-upload-dock'
 import { createClient } from '@/lib/supabase/client'
 import { PENDING_SCHOOL_ID_KEY, PENDING_SCREENSHOTS_KEY } from '@/lib/constants'
 import { normalizeImage } from '@/lib/image/normalize'
+import { setPendingSubtotalCents } from '@/lib/ai/pending-subtotal-cache'
 
 type Stage = 'idle' | 'selected' | 'uploading' | 'error'
 
@@ -118,6 +119,7 @@ export default function HomeUpload({ isSwiper = false, pendingOrderCount = 0 }: 
             })
             if (!putRes.ok) throw new Error('Upload failed. Please try again.')
 
+            setPendingSubtotalCents(fetchExtractedCents([signed.path]))
             sessionStorage.setItem(PENDING_SCREENSHOTS_KEY, JSON.stringify([signed.path]))
             router.push('/checkout')
         } catch (err) {
@@ -248,4 +250,29 @@ function extractExtension(filename: string): AllowedExtension | null {
     if (idx < 0 || idx === filename.length - 1) return null
     const ext = filename.slice(idx + 1).toLowerCase()
     return (ALLOWED_EXTENSIONS as readonly string[]).includes(ext) ? (ext as AllowedExtension) : null
+}
+
+/**
+ * Fires a non-blocking POST to /api/orders/extract-price for the just-uploaded
+ * cart screenshots. The Promise is stashed in pending-subtotal-cache so the
+ * /checkout mount effect can await it (with an 8s timeout) and seed the
+ * Cart Total input. Errors and non-numeric responses resolve to null —
+ * the field stays empty rather than surfacing UI noise.
+ * @param paths - Validated cart-screenshot paths
+ * @returns Resolves to integer cents or null
+ * @called-by HomeUpload (handlePlaceOrder)
+ */
+async function fetchExtractedCents(paths: string[]): Promise<number | null> {
+    try {
+        const res = await fetch('/api/orders/extract-price', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ paths }),
+        })
+        if (!res.ok) return null
+        const json = (await res.json()) as { cents?: unknown }
+        return typeof json.cents === 'number' && Number.isInteger(json.cents) ? json.cents : null
+    } catch {
+        return null
+    }
 }

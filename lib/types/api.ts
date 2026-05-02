@@ -95,6 +95,15 @@ export const screenshotSignSchema = z.object({
 
 export type ScreenshotSignInput = z.infer<typeof screenshotSignSchema>
 
+// Body for POST /api/orders/extract-price.
+// Same path layout + bounds as screenshotSignSchema; the route downloads each
+// path with the service client and asks Gemini for the cart total.
+export const extractPriceSchema = z.object({
+  paths: z.array(z.string().regex(SCREENSHOT_PATH_RE)).min(1).max(5),
+})
+
+export type ExtractPriceInput = z.infer<typeof extractPriceSchema>
+
 export const updateProfileSchema = z
   .object({
     school_id: z.string().uuid().optional(),

@@ -22,8 +22,20 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { BackButton } from '@/components/back-button'
 import { CartScreenshot, CartScreenshotSkeleton } from '@/components/order/cart-screenshot'
 import { createClient } from '@/lib/supabase/client'
-import { PENDING_SCREENSHOTS_KEY, PENDING_SCHOOL_ID_KEY } from '@/lib/constants'
+import {
+    PENDING_SCREENSHOTS_KEY,
+    PENDING_SCHOOL_ID_KEY,
+    PENDING_SUBTOTAL_CENTS_KEY,
+    CART_TOTAL_MIN_CENTS,
+    CART_TOTAL_MAX_CENTS,
+} from '@/lib/constants'
 import { computeSplit } from '@/lib/pricing'
+import {
+    clearPendingSubtotalCents,
+    getPendingSubtotalCentsPromise,
+} from '@/lib/ai/pending-subtotal-cache'
+
+const PREFILL_TIMEOUT_MS = 8000
 
 // Guarded so a missing env var (CI / preview environment / fresh clone)
 // surfaces as the colocated error.tsx boundary instead of an unhandled
@@ -43,10 +55,45 @@ export default function CheckoutPage() {
     const [name, setName] = useState('')
     const [eatery, setEatery] = useState('')
     const [subtotal, setSubtotal] = useState('')
+    const [subtotalPending, setSubtotalPending] = useState(false)
     const [stage, setStage] = useState<Stage>('form')
     const [clientSecret, setClientSecret] = useState<string | null>(null)
     const [error, setError] = useState<string | null>(null)
     const initialized = useRef(false)
+    const prefillInitialized = useRef(false)
+    const subtotalDirty = useRef(false)
+    const subtotalRef = useRef(subtotal)
+    subtotalRef.current = subtotal
+
+    // Auto-fill setter — only writes when the user has not typed and the field
+    // is still empty. Prevents the late-resolve case from clobbering a manual
+    // edit. Used by the prefill effect; user typing flows through
+    // handleUserSubtotalChange instead (which flips subtotalDirty).
+    /**
+     * Auto-fills the Cart Total input from a Gemini-extracted cents value.
+     * Guards: never overwrites a user edit (subtotalDirty), never overwrites
+     * an already-populated field, and re-validates the sanity bounds in case
+     * the value came from sessionStorage (which a user could tamper with).
+     * @param cents - Integer cents from extract-price or sessionStorage cache
+     * @called-by mount prefill useEffect, late-resolve subscription
+     */
+    const tryAutofillSubtotal = (cents: number) => {
+        if (subtotalDirty.current) return
+        if (subtotalRef.current !== '') return
+        if (cents < CART_TOTAL_MIN_CENTS || cents > CART_TOTAL_MAX_CENTS) return
+        setSubtotal((cents / 100).toFixed(2))
+    }
+
+    /**
+     * User-driven subtotal setter. Flips subtotalDirty so the prefill
+     * effect's late-resolve hook will not clobber the manual edit.
+     * @param v - Raw input value from the Cart Total <Input>
+     * @called-by CheckoutForm onChange
+     */
+    const handleUserSubtotalChange = (v: string) => {
+        subtotalDirty.current = true
+        setSubtotal(v)
+    }
 
     // sessionStorage bootstrap — redirect home if no screenshots are queued.
     useEffect(() => {
@@ -70,6 +117,55 @@ export default function CheckoutPage() {
         }
         setScreenshotPaths(paths)
     }, [router])
+
+    // Auto-prefill the Cart Total from Gemini's extracted value.
+    //   - If sessionStorage already has a resolved cents (post-resolve or
+    //     reload-after-resolve), seed immediately.
+    //   - Else if the home page registered an in-flight Promise, await it
+    //     with an 8s timeout (skeleton overlay shown while pending).
+    //   - On timeout, attach a late-resolve hook so a slow backend still
+    //     fills the input — gated by subtotalDirty so a user edit wins.
+    useEffect(() => {
+        if (prefillInitialized.current) return
+        prefillInitialized.current = true
+
+        const cached = sessionStorage.getItem(PENDING_SUBTOTAL_CENTS_KEY)
+        if (cached !== null) {
+            const n = Number(cached)
+            if (Number.isInteger(n) && n >= CART_TOTAL_MIN_CENTS && n <= CART_TOTAL_MAX_CENTS) {
+                tryAutofillSubtotal(n)
+            }
+            return
+        }
+
+        const pending = getPendingSubtotalCentsPromise()
+        if (!pending) return
+
+        setSubtotalPending(true)
+        let settled = false
+        const timer = setTimeout(() => {
+            if (settled) return
+            setSubtotalPending(false)
+            // Late-resolve subscription: still fills the input if the user
+            // has not started typing by the time the slow response lands.
+            void pending.then((cents) => {
+                if (cents !== null) tryAutofillSubtotal(cents)
+            })
+        }, PREFILL_TIMEOUT_MS)
+
+        void pending.then((cents) => {
+            if (settled) return
+            settled = true
+            clearTimeout(timer)
+            setSubtotalPending(false)
+            if (cents !== null) tryAutofillSubtotal(cents)
+        })
+        // Intentionally one-shot: this effect runs once on mount, gated by
+        // prefillInitialized.current. tryAutofillSubtotal is safe to call
+        // from the closure because it reads subtotalDirty/subtotalRef from
+        // refs (live values), not from closed-over state.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
 
     // Resolve viewerKind: a Supabase user without a profile row is a guest
     // for backend purposes (the API requires guest_name in that case).
@@ -154,6 +250,7 @@ export default function CheckoutPage() {
             // failure leaves the paths behind for retry.
             sessionStorage.removeItem(PENDING_SCREENSHOTS_KEY)
             sessionStorage.removeItem(PENDING_SCHOOL_ID_KEY)
+            clearPendingSubtotalCents()
             setClientSecret(json.clientSecret)
             setStage('checkout')
         } catch (err) {
@@ -241,7 +338,8 @@ export default function CheckoutPage() {
                             kind={viewerKind}
                             name={name} setName={setName}
                             eatery={eatery} setEatery={setEatery}
-                            subtotal={subtotal} setSubtotal={setSubtotal}
+                            subtotal={subtotal} setSubtotal={handleUserSubtotalChange}
+                            subtotalPending={subtotalPending}
                             isSubmitting={isSubmitting}
                             canSubmit={canSubmit}
                             error={error}
@@ -265,6 +363,7 @@ interface CheckoutFormProps {
     setEatery: (v: string) => void
     subtotal: string
     setSubtotal: (v: string) => void
+    subtotalPending: boolean
     isSubmitting: boolean
     canSubmit: boolean
     error: string | null
@@ -280,6 +379,7 @@ interface CheckoutFormProps {
  */
 function CheckoutForm({
     kind, name, setName, eatery, setEatery, subtotal, setSubtotal,
+    subtotalPending,
     isSubmitting, canSubmit, error, ordererPaysCents, onSubmit,
 }: CheckoutFormProps) {
     const isGuest = kind === 'guest'
@@ -332,18 +432,26 @@ function CheckoutForm({
                         : 'Minimum $0.50'
                 }
             >
-                <Input
-                    id="checkout-subtotal"
-                    data-testid="checkout-subtotal-input"
-                    type="number"
-                    inputMode="decimal"
-                    placeholder="0.00"
-                    min="0.50"
-                    step="0.01"
-                    value={subtotal}
-                    onChange={(e) => setSubtotal(e.target.value)}
-                    disabled={isSubmitting}
-                />
+                <div className="relative">
+                    <Input
+                        id="checkout-subtotal"
+                        data-testid="checkout-subtotal-input"
+                        type="number"
+                        inputMode="decimal"
+                        placeholder="0.00"
+                        min="0.50"
+                        step="0.01"
+                        value={subtotal}
+                        onChange={(e) => setSubtotal(e.target.value)}
+                        disabled={isSubmitting || subtotalPending}
+                    />
+                    {subtotalPending && (
+                        <Skeleton
+                            data-testid="checkout-subtotal-skeleton"
+                            className="pointer-events-none absolute inset-0 rounded-md"
+                        />
+                    )}
+                </div>
             </FieldRow>
 
             {error && (
