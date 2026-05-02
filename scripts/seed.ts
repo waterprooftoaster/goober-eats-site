@@ -1,12 +1,22 @@
 /**
+ * ⚠️  TESTING / CI ONLY — DO NOT RUN IN PRODUCTION  ⚠️
+ *
+ * This seed script creates Stripe Connect accounts using test-mode magic values
+ * (address_full_match, ssn_last_4 '0000', id_number '000000000', btok_us_verified,
+ * dob year 1901). These ONLY work against a sandbox STRIPE_SECRET_KEY (sk_test_...).
+ * Running this against a live key is blocked by an explicit guard, but the intent
+ * is local dev + CI/CD only — never production, never staging-with-live-keys.
+ */
+
+/**
  * @file seed.ts
- * @description Seeds the Supabase database for the GrubHub-cart-screenshot
- *   model: schools (NYU + The New School), demo profiles for orderer/swiper
- *   roles in each school, Stripe Connect onboarding rows for both swipers,
- *   and one open NYU "Chipotle" demo order with two placeholder PNG
- *   screenshots in the cart-screenshots bucket. Idempotent — safe to re-run.
+ * @description Test-only seed for Supabase + Stripe sandbox. Seeds schools (NYU + The
+ *   New School), demo profiles for orderer/swiper roles in each school, real Stripe
+ *   Connect Express accounts for both swipers (created against sk_test_), and one
+ *   open NYU "Chipotle" demo order with two placeholder PNG screenshots. Idempotent —
+ *   safe to re-run. Set SEED_SKIP_STRIPE=1 to skip Stripe API calls entirely (offline).
  *   Called by: npx tsx scripts/seed.ts
- * @dependencies @supabase/supabase-js
+ * @dependencies @supabase/supabase-js, scripts/lib/stripe-seed
  */
 
 import { readFileSync } from 'fs'
@@ -14,6 +24,10 @@ import { resolve } from 'path'
 import { randomBytes, randomUUID } from 'crypto'
 import { createClient } from '@supabase/supabase-js'
 import { computeSplit } from '../lib/pricing'
+import {
+  assertStripeTestMode,
+  getOrCreateSeededStripeAccount,
+} from './lib/stripe-seed'
 
 // ---------------------------------------------------------------------------
 // Bootstrap env
@@ -101,11 +115,20 @@ async function main(): Promise<void> {
     return
   }
 
+  const skipStripe = process.env.SEED_SKIP_STRIPE === '1'
+  if (skipStripe) {
+    console.warn(
+      'SEED_SKIP_STRIPE=1 — using fake stripe_account_id strings (offline mode; transfers will fail).'
+    )
+  } else {
+    assertStripeTestMode()
+  }
+
   console.log('Seeding demo users + profiles…')
   const userIds = await seedUsers(schoolIds)
 
   console.log('Seeding stripe_accounts for swipers…')
-  await seedStripeAccounts(userIds)
+  await seedStripeAccounts(userIds, skipStripe)
 
   console.log('Seeding demo open NYU order…')
   await seedDemoOrder(schoolIds.nyu, userIds['nyuuser@test.edu'])
@@ -255,14 +278,23 @@ async function getOrCreateAuthUser(email: string, fullName: string): Promise<str
 }
 
 /**
- * Upserts stripe_accounts rows (onboarding_complete=true) for the swipers.
+ * Upserts stripe_accounts rows (onboarding_complete=true) for the swipers. When
+ * `skipStripe` is false, creates (or reuses) a real Stripe Connect Express account
+ * via `getOrCreateSeededStripeAccount`; otherwise writes a synthetic ID for offline
+ * runs (transfers will fail — useful only when Stripe is unreachable).
  * @param userIds - Map of email → user UUID
+ * @param skipStripe - When true, skip Stripe API calls and use synthetic IDs
  */
-async function seedStripeAccounts(userIds: Record<string, string>): Promise<void> {
+async function seedStripeAccounts(
+  userIds: Record<string, string>,
+  skipStripe: boolean
+): Promise<void> {
   for (const spec of DEMO_USERS) {
     if (!spec.isSwiper) continue
     const userId = userIds[spec.email]
-    const stripeAccountId = `acct_test_${spec.schoolSlug}_${userId.slice(0, 8)}`
+    const stripeAccountId = skipStripe
+      ? `acct_test_${spec.schoolSlug}_${userId.slice(0, 8)}`
+      : await getOrCreateSeededStripeAccount(userId, spec.email)
     const { error } = await supabase
       .from('stripe_accounts')
       .upsert(

@@ -7,7 +7,7 @@
 import { test, expect } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 
-const TEST_EMAIL = 'test@goobereats.edu'
+const TEST_EMAIL = 'orderer@goobereats.edu'
 
 test.describe('PATCH /api/profile — authenticated', () => {
   let schoolId: string
@@ -112,7 +112,7 @@ test.describe('Account page — swiper section', () => {
       process.env.SUPABASE_SECRET_KEY!
     )
     const { data: existing } = await supabase.auth.admin.listUsers()
-    const user = existing?.users?.find((u) => u.email === 'test@goobereats.edu')
+    const user = existing?.users?.find((u) => u.email === 'orderer@goobereats.edu')
     if (user) {
       await supabase
         .from('profiles')

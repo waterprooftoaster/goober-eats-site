@@ -10,7 +10,11 @@
     "lint:features-hash": "node docs/redesign/check-features-hash.mjs",
     "lint:features-coverage": "node docs/redesign/check-features-coverage.mjs",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:db:up": "supabase start --workdir supabase-test",
+    "test:db:down": "supabase stop --workdir supabase-test",
+    "test:db:reset": "supabase db reset --workdir supabase-test",
+    "dev:test": "PORT=${TEST_NEXT_PORT:-3100} NEXT_PUBLIC_SUPABASE_URL=$TEST_SUPABASE_URL NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY=$TEST_SUPABASE_PUBLISHABLE_DEFAULT_KEY SUPABASE_SECRET_KEY=$TEST_SUPABASE_SECRET_KEY next dev"
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",

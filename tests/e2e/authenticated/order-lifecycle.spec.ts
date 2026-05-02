@@ -8,7 +8,7 @@ import { test, expect } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'node:crypto'
 
-const TEST_EMAIL = 'test@goobereats.edu'
+const TEST_EMAIL = 'orderer@goobereats.edu'
 const FAKE_UUID = '00000000-0000-4000-8000-000000000099'
 // Subtotal $25 → orderer pays $15 (60%), platform $2.50, swiper $12.50.
 const ORDER_SUBTOTAL_CENTS = 2500

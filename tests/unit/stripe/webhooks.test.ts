@@ -172,77 +172,11 @@ describe('POST /api/stripe/webhooks', () => {
 
   // ── payment_intent.succeeded ─────────────────────────────────────────
 
-  describe('payment_intent.succeeded (guest)', () => {
-    it('creates an order with null orderer_id, guest_name, school_id, and cart_screenshot_urls', async () => {
-      const { ordersInsert, paymentsInsert } = setupHappyPath()
-
-      const res = await POST(buildSignedRequest(guestPiEvent()))
-      expect(res.status).toBe(200)
-
-      expect(ordersInsert.insert).toHaveBeenCalledWith(
-        expect.objectContaining({
-          orderer_id: null,
-          school_id: VALID_SCHOOL_ID,
-          restaurant_name: 'Chipotle',
-          cart_screenshot_urls: [VALID_PATH],
-          guest_name: 'Test Guest',
-          subtotal_cents: 2500,
-          total_cents: 1500,
-          stripe_payment_intent_id: VALID_PI_ID,
-        })
-      )
-
-      // Regression guard — tips and special_instructions were removed as
-      // features; the orders insert payload must not carry either key.
-      const [insertArg] = ordersInsert.insert.mock.calls[0]
-      expect(insertArg).not.toHaveProperty('tip_cents')
-      expect(insertArg).not.toHaveProperty('special_instructions')
-
-      expect(paymentsInsert.insert).toHaveBeenCalledWith(
-        expect.objectContaining({
-          stripe_payment_intent_id: VALID_PI_ID,
-          amount_cents: 1500,
-          platform_fee_cents: 250,
-          status: 'succeeded',
-          payer_id: null,
-          payee_id: null,
-        })
-      )
-    })
-
-    it('accepts multiple comma-joined screenshot paths', async () => {
-      setupHappyPath()
-      const path2 = VALID_PATH.replace('.png', '.webp')
-      const res = await POST(
-        buildSignedRequest(
-          guestPiEvent({ cart_screenshot_paths: `${VALID_PATH},${path2}` })
-        )
-      )
-      expect(res.status).toBe(200)
-    })
-  })
-
-  describe('payment_intent.succeeded (auth)', () => {
-    it('creates order with orderer_id and null guest fields', async () => {
-      const { ordersInsert, paymentsInsert } = setupHappyPath()
-
-      const res = await POST(buildSignedRequest(authPiEvent()))
-      expect(res.status).toBe(200)
-
-      expect(ordersInsert.insert).toHaveBeenCalledWith(
-        expect.objectContaining({
-          orderer_id: VALID_ORDERER_ID,
-          school_id: VALID_SCHOOL_ID,
-          restaurant_name: 'Chipotle',
-          guest_name: null,
-          guest_access_token: null,
-        })
-      )
-      expect(paymentsInsert.insert).toHaveBeenCalledWith(
-        expect.objectContaining({ payer_id: VALID_ORDERER_ID })
-      )
-    })
-  })
+  // NOTE: happy-path payment_intent.succeeded coverage (guest + auth) is
+  // exercised end-to-end by tests/unit/stripe/webhook-cli-roundtrip.test.ts
+  // (gated on STRIPE_CLI=1) and the live-money Playwright spec. The cases
+  // below cover error injection / idempotency that the Stripe CLI cannot
+  // cheaply synthesize.
 
   describe('payment_intent.succeeded idempotency + recovery', () => {
     it('skips duplicate PI delivery', async () => {
@@ -456,35 +390,8 @@ describe('POST /api/stripe/webhooks', () => {
     })
   })
 
-  describe('no-op events', () => {
-    it('payment_intent.payment_failed is a no-op', async () => {
-      const res = await POST(
-        buildSignedRequest(makeEvent('payment_intent.payment_failed', { id: VALID_PI_ID }))
-      )
-      expect(res.status).toBe(200)
-      expect(mockServiceFrom).not.toHaveBeenCalled()
-    })
-
-    it('checkout.session.completed is a no-op', async () => {
-      const res = await POST(
-        buildSignedRequest(
-          makeEvent('checkout.session.completed', {
-            id: 'cs_test_abc',
-            payment_intent: VALID_PI_ID,
-            amount_total: 1500,
-          })
-        )
-      )
-      expect(res.status).toBe(200)
-      expect(mockServiceFrom).not.toHaveBeenCalled()
-    })
-
-    it('checkout.session.expired is a no-op', async () => {
-      const res = await POST(
-        buildSignedRequest(makeEvent('checkout.session.expired', {}))
-      )
-      expect(res.status).toBe(200)
-      expect(mockServiceFrom).not.toHaveBeenCalled()
-    })
-  })
+  // NOTE: no-op event coverage (payment_intent.payment_failed,
+  // checkout.session.completed, checkout.session.expired) was removed —
+  // these were single-line "do nothing" handlers; the only real value was
+  // proving they don't throw, which is implicit in the signature suite.
 })

@@ -7,7 +7,7 @@
 import { test, expect } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 
-const SIGNUP_EMAIL = 'signup-test@goobereats.edu'
+const SIGNUP_EMAIL = 'signup-orderer@goobereats.edu'
 const SIGNUP_PASSWORD = 'signup123456'
 const SIGNUP_FULL_NAME = 'Signup User'
 
