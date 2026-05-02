@@ -76,7 +76,7 @@ function makeEvent(type: string, object: Record<string, unknown>) {
   }
 }
 
-// Subtotal $25 → orderer pays $15 (60%), platform $2.50, swiper $12.50.
+// Subtotal $25 → orderer pays $10 (40%), platform $2.50, swiper $7.50.
 function guestMetadata(overrides: Record<string, string> = {}) {
   return {
     is_guest: 'true',
@@ -84,7 +84,7 @@ function guestMetadata(overrides: Record<string, string> = {}) {
     restaurant_name: 'Chipotle',
     cart_screenshot_paths: VALID_PATH,
     subtotal_cents: '2500',
-    total_cents: '1500',
+    total_cents: '1000',
     platform_fee_cents: '250',
     guest_name: 'Test Guest',
     ...overrides,
@@ -97,7 +97,7 @@ function authMetadata(overrides: Record<string, string> = {}) {
     restaurant_name: 'Chipotle',
     cart_screenshot_paths: VALID_PATH,
     subtotal_cents: '2500',
-    total_cents: '1500',
+    total_cents: '1000',
     platform_fee_cents: '250',
     orderer_id: VALID_ORDERER_ID,
     ...overrides,
@@ -107,7 +107,7 @@ function authMetadata(overrides: Record<string, string> = {}) {
 function guestPiEvent(overrides: Record<string, string> = {}) {
   return makeEvent('payment_intent.succeeded', {
     id: VALID_PI_ID,
-    amount: 1500,
+    amount: 1000,
     metadata: guestMetadata(overrides),
   })
 }
@@ -115,7 +115,7 @@ function guestPiEvent(overrides: Record<string, string> = {}) {
 function authPiEvent(overrides: Record<string, string> = {}) {
   return makeEvent('payment_intent.succeeded', {
     id: VALID_PI_ID,
-    amount: 1500,
+    amount: 1000,
     metadata: authMetadata(overrides),
   })
 }
@@ -187,7 +187,7 @@ describe('POST /api/stripe/webhooks', () => {
           cart_screenshot_urls: [VALID_PATH],
           guest_name: 'Test Guest',
           subtotal_cents: 2500,
-          total_cents: 1500,
+          total_cents: 1000,
           stripe_payment_intent_id: VALID_PI_ID,
         })
       )
@@ -201,7 +201,7 @@ describe('POST /api/stripe/webhooks', () => {
       expect(paymentsInsert.insert).toHaveBeenCalledWith(
         expect.objectContaining({
           stripe_payment_intent_id: VALID_PI_ID,
-          amount_cents: 1500,
+          amount_cents: 1000,
           platform_fee_cents: 250,
           status: 'succeeded',
           payer_id: null,
@@ -322,7 +322,7 @@ describe('POST /api/stripe/webhooks', () => {
       )
       expect(res.status).toBe(200)
       expect(paymentsInsert.insert).toHaveBeenCalledWith(
-        expect.objectContaining({ amount_cents: 1500, platform_fee_cents: 250 })
+        expect.objectContaining({ amount_cents: 1000, platform_fee_cents: 250 })
       )
     })
 
@@ -471,7 +471,7 @@ describe('POST /api/stripe/webhooks', () => {
           makeEvent('checkout.session.completed', {
             id: 'cs_test_abc',
             payment_intent: VALID_PI_ID,
-            amount_total: 1500,
+            amount_total: 1000,
           })
         )
       )

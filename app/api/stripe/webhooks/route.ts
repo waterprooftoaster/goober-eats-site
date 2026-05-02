@@ -3,7 +3,7 @@
  * @description Stripe webhook handler. Creates orders on
  *   payment_intent.succeeded from metadata embedded by /api/stripe/checkout-session
  *   (school_id, restaurant_name, cart_screenshot_paths, subtotal_cents). The
- *   60/50/10 split is re-derived server-side via lib/pricing.ts:computeSplit
+ *   40/30/10 split is re-derived server-side via lib/pricing.ts:computeSplit
  *   so a tampered total_cents / platform_fee_cents in metadata can't change
  *   what we persist. Idempotent via the unique index on
  *   payments.stripe_payment_intent_id; an orphan order from a partially-failed

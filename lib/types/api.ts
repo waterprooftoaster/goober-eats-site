@@ -60,7 +60,7 @@ export type SendMessageInput = z.infer<typeof sendMessageSchema>
 //   - cart_screenshot_paths are bucket paths minted by
 //     /api/cart-screenshots/upload-url, 1..5 entries.
 //   - subtotal_cents is the GrubHub subtotal the orderer enters; the orderer
-//     is charged 60% of this per lib/pricing.ts:computeSplit. 50c minimum is
+//     is charged 40% of this per lib/pricing.ts:computeSplit. 50c minimum is
 //     Stripe's floor. No upper bound.
 //   - school_id is only required for guests; for authenticated users it is
 //     derived server-side from the profile and any body value is ignored.

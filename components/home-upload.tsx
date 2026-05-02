@@ -136,7 +136,7 @@ export default function HomeUpload({ isSwiper = false, pendingOrderCount = 0 }: 
         >
             <header className="max-w-md">
                 <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
-                    Order anywhere on campus, 40% off.
+                    Order anywhere on campus, 60% off.
                 </h1>
                 <p className="mt-3 text-base text-muted-foreground">
                     Screenshot a GrubHub cart, at any eatery that takes swipes or dining dollars. We'll pair you with a student with a meal plan.

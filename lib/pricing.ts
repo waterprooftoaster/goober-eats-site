@@ -8,10 +8,10 @@
  *              app/api/stripe/webhooks/route.ts, scripts/seed.ts
  *
  * Pricing policy (share of subtotal):
- *   Discount       40%
- *   Orderer pays   60%   ← Stripe charge amount
+ *   Discount       60%
+ *   Orderer pays   40%   ← Stripe charge amount
  *   Platform fee   10%   ← retained on platform balance
- *   Swiper         50%   ← Stripe transfer on completion
+ *   Swiper         30%   ← Stripe transfer on completion
  *
  * Self-consistency: ordererPaysCents = platformFeeCents + swiperReceivesCents
  * is enforced by deriving swiperReceivesCents as the difference rather than a
@@ -33,7 +33,7 @@ export interface PriceSplit {
  * @called-by app/api/stripe/checkout-session/route.ts, app/api/stripe/webhooks/route.ts
  */
 export function computeSplit(subtotalCents: number): PriceSplit {
-  const ordererPaysCents = Math.round(subtotalCents * 0.6)
+  const ordererPaysCents = Math.round(subtotalCents * 0.4)
   const platformFeeCents = Math.round(subtotalCents * 0.1)
   // Derive (don't re-round) so charge == fee + transfer exactly.
   const swiperReceivesCents = ordererPaysCents - platformFeeCents

@@ -328,7 +328,7 @@ function CheckoutForm({
                 htmlFor="checkout-subtotal"
                 hint={
                     ordererPaysCents !== null
-                        ? `You'll pay ${formatDollars(ordererPaysCents)} (40% off)`
+                        ? `You'll pay ${formatDollars(ordererPaysCents)} (60% off)`
                         : 'Minimum $0.50'
                 }
             >
