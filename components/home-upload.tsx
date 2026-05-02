@@ -14,7 +14,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ImagePlus, Lightbulb } from 'lucide-react'
+import Link from 'next/link'
+import { HelpCircle, ImagePlus, Lightbulb } from 'lucide-react'
 import { StatefulButton } from '@/components/ui/stateful-button'
 import { Surface } from '@/components/ui/surface'
 import { DesktopUploadDock } from '@/components/desktop-upload-dock'
@@ -160,6 +161,14 @@ export default function HomeUpload({ isSwiper = false, pendingOrderCount = 0 }: 
             </header>
 
             <div className="flex flex-col gap-4">
+                <Link
+                    href="/welcome"
+                    className="group flex w-fit items-center gap-1.5 text-sm text-muted-foreground transition-colors duration-150 hover:text-foreground"
+                >
+                    <HelpCircle className="h-3.5 w-3.5" aria-hidden />
+                    How it works
+                </Link>
+
                 {preview ? (
                     <div
                         role="button"
@@ -179,7 +188,7 @@ export default function HomeUpload({ isSwiper = false, pendingOrderCount = 0 }: 
                         <img
                             src={preview}
                             alt="Cart screenshot preview"
-                            className="block w-full max-w-md aspect-[9/16] rounded-lg border border-border bg-muted/40 object-contain"
+                            className="home-dropzone-area block w-full max-w-md aspect-[9/16] rounded-lg border border-border bg-muted/40 object-contain"
                         />
                     </div>
                 ) : (
@@ -197,7 +206,7 @@ export default function HomeUpload({ isSwiper = false, pendingOrderCount = 0 }: 
                                 inputRef.current?.click()
                             }
                         }}
-                        className="relative aspect-[9/16] w-full max-w-md cursor-pointer overflow-hidden rounded-2xl border-2 border-dashed border-border transition-colors hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 motion-reduce:transition-none"
+                        className="relative aspect-square w-full max-w-md cursor-pointer overflow-hidden rounded-2xl border-2 border-dashed border-border transition-colors hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 motion-reduce:transition-none"
                     >
                         <div className="flex h-full flex-col items-start justify-end gap-2 p-6 text-muted-foreground">
                             <ImagePlus className="h-8 w-8" aria-hidden />
@@ -208,7 +217,7 @@ export default function HomeUpload({ isSwiper = false, pendingOrderCount = 0 }: 
 
                 <div
                     data-testid="home-upload-tips"
-                    className="max-w-md rounded-xl border border-border bg-muted p-4 text-sm"
+                    className="max-w-md rounded-xl border border-border bg-muted/20 p-4 text-sm"
                 >
                     <p className="flex items-center gap-2 font-medium text-foreground">
                         <Lightbulb className="h-4 w-4" aria-hidden />

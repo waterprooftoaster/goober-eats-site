@@ -115,7 +115,7 @@ export function LoginForm({
 
   useEffect(() => {
     if (onboardingState && 'success' in onboardingState) {
-      window.location.assign(next ?? '/')
+      window.location.assign(next ?? '/welcome')
     }
   }, [onboardingState, next])
 
