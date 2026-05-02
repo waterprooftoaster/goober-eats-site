@@ -14,7 +14,7 @@ const TEST_EMAIL = 'test@goobereats.edu'
 // Fixed tokens so tests are deterministic and easy to clean up
 const GUEST_TOKEN = '10000000-0000-4000-8000-000000000001'
 const ORDER_SUBTOTAL_CENTS = 2500
-const ORDER_TOTAL_CENTS = 1500
+const ORDER_TOTAL_CENTS = 1000
 const ORDER_PLATFORM_FEE_CENTS = 250
 
 let swiperUserId: string

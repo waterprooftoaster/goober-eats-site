@@ -10,7 +10,7 @@ import { randomUUID } from 'node:crypto'
 
 const TEST_EMAIL = 'test@goobereats.edu'
 const ORDER_SUBTOTAL_CENTS = 2500
-const ORDER_TOTAL_CENTS = 1500
+const ORDER_TOTAL_CENTS = 1000
 // 1×1 white JPEG (107 bytes)
 const TINY_JPEG = Buffer.from(
   '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8U' +

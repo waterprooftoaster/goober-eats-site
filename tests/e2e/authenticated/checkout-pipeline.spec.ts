@@ -91,9 +91,9 @@ test.describe('Checkout Pipeline', () => {
     request,
   }) => {
     // ── Step 1: Compute expected values ──────────────────────────────
-    // Subtotal $25 → orderer pays $15 (60%), platform $2.50, swiper $12.50.
+    // Subtotal $25 → orderer pays $10 (40%), platform $2.50, swiper $7.50.
     const subtotalCents = 2500
-    const totalCents = 1500
+    const totalCents = 1000
     const expectedFeeCents = 250
 
     // ── Step 2: Simulate payment_intent.succeeded webhook ──────────────

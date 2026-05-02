@@ -1,29 +1,29 @@
 /**
  * @file pricing.test.ts
  * @description Unit tests for lib/pricing.ts:computeSplit. Locks in the
- *   60/50/10 policy (orderer pays 60%, swiper 50%, platform 10%, discount
- *   40%) and the self-consistency invariant orderer = platform + swiper.
+ *   40/30/10 policy (orderer pays 40%, swiper 30%, platform 10%, discount
+ *   60%) and the self-consistency invariant orderer = platform + swiper.
  */
 
 import { describe, it, expect } from 'vitest'
 import { computeSplit } from '@/lib/pricing'
 
 describe('computeSplit', () => {
-  it('splits a $100 subtotal into 60/10/50 cents-of-original', () => {
+  it('splits a $100 subtotal into 40/10/30 cents-of-original', () => {
     expect(computeSplit(10_000)).toEqual({
       subtotalCents: 10_000,
-      ordererPaysCents: 6_000,
+      ordererPaysCents: 4_000,
       platformFeeCents: 1_000,
-      swiperReceivesCents: 5_000,
+      swiperReceivesCents: 3_000,
     })
   })
 
-  it('splits a $25 subtotal into $15 / $2.50 / $12.50', () => {
+  it('splits a $25 subtotal into $10 / $2.50 / $7.50', () => {
     expect(computeSplit(2_500)).toEqual({
       subtotalCents: 2_500,
-      ordererPaysCents: 1_500,
+      ordererPaysCents: 1_000,
       platformFeeCents: 250,
-      swiperReceivesCents: 1_250,
+      swiperReceivesCents: 750,
     })
   })
 
@@ -38,8 +38,8 @@ describe('computeSplit', () => {
 
   it('handles the Stripe minimum subtotal (50¢)', () => {
     const split = computeSplit(50)
-    expect(split.ordererPaysCents).toBe(30)
+    expect(split.ordererPaysCents).toBe(20)
     expect(split.platformFeeCents).toBe(5)
-    expect(split.swiperReceivesCents).toBe(25)
+    expect(split.swiperReceivesCents).toBe(15)
   })
 })
