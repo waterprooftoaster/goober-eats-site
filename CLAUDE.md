@@ -137,6 +137,9 @@ STRIPE_SECRET_KEY
 STRIPE_WEBHOOK_SECRET
 RESEND_API_KEY                # SMTP password for Supabase auth emails
 NEXT_PUBLIC_URL               # Base URL used for password-reset / email-confirm callback links
+CRON_SECRET                     # Bearer token for /api/cron/sweep-stale-orders.
+                                # Set in Vercel project env (Production + Preview)
+                                # so Vercel Cron's Authorization header matches.
 ```
 
 ## Production SMTP

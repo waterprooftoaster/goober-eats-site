@@ -193,6 +193,13 @@ describe('POST /api/stripe/checkout-session', () => {
       const [[arg]] = mockStripeSessionsCreate.mock.calls
       expect(arg.payment_intent_data?.metadata).toEqual(arg.metadata)
     })
+
+    it('passes capture_method: manual on payment_intent_data (auth hold, captured at completion)', async () => {
+      mockAuthUser()
+      await POST(buildRequest(baseBody))
+      const [[arg]] = mockStripeSessionsCreate.mock.calls
+      expect(arg.payment_intent_data?.capture_method).toBe('manual')
+    })
   })
 
   describe('guest flow', () => {
