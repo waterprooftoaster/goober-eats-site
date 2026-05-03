@@ -51,13 +51,18 @@ const ORDER_ID = '11111111-2222-4333-8444-555555555552'
 const CONV_ID = '11111111-2222-4333-8444-555555555553'
 
 function setupOrdersJoinReturn(rows: unknown[]) {
-  // The query chain: .from('orders').select(...).in('status', ...).order('created_at', ...).eq('orderer_id', uid)
-  const eqResult = Promise.resolve({ data: rows, error: null })
-  const orderChain = { eq: vi.fn(() => eqResult) }
+  // The query chain ends with one of:
+  //   .eq('anon_user_id', uid)             — anon users
+  //   .or('orderer_id.eq.X,swiper_id.eq.X') — authenticated users (orderer OR swiper)
+  const result = Promise.resolve({ data: rows, error: null })
+  const orderChain = {
+    eq: vi.fn(() => result),
+    or: vi.fn(() => result),
+  }
   const inChain = { order: vi.fn(() => orderChain) }
   const selectChain = { in: vi.fn(() => inChain) }
   mockOrdersQuery.mockReturnValue({ select: vi.fn(() => selectChain) })
-  return { selectChain }
+  return { selectChain, orderChain }
 }
 
 beforeEach(() => {
@@ -126,7 +131,7 @@ describe('ChatPanelProvider (S07 — registry + conversations JOIN + visibility)
       expect(selectChain.in).toHaveBeenCalledWith('status', expect.any(Array))
     })
 
-    const passedStatuses = selectChain.in.mock.calls[0][1] as string[]
+    const passedStatuses = (selectChain.in.mock.calls[0] as unknown as [string, string[]])[1]
     expect(passedStatuses).not.toContain('completed')
     expect(passedStatuses).toEqual(['open', 'in_progress'])
   })
@@ -269,5 +274,138 @@ describe('ChatPanelProvider (S07 — registry + conversations JOIN + visibility)
 
     // The dismissed order MUST NOT reappear in state.
     expect(captured.value?.orders[ORDER_ID]).toBeUndefined()
+  })
+
+  // --- Phase 2: swiper-side realtime + loadActiveOrders ---
+  //
+  // Symptom previously: chat-panel-provider only subscribed via
+  // ordersOrdererChannel filtered on orderer_id (or anon_user_id). Swipers
+  // never received orders UPDATE payloads, so badges on /current-orders
+  // didn't transition live (e.g., when an orderer cancels). loadActiveOrders
+  // also queried only by orderer_id for auth users, so swiper-accepted
+  // orders never surfaced in the bottom-dock.
+
+  it('subscribes to BOTH orderer and swiper channels for an authenticated user', async () => {
+    render(<ChatPanelProvider userId={USER_ID}><div /></ChatPanelProvider>)
+
+    await waitFor(() => {
+      expect(mockSupabase.channel).toHaveBeenCalledWith(`orders:orderer:${USER_ID}`)
+    })
+    await waitFor(() => {
+      expect(mockSupabase.channel).toHaveBeenCalledWith(`orders:swiper:${USER_ID}`)
+    })
+  })
+
+  it('does NOT subscribe to the swiper channel for an anonymous user', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: USER_ID, is_anonymous: true } } })
+    render(<ChatPanelProvider userId={USER_ID}><div /></ChatPanelProvider>)
+
+    // Wait long enough for both async subscribe paths to settle.
+    await waitFor(() => {
+      expect(mockSupabase.channel).toHaveBeenCalledWith(`orders:orderer:${USER_ID}`)
+    })
+    await new Promise((r) => setTimeout(r, 20))
+
+    const swiperCalls = mockSupabase.channel.mock.calls.filter(
+      ([name]) => name === `orders:swiper:${USER_ID}`
+    )
+    expect(swiperCalls).toHaveLength(0)
+  })
+
+  it('updates panelOrders status when an UPDATE arrives on the swiper channel', async () => {
+    // Seed an order assigned to USER_ID as the swiper.
+    setupOrdersJoinReturn([
+      {
+        id: ORDER_ID,
+        status: 'in_progress',
+        restaurant_name: 'Chipotle',
+        conversations: [{ id: CONV_ID }],
+      },
+    ])
+
+    const captured: { value: ReturnType<typeof useChatPanel> | null } = { value: null }
+    const { act } = await import('@testing-library/react')
+    render(
+      <ChatPanelProvider userId={USER_ID}>
+        <StateProbe onState={(s) => { captured.value = s }} />
+      </ChatPanelProvider>
+    )
+
+    // Wait for both subscriptions AND the auto-open.
+    await waitFor(() => {
+      expect(captured.value?.orders[ORDER_ID]).toBeDefined()
+    })
+    await waitFor(() => {
+      expect(mockSupabase.channel).toHaveBeenCalledWith(`orders:swiper:${USER_ID}`)
+    })
+
+    // The realtime callback handler is the third argument of every .on() call.
+    // Subscriptions register in order: orderer first, swiper second. Find the
+    // swiper-channel handler by inspecting each .on() call's filter.
+    const swiperHandler = mockChannel.on.mock.calls.find(
+      ([, cfg]) => (cfg as { filter?: string }).filter === `swiper_id=eq.${USER_ID}`
+    )?.[2] as ((p: { new: { id: string; status: string } }) => void) | undefined
+
+    expect(swiperHandler).toBeDefined()
+
+    // Orderer cancels — but 'cancelled' is terminal and removes the panel; use
+    // 'completed' which keeps the entry with its updated status so we can
+    // assert the swiper-channel delivery actually drove updateOrderStatus.
+    act(() => {
+      swiperHandler!({ new: { id: ORDER_ID, status: 'completed' } })
+    })
+
+    await waitFor(() => {
+      expect(captured.value?.orders[ORDER_ID]?.status).toBe('completed')
+    })
+  })
+
+  it('loadActiveOrders queries with .or(orderer_id, swiper_id) for authenticated users', async () => {
+    const { orderChain } = setupOrdersJoinReturn([])
+    render(<ChatPanelProvider userId={USER_ID}><div /></ChatPanelProvider>)
+
+    await waitFor(() => {
+      expect(orderChain.or).toHaveBeenCalledWith(
+        `orderer_id.eq.${USER_ID},swiper_id.eq.${USER_ID}`
+      )
+    })
+    // Auth path must NOT use the anon eq('anon_user_id', ...) filter.
+    expect(orderChain.eq).not.toHaveBeenCalled()
+  })
+
+  it('loadActiveOrders surfaces a swiper-assigned order in panel state', async () => {
+    setupOrdersJoinReturn([
+      {
+        id: ORDER_ID,
+        status: 'in_progress',
+        restaurant_name: 'Sweetgreen',
+        // Server returned this row because the .or() matched swiper_id.eq.X.
+        // The shape is identical to an orderer-matched row.
+        conversations: [{ id: CONV_ID }],
+      },
+    ])
+
+    const captured: { value: ReturnType<typeof useChatPanel> | null } = { value: null }
+    render(
+      <ChatPanelProvider userId={USER_ID}>
+        <StateProbe onState={(s) => { captured.value = s }} />
+      </ChatPanelProvider>
+    )
+
+    await waitFor(() => {
+      expect(captured.value?.orders[ORDER_ID]?.eateryName).toBe('Sweetgreen')
+    })
+    expect(captured.value?.orders[ORDER_ID]?.conversationId).toBe(CONV_ID)
+  })
+
+  it('still uses .eq(anon_user_id) for anonymous users (no .or)', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: USER_ID, is_anonymous: true } } })
+    const { orderChain } = setupOrdersJoinReturn([])
+    render(<ChatPanelProvider userId={USER_ID}><div /></ChatPanelProvider>)
+
+    await waitFor(() => {
+      expect(orderChain.eq).toHaveBeenCalledWith('anon_user_id', USER_ID)
+    })
+    expect(orderChain.or).not.toHaveBeenCalled()
   })
 })

@@ -51,6 +51,7 @@ const MOCK_CONVERSATION: Conversation = {
   orderer_id: 'user-orderer',
   swiper_id: 'user-swiper',
   swiper_full_name: null,
+  swiper_assigned_at: null,
   created_at: '2026-03-23T10:00:00Z',
 }
 
@@ -541,6 +542,56 @@ describe('useMessages (S07 registry + subscribe-before-fetch + temp_id)', () => 
       const ids = result.current.messages.map((m) => m.id)
       expect(ids).toContain('msg-late')
       expect(ids).toContain('msg-b1')
+    })
+  })
+
+  // --- Lazy conversation_id upgrade (Phase 1) ---
+  //
+  // When the order is `open` at chat mount, no `conversations` row exists yet,
+  // so Effect 1 returns early and Effect 2 (gated on resolvedConvId) never
+  // subscribes. When the swiper accepts (status: open → in_progress) the
+  // orderer's chat-view triggers refetch(); refetch must lazily upgrade
+  // resolvedConvId so Effect 2 attaches the realtime subscription.
+  it('lazily attaches realtime subscription when conversation arrives via refetch', async () => {
+    // Override the default conversation lookup: simulate "no conversation yet"
+    // (status='open' before swiper accepts). Effect 1 will set isLoading=false
+    // and return; Effect 2 won't subscribe.
+    mockFromConversations.mockReturnValue({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: () => Promise.resolve({ data: null, error: null }),
+        }),
+      }),
+    })
+
+    const { result } = renderHook(() => useMessages({ orderId: ORDER_ID }))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    // Pre-condition: no subscription yet because resolvedConvId is null.
+    expect(mockSupabase.channel).not.toHaveBeenCalled()
+
+    // Now the swiper has accepted: /api/messages/{orderId} returns a conversation.
+    // (mockFetch is already set in beforeEach to return INITIAL_DATA on every
+    // call, so both refetch's fetch AND Effect 3's re-fetch resolve correctly.)
+    await act(async () => {
+      await result.current.refetch()
+    })
+
+    // Effect 2 must now have run and subscribed via the registry.
+    await waitFor(() => {
+      expect(mockSupabase.channel).toHaveBeenCalledWith(`messages:${CONV_ID}`)
+    })
+
+    // Capture the realtime callback and dispatch an INSERT — it must reach state
+    // via the realtime path, proving the subscription is wired.
+    const realtimeCallback = mockChannel.on.mock.calls[0][2] as (p: { new: Message }) => void
+    const liveMsg = makeMessage({ id: 'msg-live', body: 'first message after accept' })
+    act(() => {
+      realtimeCallback({ new: liveMsg })
+    })
+
+    await waitFor(() => {
+      expect(result.current.messages.some((m) => m.id === 'msg-live')).toBe(true)
     })
   })
 

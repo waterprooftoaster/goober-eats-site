@@ -1,12 +1,22 @@
 /**
+ * ⚠️  TESTING / CI ONLY — DO NOT RUN IN PRODUCTION  ⚠️
+ *
+ * This seed script creates Stripe Connect accounts using test-mode magic values
+ * (address_full_match, ssn_last_4 '0000', id_number '000000000', btok_us_verified,
+ * dob year 1901). These ONLY work against a sandbox STRIPE_SECRET_KEY (sk_test_...).
+ * Running this against a live key is blocked by an explicit guard, but the intent
+ * is local dev + CI/CD only — never production, never staging-with-live-keys.
+ */
+
+/**
  * @file seed.ts
- * @description Seeds the Supabase database for the GrubHub-cart-screenshot
- *   model: schools (NYU + The New School), demo profiles for orderer/swiper
- *   roles in each school, Stripe Connect onboarding rows for both swipers,
- *   and one open NYU "Chipotle" demo order with two placeholder PNG
- *   screenshots in the cart-screenshots bucket. Idempotent — safe to re-run.
+ * @description Test-only seed for Supabase + Stripe sandbox. Seeds schools (NYU + The
+ *   New School), demo profiles for orderer/swiper roles in each school, real Stripe
+ *   Connect Express accounts for both swipers (created against sk_test_), and one
+ *   open NYU "Chipotle" demo order with two placeholder PNG screenshots. Idempotent —
+ *   safe to re-run. Set SEED_SKIP_STRIPE=1 to skip Stripe API calls entirely (offline).
  *   Called by: npx tsx scripts/seed.ts
- * @dependencies @supabase/supabase-js
+ * @dependencies @supabase/supabase-js, scripts/lib/stripe-seed
  */
 
 import { readFileSync } from 'fs'
@@ -14,6 +24,10 @@ import { resolve } from 'path'
 import { randomBytes, randomUUID } from 'crypto'
 import { createClient } from '@supabase/supabase-js'
 import { computeSplit } from '../lib/pricing'
+import {
+  assertStripeTestMode,
+  getOrCreateSeededStripeAccount,
+} from './lib/stripe-seed'
 
 // ---------------------------------------------------------------------------
 // Bootstrap env
@@ -101,11 +115,20 @@ async function main(): Promise<void> {
     return
   }
 
+  const skipStripe = process.env.SEED_SKIP_STRIPE === '1'
+  if (skipStripe) {
+    console.warn(
+      'SEED_SKIP_STRIPE=1 — using fake stripe_account_id strings (offline mode; transfers will fail).'
+    )
+  } else {
+    assertStripeTestMode()
+  }
+
   console.log('Seeding demo users + profiles…')
   const userIds = await seedUsers(schoolIds)
 
   console.log('Seeding stripe_accounts for swipers…')
-  await seedStripeAccounts(userIds)
+  await seedStripeAccounts(userIds, skipStripe)
 
   console.log('Seeding demo open NYU order…')
   await seedDemoOrder(schoolIds.nyu, userIds['nyuuser@test.edu'])
@@ -175,11 +198,9 @@ async function seedUsers(schoolIds: SchoolIds): Promise<Record<string, string>> 
 
 /**
  * Returns the existing auth.users id for the email, creating the user if absent.
- * Tries the admin endpoint first (preferred — bypasses email-domain validation
- * that hosted Supabase enforces, and creates pre-confirmed users). Falls back
- * to the public /auth/v1/signup endpoint for local GoTrue containers that
- * reject the configured service key at admin endpoints (HS256 sb_secret_ vs
- * ES256-only local GoTrue).
+ * Uses supabase.auth.admin.createUser with email_confirm:true so the demo
+ * accounts are usable immediately under the project's enable_confirmations=true
+ * config. On "already registered" we look the user up via admin.listUsers.
  * @param email - Login email for the demo user
  * @param fullName - Display name
  * @returns Auth user UUID
@@ -193,76 +214,49 @@ async function getOrCreateAuthUser(email: string, fullName: string): Promise<str
     .maybeSingle()
   if (existingProfile?.id) return existingProfile.id
 
-  // Preferred: admin createUser. Works on hosted Supabase (which rejects
-  // public signups for emails like @test.edu) and on local with HS256
-  // service_role JWTs.
-  const adminRes = await fetch(`${supabaseUrl}/auth/v1/admin/users`, {
-    method: 'POST',
-    headers: {
-      apikey: supabaseServiceKey,
-      Authorization: `Bearer ${supabaseServiceKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      email,
-      password: DEMO_PASSWORD,
-      email_confirm: true,
-      user_metadata: { full_name: fullName },
-    }),
+  const { data: created, error: createError } = await supabase.auth.admin.createUser({
+    email,
+    password: DEMO_PASSWORD,
+    email_confirm: true,
+    user_metadata: { full_name: fullName },
   })
-  if (adminRes.ok) {
-    const json = (await adminRes.json()) as { id?: string }
-    if (json.id) return json.id
+  if (created?.user?.id) {
+    return created.user.id
   }
 
-  // Fallback path for local GoTrue containers configured to reject sb_secret_
-  // HS256 keys at admin endpoints — they still accept them as apikey on the
-  // public signup endpoint.
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-  if (!anonKey) throw new Error('Missing NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY')
-
-  const signupRes = await fetch(`${supabaseUrl}/auth/v1/signup`, {
-    method: 'POST',
-    headers: { apikey: anonKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      email,
-      password: DEMO_PASSWORD,
-      data: { full_name: fullName },
-    }),
-  })
-  if (signupRes.ok) {
-    const json = (await signupRes.json()) as { user?: { id: string } }
-    if (json.user?.id) return json.user.id
-  }
-
-  const signinRes = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
-    method: 'POST',
-    headers: { apikey: anonKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password: DEMO_PASSWORD }),
-  })
-  if (!signinRes.ok) {
-    const adminBody = await adminRes.text().catch(() => '')
-    const signinBody = await signinRes.text()
+  // createUser failed — most commonly because the user already exists in
+  // auth.users without a profiles row (a partial prior run). Look them up.
+  const { data: listed, error: listError } = await supabase.auth.admin.listUsers()
+  if (listError) {
     throw new Error(
-      `auth user create failed for ${email}: admin=${adminBody}; signin=${signinBody}`
+      `getOrCreateAuthUser: createUser failed (${createError?.message}) and listUsers failed (${listError.message}) for ${email}`,
     )
   }
-  const signinJson = (await signinRes.json()) as { user?: { id: string } }
-  if (!signinJson.user?.id) {
-    throw new Error(`signin returned no user for ${email}`)
+  const found = listed?.users?.find((u) => u.email === email)
+  if (!found) {
+    throw new Error(`getOrCreateAuthUser: no user for ${email} after createUser failure: ${createError?.message}`)
   }
-  return signinJson.user.id
+  return found.id
 }
 
 /**
- * Upserts stripe_accounts rows (onboarding_complete=true) for the swipers.
+ * Upserts stripe_accounts rows (onboarding_complete=true) for the swipers. When
+ * `skipStripe` is false, creates (or reuses) a real Stripe Connect Express account
+ * via `getOrCreateSeededStripeAccount`; otherwise writes a synthetic ID for offline
+ * runs (transfers will fail — useful only when Stripe is unreachable).
  * @param userIds - Map of email → user UUID
+ * @param skipStripe - When true, skip Stripe API calls and use synthetic IDs
  */
-async function seedStripeAccounts(userIds: Record<string, string>): Promise<void> {
+async function seedStripeAccounts(
+  userIds: Record<string, string>,
+  skipStripe: boolean
+): Promise<void> {
   for (const spec of DEMO_USERS) {
     if (!spec.isSwiper) continue
     const userId = userIds[spec.email]
-    const stripeAccountId = `acct_test_${spec.schoolSlug}_${userId.slice(0, 8)}`
+    const stripeAccountId = skipStripe
+      ? `acct_test_${spec.schoolSlug}_${userId.slice(0, 8)}`
+      : await getOrCreateSeededStripeAccount(userId, spec.email)
     const { error } = await supabase
       .from('stripe_accounts')
       .upsert(

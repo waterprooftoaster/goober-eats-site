@@ -30,6 +30,14 @@ vi.mock('@/lib/storage/sign-screenshots', () => ({
   signCartScreenshotPaths: mockSignCartScreenshotPaths,
 }))
 
+vi.mock('@/lib/email/send', () => ({
+  sendOrderPlacedEmail: vi.fn(() => Promise.resolve()),
+  sendNewOrderToSwipers: vi.fn(() => Promise.resolve()),
+  sendOrderAcceptedEmails: vi.fn(() => Promise.resolve()),
+  sendOrderCompletedEmails: vi.fn(() => Promise.resolve()),
+  sendOrderCancelledEmail: vi.fn(() => Promise.resolve()),
+}))
+
 import { PATCH } from '@/app/api/orders/[id]/accept/route'
 
 function dbResult(result: { data?: unknown; error?: unknown } = { data: null, error: null }) {
@@ -86,6 +94,12 @@ function setupEligibleSwiper(schoolId: string) {
 /** Absorbs the lib/api/helpers.ts:getAuthenticatedUser suspension SELECT. */
 function primeSuspensionMock(): void {
   mockServerFrom.mockReturnValueOnce(dbResult({ data: null }))
+}
+
+/** Absorbs the service-client suspension re-check that runs right before the
+ *  atomic claim (closes the webhook-vs-accept race window). */
+function primeServiceSuspensionMock(suspended: boolean = false): void {
+  mockServiceFrom.mockReturnValueOnce(dbResult({ data: { suspended } }))
 }
 
 beforeEach(() => {
@@ -200,6 +214,7 @@ describe('PATCH /api/orders/[id]/accept', () => {
     }
     const updateChain = dbResult({ data: updatedOrder })
     const convChain = dbResult({ data: null, error: null })
+    primeServiceSuspensionMock(false)
     mockServiceFrom.mockReturnValueOnce(updateChain).mockReturnValueOnce(convChain)
 
     const res = await callPatch()
@@ -225,9 +240,20 @@ describe('PATCH /api/orders/[id]/accept', () => {
       data: null,
       error: { message: 'no rows updated', code: 'PGRST116' },
     })
+    primeServiceSuspensionMock(false)
     mockServiceFrom.mockReturnValueOnce(updateChain)
 
     const res = await callPatch()
     expect(res.status).toBe(409)
+  })
+
+  it('returns 403 when the swiper was suspended between auth and claim', async () => {
+    setupEligibleSwiper(NYU_SCHOOL_ID)
+    primeServiceSuspensionMock(true)
+
+    const res = await callPatch()
+    expect(res.status).toBe(403)
+    const body = await res.json()
+    expect(body.error).toMatch(/suspended/i)
   })
 })

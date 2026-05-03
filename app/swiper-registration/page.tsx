@@ -28,7 +28,7 @@ export default async function SwiperRegistrationPage() {
   const [profileResult, schoolsResult] = await Promise.all([
     supabase
       .from('profiles')
-      .select('school_id, is_swiper')
+      .select('school_id, is_swiper, full_name')
       .eq('id', user.id)
       .maybeSingle(),
     supabase.from('schools').select('id, name').order('name'),
@@ -55,6 +55,7 @@ export default async function SwiperRegistrationPage() {
       <SwiperRegistrationForm
         schoolId={profile.school_id ?? null}
         schoolName={currentSchool?.name ?? null}
+        fullName={profile.full_name ?? null}
         schools={schools}
       />
     </main>

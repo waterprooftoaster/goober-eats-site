@@ -118,9 +118,9 @@ describe('POST /api/messages/[orderId]/upload', () => {
     expect(res.status).toBe(400)
   })
 
-  it('returns 400 when file type is not JPEG or WebP', async () => {
+  it('returns 400 when file type is not an allowed image format', async () => {
     mockGetAuthenticatedUser.mockResolvedValue(MOCK_USER)
-    const res = await POST(makeRequest(VALID_ORDER_ID, makeFile('image/png', 100)), makeParams(VALID_ORDER_ID))
+    const res = await POST(makeRequest(VALID_ORDER_ID, makeFile('application/pdf', 100)), makeParams(VALID_ORDER_ID))
     expect(res.status).toBe(400)
   })
 

@@ -117,7 +117,7 @@ export function CompletionBanner({ orderId, onStatusChange }: Props) {
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/jpeg,image/webp"
+        accept="image/png,image/jpeg,image/webp,image/heic,image/heif"
         className="hidden"
         onChange={handleFileChange}
         disabled={isBusy}

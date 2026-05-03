@@ -7,7 +7,7 @@
 import { test, expect } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 
-const TEST_EMAIL = 'test@goobereats.edu'
+const TEST_EMAIL = 'orderer@goobereats.edu'
 const MOBILE_VIEWPORT = { width: 375, height: 812 }
 
 test.describe('Mobile navigation', () => {

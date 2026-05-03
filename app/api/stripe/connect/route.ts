@@ -8,7 +8,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createExpressAccount, createOnboardingLink } from '@/lib/stripe/connect'
-import { apiError, apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
+import { apiError, apiSuccess, getAuthenticatedSwiper } from '@/lib/api/helpers'
 
 /**
  * Creates or retrieves the caller's Stripe Express account and returns a fresh onboarding URL.
@@ -17,7 +17,7 @@ import { apiError, apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
  */
 export async function POST() {
   const supabase = await createClient()
-  const user = await getAuthenticatedUser(supabase)
+  const user = await getAuthenticatedSwiper(supabase)
   if (!user) return apiError('Unauthorized', 401)
   if (!user.email) return apiError('Account must have an email address', 400)
 

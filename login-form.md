@@ -1,0 +1,19 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - link "goober Eats" [ref=e3] [cursor=pointer]:
+      - /url: /
+      - generic [ref=e4]: goober Eats
+    - generic [ref=e5]:
+      - link "Log in" [ref=e6] [cursor=pointer]:
+        - /url: /auth/login
+      - link "Sign up" [ref=e7] [cursor=pointer]:
+        - /url: /auth/login
+  - main [ref=e8]:
+    - main [ref=e9]:
+      - generic [ref=e10]:
+        - heading "Enter your email" [level=1] [ref=e11]
+        - textbox "you@school.edu" [ref=e13]
+        - button "Continue" [ref=e14]
+  - button "Open Next.js Dev Tools" [ref=e20] [cursor=pointer]:
+    - img [ref=e21]
+  - alert [ref=e24]

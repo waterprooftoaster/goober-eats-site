@@ -11,8 +11,9 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
-import { apiError, apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
+import { apiError, apiSuccess, getAuthenticatedSwiper } from '@/lib/api/helpers'
 import { signCartScreenshotPaths } from '@/lib/storage/sign-screenshots'
+import { sendOrderAcceptedEmails } from '@/lib/email/send'
 
 /**
  * Atomically claims an open order for the calling swiper after eligibility validation.
@@ -26,7 +27,7 @@ export async function PATCH(
 ) {
   const { id } = await params
   const supabase = await createClient()
-  const user = await getAuthenticatedUser(supabase)
+  const user = await getAuthenticatedSwiper(supabase)
   if (!user) return apiError('Unauthorized', 401)
 
   const { data: order } = await supabase
@@ -79,6 +80,20 @@ export async function PATCH(
   // transition). All authorization checks above use the user client to ensure
   // the swiper is eligible.
   const service = createServiceClient()
+
+  // Tight-window race close: the account.updated webhook can flip suspended=true
+  // between getAuthenticatedSwiper (top of handler) and the claim below. Re-read
+  // suspension via the service client right before the claim so a swiper Stripe
+  // just terminated cannot grab a fresh order on the way out.
+  const { data: liveSuspension } = await service
+    .from('stripe_accounts')
+    .select('suspended')
+    .eq('user_id', user.id)
+    .maybeSingle()
+  if ((liveSuspension as { suspended?: boolean } | null)?.suspended === true) {
+    return apiError('Your account has been suspended', 403)
+  }
+
   const { data: updated, error } = await service
     .from('orders')
     .update({ swiper_id: user.id, status: 'in_progress' as const })
@@ -113,6 +128,8 @@ export async function PATCH(
       .update({ swiper_id: user.id, swiper_assigned_at: nowIso })
       .eq('order_id', updated.id)
   }
+
+  void sendOrderAcceptedEmails({ updated, swiperId: user.id })
 
   const cart_screenshot_urls = await signCartScreenshotPaths(
     (updated.cart_screenshot_urls as string[] | null) ?? []

@@ -39,6 +39,31 @@ export interface Order {
   anon_user_id: string | null
   created_at: string
   updated_at: string
+  completed_at: string | null
+}
+
+export type ComplaintVerdict = 'pending' | 'approve_refund' | 'deny' | 'escalate'
+
+export type ComplaintCategory =
+  | 'wrong_items'
+  | 'missing_items'
+  | 'never_delivered'
+  | 'damaged'
+  | 'other'
+
+export interface Complaint {
+  id: string
+  order_id: string
+  complainant_id: string
+  category: ComplaintCategory
+  reason_text: string
+  verdict: ComplaintVerdict
+  ai_reasoning: unknown | null
+  ai_confidence: number | null
+  refund_amount_cents: number | null
+  stripe_refund_id: string | null
+  created_at: string
+  resolved_at: string | null
 }
 
 export interface Payment {

@@ -126,7 +126,7 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
       className={cn(
         "pointer-events-auto flex items-start justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 text-sm text-card-foreground shadow-md",
         "animate-in fade-in-0 slide-in-from-bottom-2 motion-reduce:animate-none motion-reduce:slide-in-from-bottom-0",
-        toast.variant === "success" && "border-[--color-accent]/40",
+        toast.variant === "success" && "border-[--color-lime]/40",
         toast.variant === "error" && "border-destructive/40 text-destructive"
       )}
     >

@@ -34,7 +34,7 @@ export async function PATCH(request: NextRequest) {
     return apiError(parsed.error.issues[0].message, 400)
   }
 
-  const { school_id, is_swiper } = parsed.data
+  const { school_id, is_swiper, full_name } = parsed.data
 
   if (is_swiper === false) {
     // Prevent deactivation while orders are in progress
@@ -95,6 +95,7 @@ export async function PATCH(request: NextRequest) {
   const updates: Record<string, unknown> = {}
   if (school_id !== undefined) updates.school_id = school_id
   if (is_swiper !== undefined) updates.is_swiper = is_swiper
+  if (full_name !== undefined) updates.full_name = full_name
 
   // is_swiper column has REVOKE UPDATE FROM authenticated — must use service role
   // for any update that touches it. For non-is_swiper updates, authenticated client

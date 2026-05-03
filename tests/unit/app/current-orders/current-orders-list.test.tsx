@@ -38,7 +38,7 @@ import { CurrentOrdersList } from '@/app/current-orders/current-orders-list'
 const USER_ID = 'user-123'
 
 function buildRow(id: string, status: OrderStatus, restaurantName = 'Chipotle') {
-  return { id, status, restaurantName, cartScreenshotUrl: null }
+  return { id, status, restaurantName, cartScreenshotUrl: null, conversationId: null }
 }
 
 describe('<CurrentOrdersList />', () => {
@@ -100,7 +100,7 @@ describe('<CurrentOrdersList />', () => {
   it('falls back to "Order" when restaurant_name is empty', () => {
     render(
       <CurrentOrdersList
-        orders={[{ id: 'id-1', status: 'open', restaurantName: '', cartScreenshotUrl: null }]}
+        orders={[{ id: 'id-1', status: 'open', restaurantName: '', cartScreenshotUrl: null, conversationId: null }]}
         currentUserId={USER_ID}
       />
     )

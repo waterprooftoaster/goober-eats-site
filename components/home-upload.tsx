@@ -9,18 +9,21 @@
  *   /checkout.
  *   Called by: app/page.tsx (authenticated branch)
  * @dependencies lib/supabase/client.ts, lib/image/normalize.ts,
- *   components/ui/{button,surface}
+ *   components/ui/{stateful-button,surface}
  */
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ImagePlus, Lightbulb } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import Link from 'next/link'
+import { HelpCircle, ImagePlus, Lightbulb } from 'lucide-react'
+import { StatefulButton } from '@/components/ui/stateful-button'
 import { Surface } from '@/components/ui/surface'
 import { DesktopUploadDock } from '@/components/desktop-upload-dock'
 import { createClient } from '@/lib/supabase/client'
-import { PENDING_SCHOOL_ID_KEY, PENDING_SCREENSHOTS_KEY } from '@/lib/constants'
+import { PENDING_PRICE_CENTS_KEY, PENDING_SCHOOL_ID_KEY, PENDING_SCREENSHOTS_KEY } from '@/lib/constants'
 import { normalizeImage } from '@/lib/image/normalize'
+import { setPendingSubtotalCents } from '@/lib/ai/pending-subtotal-cache'
+import { setPendingEateryName } from '@/lib/ai/pending-eatery-cache'
 
 type Stage = 'idle' | 'selected' | 'uploading' | 'error'
 
@@ -118,7 +121,24 @@ export default function HomeUpload({ isSwiper = false, pendingOrderCount = 0 }: 
             })
             if (!putRes.ok) throw new Error('Upload failed. Please try again.')
 
+            const detailsPromise = fetchCartDetails([signed.path])
+            setPendingSubtotalCents(detailsPromise.then((r) => r.cents))
+            setPendingEateryName(detailsPromise.then((r) => r.eatery))
             sessionStorage.setItem(PENDING_SCREENSHOTS_KEY, JSON.stringify([signed.path]))
+
+            // Best-effort price extraction via Gemini; failure is non-blocking.
+            const analyzeRes = await fetch('/api/cart-screenshots/analyze', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: signed.path }),
+            })
+            if (analyzeRes.ok) {
+                const { cents } = await analyzeRes.json() as { cents: number | null }
+                if (typeof cents === 'number' && cents > 0) {
+                    sessionStorage.setItem(PENDING_PRICE_CENTS_KEY, String(cents))
+                }
+            }
+
             router.push('/checkout')
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
@@ -132,18 +152,26 @@ export default function HomeUpload({ isSwiper = false, pendingOrderCount = 0 }: 
     return (
         <main
             data-testid="home-page"
-            className="mx-auto flex max-w-2xl flex-col gap-10 py-12 sm:py-16"
+            className="mx-auto flex max-w-2xl flex-col gap-6 py-12 sm:py-16"
         >
             <header className="max-w-md">
-                <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
-                    Order anywhere on campus, 60% off.
+                <h1 className="font-display text-5xl md:text-6xl font-bold leading-[1.02] tracking-tight">
+                    Same dining hall, just soo <span className="whitespace-nowrap">much cheaper</span>.
                 </h1>
                 <p className="mt-3 text-base text-muted-foreground">
-                    Screenshot a GrubHub cart, at any eatery that takes swipes or dining dollars. We'll pair you with a student with a meal plan.
+                    Upload a screenshot of a GrubHub cart for a dining hall. We&apos;ll pair you with a student with a meal plan to order for you.
                 </p>
             </header>
 
             <div className="flex flex-col gap-4">
+                <Link
+                    href="/welcome"
+                    className="group flex w-fit items-center gap-1.5 text-sm text-muted-foreground transition-colors duration-150 hover:text-foreground"
+                >
+                    <HelpCircle className="h-3.5 w-3.5" aria-hidden />
+                    How it works
+                </Link>
+
                 {preview ? (
                     <div
                         role="button"
@@ -163,16 +191,25 @@ export default function HomeUpload({ isSwiper = false, pendingOrderCount = 0 }: 
                         <img
                             src={preview}
                             alt="Cart screenshot preview"
-                            className="block w-full max-w-md aspect-[9/16] rounded-lg border border-border bg-muted/40 object-contain"
+                            className="home-dropzone-area block w-full max-w-md aspect-[9/16] rounded-lg border border-border bg-muted/40 object-contain"
                         />
                     </div>
                 ) : (
                     <Surface
+                        role="button"
+                        tabIndex={0}
                         tone="subtle"
                         padding="none"
                         data-testid="home-dropzone"
+                        aria-label="Upload your cart screenshot"
                         onClick={() => !isUploading && inputRef.current?.click()}
-                        className="relative aspect-square w-full max-w-md cursor-pointer overflow-hidden rounded-2xl border-2 border-dashed border-border transition-colors hover:border-foreground/30 motion-reduce:transition-none"
+                        onKeyDown={(e) => {
+                            if (!isUploading && (e.key === 'Enter' || e.key === ' ')) {
+                                e.preventDefault()
+                                inputRef.current?.click()
+                            }
+                        }}
+                        className="relative aspect-square w-full max-w-md cursor-pointer overflow-hidden rounded-2xl border-2 border-dashed border-border transition-colors hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 motion-reduce:transition-none"
                     >
                         <div className="flex h-full flex-col items-start justify-end gap-2 p-6 text-muted-foreground">
                             <ImagePlus className="h-8 w-8" aria-hidden />
@@ -183,7 +220,7 @@ export default function HomeUpload({ isSwiper = false, pendingOrderCount = 0 }: 
 
                 <div
                     data-testid="home-upload-tips"
-                    className="max-w-md rounded-xl border border-border/60 bg-muted/20 p-4 text-sm"
+                    className="max-w-md rounded-xl border border-border bg-muted/20 p-4 text-sm"
                 >
                     <p className="flex items-center gap-2 font-medium text-foreground">
                         <Lightbulb className="h-4 w-4" aria-hidden />
@@ -207,17 +244,15 @@ export default function HomeUpload({ isSwiper = false, pendingOrderCount = 0 }: 
                 />
 
                 {showButton && (
-                    <Button
+                    <StatefulButton
                         type="button"
-                        variant="primary"
-                        size="lg"
                         onClick={handlePlaceOrder}
-                        disabled={isUploading}
+                        showFinishState={false}
                         className="w-full max-w-md"
                         data-testid="home-place-order-button"
                     >
-                        {isUploading ? 'Uploading…' : 'Place order'}
-                    </Button>
+                        Place order
+                    </StatefulButton>
                 )}
 
                 {error && (
@@ -248,4 +283,32 @@ function extractExtension(filename: string): AllowedExtension | null {
     if (idx < 0 || idx === filename.length - 1) return null
     const ext = filename.slice(idx + 1).toLowerCase()
     return (ALLOWED_EXTENSIONS as readonly string[]).includes(ext) ? (ext as AllowedExtension) : null
+}
+
+/**
+ * Fires a non-blocking POST to /api/orders/extract-price for the just-uploaded
+ * cart screenshots. The Promise is split into two caches — subtotal and eatery
+ * — so the /checkout mount effect can await each with an 8s timeout.
+ * Errors resolve to null fields; the inputs stay empty rather than surfacing
+ * UI noise.
+ * @param paths - Validated cart-screenshot paths
+ * @returns Resolves to `{ cents, eatery }` — either field may be null
+ * @called-by HomeUpload (handlePlaceOrder)
+ */
+async function fetchCartDetails(paths: string[]): Promise<{ cents: number | null, eatery: string | null }> {
+    const NULL_RESULT = { cents: null, eatery: null }
+    try {
+        const res = await fetch('/api/orders/extract-price', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ paths }),
+        })
+        if (!res.ok) return NULL_RESULT
+        const json = (await res.json()) as { cents?: unknown, eatery?: unknown }
+        const cents = typeof json.cents === 'number' && Number.isInteger(json.cents) ? json.cents : null
+        const eatery = typeof json.eatery === 'string' ? json.eatery : null
+        return { cents, eatery }
+    } catch {
+        return NULL_RESULT
+    }
 }

@@ -232,7 +232,7 @@ function SwiperStatus({ profile, stripeConnected, schools }: SwiperStatusProps) 
             </div>
             <Button
               type="button"
-              variant="subtle"
+              variant="secondary"
               size="default"
               onClick={handleSaveSchool}
               disabled={saving || !selectedSchool}

@@ -9,12 +9,13 @@
  *   <ModalContent>. The catalog testids `account-page` (root) and
  *   `account-modal` (modal content) both ride along.
  *   Called by: app/account/page.tsx
- * @dependencies components/ui/modal, app/account/account-actions, app/account/swiper-section
+ * @dependencies components/ui/modal, app/account/account-actions, app/account/swiper-section, app/account/name-section
  */
 
 import { useRouter } from 'next/navigation'
 import { AccountActions } from '@/app/account/account-actions'
 import { SwiperSection } from '@/app/account/swiper-section'
+import { NameSection } from '@/app/account/name-section'
 import { Modal, ModalContent, ModalTitle, ModalDescription } from '@/components/ui/modal'
 
 interface School {
@@ -24,21 +25,23 @@ interface School {
 
 interface AccountPanelProps {
   email: string
+  fullName: string | null
   profile: { is_swiper: boolean; school_id: string | null }
   stripeAccount: { onboarding_complete: boolean } | null
   schools: School[]
 }
 
 /**
- * Renders the /account modal: email, account actions, swiper section.
+ * Renders the /account modal: email, name, account actions, swiper section.
  * @param email - The authenticated user's email
+ * @param fullName - The user's current display name, or null if unset
  * @param profile - Profile flags driving the swiper-section branch
  * @param stripeAccount - Stripe Connect onboarding state, or null
  * @param schools - Schools available for the swiper school selector
  * @returns Modal-wrapped account panel; closes via router.back()
  * @called-by app/account/page.tsx
  */
-export function AccountPanel({ email, profile, stripeAccount, schools }: AccountPanelProps) {
+export function AccountPanel({ email, fullName, profile, stripeAccount, schools }: AccountPanelProps) {
   const router = useRouter()
 
   return (
@@ -63,6 +66,7 @@ export function AccountPanel({ email, profile, stripeAccount, schools }: Account
           >
             {email}
           </p>
+          <NameSection initialName={fullName} />
           <AccountActions />
           <SwiperSection
             profile={profile}

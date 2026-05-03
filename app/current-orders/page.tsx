@@ -22,6 +22,13 @@ interface CurrentOrderRow {
     status: OrderStatus
     restaurant_name: string | null
     cart_screenshot_urls: string[] | null
+    // PostgREST returns embedded resources either as an array or a single
+    // object depending on the relationship cardinality; orders↔conversations
+    // is 1:1 but Supabase has historically been inconsistent. Handle both.
+    conversations:
+        | { id: string }[]
+        | { id: string }
+        | null
 }
 
 /**
@@ -44,7 +51,7 @@ export default async function CurrentOrdersPage() {
 
     const baseQuery = supabase
         .from('orders')
-        .select('id, status, restaurant_name, cart_screenshot_urls')
+        .select('id, status, restaurant_name, cart_screenshot_urls, conversations(id)')
         .in('status', ['open', 'in_progress'])
         .order('created_at', { ascending: false })
 
@@ -61,11 +68,15 @@ export default async function CurrentOrdersPage() {
             const cartScreenshotUrl = firstPath
                 ? (await signCartScreenshotPaths([firstPath]))[0] ?? null
                 : null
+            const conversationId = Array.isArray(o.conversations)
+                ? o.conversations[0]?.id ?? null
+                : o.conversations?.id ?? null
             return {
                 id: o.id,
                 status: o.status,
                 restaurantName: o.restaurant_name ?? '',
                 cartScreenshotUrl,
+                conversationId,
             }
         })
     )
@@ -80,7 +91,7 @@ export default async function CurrentOrdersPage() {
                     Current orders.
                 </h1>
                 <p className="mt-2 text-sm text-muted-foreground">
-                    Your active orders, chat with the other side here. Refresh every so often, I just made this app and it isn&apos;t very responsive yet. <br /> It&apos;ll improve soon!
+                    Your active orders, chat with the other side here.
                 </p>
             </header>
             <CurrentOrdersList orders={rows} currentUserId={user.id} />

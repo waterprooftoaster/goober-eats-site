@@ -87,11 +87,22 @@ describe('createCheckoutSchema', () => {
     expect(r.success).toBe(false)
   })
 
-  it('accepts large subtotal_cents — no upper bound', () => {
-    const r = createCheckoutSchema.safeParse({ ...baseValid, subtotal_cents: 50_001 })
-    expect(r.success).toBe(true)
-    const r2 = createCheckoutSchema.safeParse({ ...baseValid, subtotal_cents: 10_000_000 })
-    expect(r2.success).toBe(true)
+  it('accepts subtotal_cents up to CART_TOTAL_MAX_CENTS (100_000 = $1000)', () => {
+    expect(
+      createCheckoutSchema.safeParse({ ...baseValid, subtotal_cents: 100_000 }).success
+    ).toBe(true)
+    expect(
+      createCheckoutSchema.safeParse({ ...baseValid, subtotal_cents: 50_001 }).success
+    ).toBe(true)
+  })
+
+  it('rejects subtotal_cents above CART_TOTAL_MAX_CENTS — guards outsized auth holds', () => {
+    expect(
+      createCheckoutSchema.safeParse({ ...baseValid, subtotal_cents: 100_001 }).success
+    ).toBe(false)
+    expect(
+      createCheckoutSchema.safeParse({ ...baseValid, subtotal_cents: 10_000_000 }).success
+    ).toBe(false)
   })
 
   it('rejects non-integer subtotal_cents', () => {

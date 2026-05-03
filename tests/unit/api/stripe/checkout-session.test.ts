@@ -193,12 +193,19 @@ describe('POST /api/stripe/checkout-session', () => {
       const [[arg]] = mockStripeSessionsCreate.mock.calls
       expect(arg.payment_intent_data?.metadata).toEqual(arg.metadata)
     })
+
+    it('passes capture_method: manual on payment_intent_data (auth hold, captured at completion)', async () => {
+      mockAuthUser()
+      await POST(buildRequest(baseBody))
+      const [[arg]] = mockStripeSessionsCreate.mock.calls
+      expect(arg.payment_intent_data?.capture_method).toBe('manual')
+    })
   })
 
   describe('guest flow', () => {
     it('uses DEFAULT_SCHOOL_ID when school_id omitted from body', async () => {
       mockGuest()
-      const res = await POST(buildRequest({ ...baseBody, guest_name: 'Alex' }))
+      const res = await POST(buildRequest({ ...baseBody, guest_name: 'Alex', guest_email: 'alex@example.com' }))
       expect(res.status).toBe(200)
       const [[arg]] = mockStripeSessionsCreate.mock.calls
       expect(arg.metadata.school_id).toBe(NYU_SCHOOL_ID)
@@ -207,27 +214,36 @@ describe('POST /api/stripe/checkout-session', () => {
     it('returns 500 when school_id absent from body and DEFAULT_SCHOOL_ID not configured', async () => {
       mockGuest()
       delete process.env.DEFAULT_SCHOOL_ID
-      const res = await POST(buildRequest({ ...baseBody, guest_name: 'Alex' }))
+      const res = await POST(buildRequest({ ...baseBody, guest_name: 'Alex', guest_email: 'alex@example.com' }))
       expect(res.status).toBe(500)
     })
 
     it('requires guest_name', async () => {
       mockGuest()
       const res = await POST(
-        buildRequest({ ...baseBody, school_id: NYU_SCHOOL_ID })
+        buildRequest({ ...baseBody, school_id: NYU_SCHOOL_ID, guest_email: 'alex@example.com' })
       )
       expect(res.status).toBe(400)
     })
 
-    it('sets is_guest/guest_name metadata and no orderer_id', async () => {
+    it('requires guest_email', async () => {
       mockGuest()
       const res = await POST(
         buildRequest({ ...baseBody, school_id: NYU_SCHOOL_ID, guest_name: 'Alex Smith' })
+      )
+      expect(res.status).toBe(400)
+    })
+
+    it('sets is_guest/guest_name/guest_email metadata and no orderer_id', async () => {
+      mockGuest()
+      const res = await POST(
+        buildRequest({ ...baseBody, school_id: NYU_SCHOOL_ID, guest_name: 'Alex Smith', guest_email: 'alex@example.com' })
       )
       expect(res.status).toBe(200)
       const [[arg]] = mockStripeSessionsCreate.mock.calls
       expect(arg.metadata.is_guest).toBe('true')
       expect(arg.metadata.guest_name).toBe('Alex Smith')
+      expect(arg.metadata.guest_email).toBe('alex@example.com')
       expect(arg.metadata.orderer_id).toBeUndefined()
     })
 
@@ -235,7 +251,7 @@ describe('POST /api/stripe/checkout-session', () => {
       mockGetUser.mockResolvedValue({ data: { user: null }, error: null })
       mockServiceFrom.mockImplementation(() => dbResult({ data: null }))
       const res = await POST(
-        buildRequest({ ...baseBody, school_id: NYU_SCHOOL_ID, guest_name: 'Alex' })
+        buildRequest({ ...baseBody, school_id: NYU_SCHOOL_ID, guest_name: 'Alex', guest_email: 'alex@example.com' })
       )
       expect(res.status).toBe(400)
     })
