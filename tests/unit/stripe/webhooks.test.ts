@@ -29,6 +29,13 @@ vi.mock('@/lib/stripe/client', () => ({ getStripe: vi.fn(() => stripe) }))
 vi.mock('@/lib/supabase/service', () => ({
   createServiceClient: vi.fn(() => ({ from: mockServiceFrom })),
 }))
+vi.mock('@/lib/email/send', () => ({
+  sendOrderPlacedEmail: vi.fn(() => Promise.resolve()),
+  sendNewOrderToSwipers: vi.fn(() => Promise.resolve()),
+  sendOrderAcceptedEmails: vi.fn(() => Promise.resolve()),
+  sendOrderCompletedEmails: vi.fn(() => Promise.resolve()),
+  sendOrderCancelledEmail: vi.fn(() => Promise.resolve()),
+}))
 
 import { POST } from '@/app/api/stripe/webhooks/route'
 

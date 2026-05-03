@@ -44,8 +44,8 @@ export async function resetPassword(
   }
 
   // Invalidate the recovery session so it cannot be reused for further
-  // updateUser() calls. The form does a hard reload to /auth/login after
-  // success; signing out aligns server-side state with that intent.
+  // updateUser() calls. The form does a hard reload to / after success;
+  // signing out aligns server-side state with that intent.
   await supabase.auth.signOut()
 
   return { success: true }

@@ -18,14 +18,14 @@ describe('CART_PRICE_PROMPT_ZH', () => {
   })
 
   it('mentions multi-image consistency: same restaurant + same total', () => {
-    expect(CART_PRICE_PROMPT_ZH).toContain('多张')
-    expect(CART_PRICE_PROMPT_ZH).toContain('餐厅名称')
-    expect(CART_PRICE_PROMPT_ZH).toContain('订单总额')
+    expect(CART_PRICE_PROMPT_ZH).toContain('多图')
+    expect(CART_PRICE_PROMPT_ZH).toContain('不同店')
+    expect(CART_PRICE_PROMPT_ZH).toContain('不同总额')
   })
 
   it('rejects non-cart screenshots by returning null', () => {
-    expect(CART_PRICE_PROMPT_ZH).toContain('外卖App购物车')
-    expect(CART_PRICE_PROMPT_ZH).toContain('"cents": null')
+    expect(CART_PRICE_PROMPT_ZH).toContain('外卖购物车截图')
+    expect(CART_PRICE_PROMPT_ZH).toContain('"cents":null')
   })
 
   it('instructs total over subtotal extraction', () => {
@@ -39,6 +39,6 @@ describe('CART_PRICE_PROMPT_ZH', () => {
   })
 
   it('demands JSON-only output (no markdown / English / explanations)', () => {
-    expect(CART_PRICE_PROMPT_ZH).toContain('只输出 JSON')
+    expect(CART_PRICE_PROMPT_ZH).toContain('只输JSON')
   })
 })

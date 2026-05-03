@@ -15,9 +15,9 @@ import { LoginForm } from './login-form'
  * @called-by Next.js routing (/auth/login)
  */
 export default async function LoginPage(props: {
-  searchParams: Promise<{ onboarding?: string; next?: string }>
+  searchParams: Promise<{ onboarding?: string }>
 }) {
-  const { onboarding, next } = await props.searchParams
+  const { onboarding } = await props.searchParams
 
   const supabase = await createClient()
 
@@ -51,15 +51,11 @@ export default async function LoginPage(props: {
     }
   }
 
-  // Only accept relative paths for `next` to prevent open redirects.
-  const safeNext = next && next.startsWith('/') ? next : undefined
-
   return (
     <LoginForm
       schools={schools ?? []}
       initialOnboarding={initialOnboarding}
       userEmail={userEmail}
-      next={safeNext}
     />
   )
 }

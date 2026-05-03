@@ -18,6 +18,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { getStripe } from '@/lib/stripe/client'
 import { Button } from '@/components/ui/button'
 import { Surface } from '@/components/ui/surface'
+import { HardRedirect } from './hard-redirect'
 
 /**
  * Resolves Stripe Connect onboarding status and either activates the swiper
@@ -85,7 +86,7 @@ export default async function StripeOnboardCompletePage() {
     }
 
     if (profile?.school_id) {
-      redirect('/swiper/welcome')
+      return <HardRedirect to="/swiper/welcome" />
     }
   }
 

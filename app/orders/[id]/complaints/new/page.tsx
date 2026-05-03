@@ -3,11 +3,14 @@
  * @description Server component for the order complaint form. Gates access
  *   end-to-end: redirects unauthenticated users to /auth/login, returns an
  *   ineligible-state surface when the order is not the caller's, not
- *   completed, outside the 24h window, or already has a complaint. Hands
- *   `orderId`, `restaurantName`, `totalCents` to the client form on success.
+ *   completed, or outside the 24h window. When a complaint already exists,
+ *   renders the verdict-aware ComplaintResult so the user sees the actual
+ *   outcome instead of a generic "already filed" message — this also makes
+ *   the page idempotent under router.refresh() after submission.
  *   Called by: Next.js routing (/orders/[id]/complaints/new)
  * @dependencies lib/supabase/server.ts, lib/api/helpers.ts,
- *   lib/orders/complaint-eligibility.ts, components/orders/complaint-form
+ *   lib/orders/complaint-eligibility.ts, components/orders/complaint-form,
+ *   components/orders/complaint-result
  */
 
 import Link from 'next/link'
@@ -19,6 +22,11 @@ import { isWithinComplaintWindow } from '@/lib/orders/complaint-eligibility'
 import { Surface } from '@/components/ui/surface'
 import { Button } from '@/components/ui/button'
 import { ComplaintForm } from '@/components/orders/complaint-form'
+import {
+  ComplaintResult,
+  type ComplaintResultData,
+} from '@/components/orders/complaint-result'
+import type { ComplaintVerdict } from '@/lib/types/database'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -39,7 +47,9 @@ export default async function NewComplaintPage({ params }: PageProps) {
 
   const { data: order } = await supabase
     .from('orders')
-    .select('id, orderer_id, status, completed_at, restaurant_name, total_cents, complaints(id, verdict)')
+    .select(
+      'id, orderer_id, status, completed_at, restaurant_name, total_cents, complaints(id, verdict, refund_amount_cents)'
+    )
     .eq('id', orderId)
     .maybeSingle()
 
@@ -71,11 +81,17 @@ export default async function NewComplaintPage({ params }: PageProps) {
 
   const existing = pickComplaint(order.complaints)
   if (existing) {
+    // Render the verdict-aware result surface (the same one the form shows
+    // post-submit) so the page is idempotent: router.refresh() after a
+    // successful submission, a reload, or a back-navigation all show the
+    // actual complaint outcome instead of a generic "already filed" message.
     return (
-      <Ineligible
-        heading="Complaint already filed"
-        body="A complaint has already been filed for this order. We'll follow up when it's resolved."
-      />
+      <main
+        data-testid="new-complaint-page"
+        className="mx-auto flex max-w-xl flex-col gap-6 py-8 sm:py-12"
+      >
+        <ComplaintResult orderId={orderId} result={existing} />
+      </main>
     )
   }
 
@@ -129,11 +145,19 @@ function Ineligible({ heading, body }: IneligibleProps) {
 
 interface ComplaintRel {
   id: string
-  verdict: string
+  verdict: ComplaintVerdict
+  refund_amount_cents: number | null
 }
 
-function pickComplaint(raw: ComplaintRel[] | ComplaintRel | null | undefined): ComplaintRel | null {
+function pickComplaint(
+  raw: ComplaintRel[] | ComplaintRel | null | undefined
+): ComplaintResultData | null {
   if (raw == null) return null
-  if (Array.isArray(raw)) return raw[0] ?? null
-  return raw
+  const picked = Array.isArray(raw) ? raw[0] ?? null : raw
+  if (!picked) return null
+  return {
+    id: picked.id,
+    verdict: picked.verdict,
+    refund_amount_cents: picked.refund_amount_cents,
+  }
 }

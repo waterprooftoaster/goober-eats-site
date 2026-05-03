@@ -47,6 +47,7 @@ export default function ScrollStepperSection() {
     const [geom, setGeom] = useState<Geometry | null>(null)
 
     // Computed during render so exit animations capture the correct direction
+    // eslint-disable-next-line react-hooks/refs
     const direction = currentStep >= prevStepRef.current ? 1 : -1
 
     useEffect(() => {

@@ -51,6 +51,7 @@ const MOCK_CONVERSATION: Conversation = {
   orderer_id: 'user-orderer',
   swiper_id: 'user-swiper',
   swiper_full_name: null,
+  swiper_assigned_at: null,
   created_at: '2026-03-23T10:00:00Z',
 }
 

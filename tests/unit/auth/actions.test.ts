@@ -17,15 +17,20 @@ vi.mock('@/lib/auth/claim-guest-orders', () => ({
   clearGuestOrderCookies: vi.fn().mockResolvedValue(undefined),
 }))
 
-const { mockCreateClient } = vi.hoisted(() => ({
+const { mockCreateClient, mockCreateServiceClient } = vi.hoisted(() => ({
   mockCreateClient: vi.fn(),
+  mockCreateServiceClient: vi.fn(),
 }))
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: mockCreateClient,
 }))
 
-import { authenticate, verifySignupOtp } from '@/app/auth/actions'
+vi.mock('@/lib/supabase/service', () => ({
+  createServiceClient: mockCreateServiceClient,
+}))
+
+import { authenticate, signUpStart, verifySignupOtp } from '@/app/auth/actions'
 
 const USER_ID = '00000000-0000-4000-8000-000000000001'
 const EMAIL = 'student@example.edu'
@@ -233,6 +238,67 @@ describe('verifySignupOtp', () => {
       null,
       otpForm(EMAIL, '123456', { full_name: FULL_NAME, school_id: SCHOOL_ID }),
     )
+    expect(result).toEqual({ error: expect.any(String) })
+  })
+})
+
+describe('signUpStart — wipes stale unconfirmed user before signing up', () => {
+  const FULL_NAME = 'Jane Student'
+  const SCHOOL_ID = '11111111-1111-4111-8111-111111111111'
+
+  function signUpForm(): FormData {
+    const fd = new FormData()
+    fd.set('email', EMAIL)
+    fd.set('password', PASSWORD)
+    fd.set('confirm_password', PASSWORD)
+    fd.set('full_name', FULL_NAME)
+    fd.set('school_id', SCHOOL_ID)
+    return fd
+  }
+
+  function makeSignupClients(opts: {
+    wipeError?: { message: string } | null
+    signUpResult?: unknown
+  }) {
+    const signUp = vi.fn().mockResolvedValue(
+      opts.signUpResult ?? {
+        data: { session: null, user: { id: USER_ID, email: EMAIL } },
+        error: null,
+      },
+    )
+    const userClient = { auth: { signUp } }
+    const wipeRpc = vi.fn().mockResolvedValue({ error: opts.wipeError ?? null })
+    const serviceClient = { rpc: wipeRpc }
+    return { userClient, serviceClient, signUp, wipeRpc }
+  }
+
+  it('calls delete_unconfirmed_user with the submitted email before signUp', async () => {
+    const { userClient, serviceClient, signUp, wipeRpc } = makeSignupClients({})
+    mockCreateClient.mockResolvedValue(userClient)
+    mockCreateServiceClient.mockReturnValue(serviceClient)
+
+    const result = await signUpStart(null, signUpForm())
+
+    expect(wipeRpc).toHaveBeenCalledWith('delete_unconfirmed_user', { target_email: EMAIL })
+    expect(signUp).toHaveBeenCalledWith({ email: EMAIL, password: PASSWORD })
+    // The wipe RPC must run before signUp so a stale row doesn't shadow the
+    // new password — assert ordering via mock.invocationCallOrder.
+    expect(wipeRpc.mock.invocationCallOrder[0]).toBeLessThan(
+      signUp.mock.invocationCallOrder[0],
+    )
+    expect(result).toEqual({ otpSent: true, email: EMAIL })
+  })
+
+  it('aborts with a generic error and never calls signUp when the wipe RPC fails', async () => {
+    const { userClient, serviceClient, signUp } = makeSignupClients({
+      wipeError: { message: 'boom' },
+    })
+    mockCreateClient.mockResolvedValue(userClient)
+    mockCreateServiceClient.mockReturnValue(serviceClient)
+
+    const result = await signUpStart(null, signUpForm())
+
+    expect(signUp).not.toHaveBeenCalled()
     expect(result).toEqual({ error: expect.any(String) })
   })
 })

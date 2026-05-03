@@ -131,7 +131,7 @@ describe('ChatPanelProvider (S07 — registry + conversations JOIN + visibility)
       expect(selectChain.in).toHaveBeenCalledWith('status', expect.any(Array))
     })
 
-    const passedStatuses = selectChain.in.mock.calls[0][1] as string[]
+    const passedStatuses = (selectChain.in.mock.calls[0] as unknown as [string, string[]])[1]
     expect(passedStatuses).not.toContain('completed')
     expect(passedStatuses).toEqual(['open', 'in_progress'])
   })

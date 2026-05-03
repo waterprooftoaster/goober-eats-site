@@ -53,11 +53,11 @@ export default function SwiperWelcomePage() {
                     </Step>
 
                     <Step number="02" heading="Order exactly what's in their cart.">
-                        Read the user's GrubHub cart and place the order. Let the user know what name to pick up under.
+                        Read the user&apos;s GrubHub cart and place the order. Let the user know what name to pick up under.
                     </Step>
 
                     <Step number="03" heading="Send the GrubHub receipt.">
-                        After you place the order, screenshot the GrubHub receipt and upload it under "Complete Order". That closes the
+                        After you place the order, screenshot the GrubHub receipt and upload it under &quot;Complete Order&quot;. That closes the
                         order,and triggers your payout.
                         {/* Rotation:  change -rotate-1 (try rotate-1, -rotate-2, rotate-0)       */}
                         {/* Size:      change max-w-[260px] — wider = bigger phone               */}

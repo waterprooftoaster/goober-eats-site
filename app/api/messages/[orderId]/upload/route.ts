@@ -1,7 +1,7 @@
 /**
  * @file route.ts
  * @description POST endpoint for swipers to upload a completion photo
- *   (JPEG/WebP, max 1MB). Saves to the Supabase Storage `completion-photos`
+ *   (JPEG/PNG/WebP/HEIC/HEIF, max 1MB). Saves to the Supabase Storage `completion-photos`
  *   bucket and inserts a `completion_photo` message into the order conversation.
  *   Called by: chat completion-photo send button
  * @dependencies lib/supabase/server.ts, lib/api/helpers.ts
@@ -14,7 +14,7 @@ import { apiError, apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
 import { signCompletionPhotoPath } from '@/lib/storage/sign-screenshots'
 
 const uuidSchema = z.string().uuid()
-const ALLOWED_TYPES = ['image/jpeg', 'image/webp'] as const
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'] as const
 const MAX_SIZE_BYTES = 1024 * 1024
 
 /**
@@ -44,7 +44,7 @@ export async function POST(
   }
 
   if (!(ALLOWED_TYPES as readonly string[]).includes(file.type)) {
-    return apiError('Only JPEG and WebP images are allowed', 400)
+    return apiError('Only JPEG, PNG, WebP, HEIC, and HEIF images are allowed', 400)
   }
 
   if (file.size > MAX_SIZE_BYTES) {
@@ -65,7 +65,14 @@ export async function POST(
     return apiError('Only the swiper can upload completion photos', 403)
   }
 
-  const ext = file.type === 'image/jpeg' ? 'jpg' : 'webp'
+  const EXT_MAP: Record<string, string> = {
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+    'image/heic': 'heic',
+    'image/heif': 'heif',
+  }
+  const ext = EXT_MAP[file.type] ?? 'jpg'
   const uuid = crypto.randomUUID()
   const path = `${orderId}/${uuid}.${ext}`
 

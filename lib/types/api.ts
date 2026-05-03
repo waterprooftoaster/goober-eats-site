@@ -73,6 +73,7 @@ export const createCheckoutSchema = z.object({
   subtotal_cents: z.number().int().min(50).max(CART_TOTAL_MAX_CENTS),
   school_id: z.string().uuid().optional(),
   guest_name: z.string().trim().min(1).max(100).optional(),
+  guest_email: z.string().email().max(254).optional(),
 })
 
 export type CreateCheckoutInput = z.infer<typeof createCheckoutSchema>
@@ -111,10 +112,12 @@ export const updateProfileSchema = z
   .object({
     school_id: z.string().uuid().optional(),
     is_swiper: z.boolean().optional(),
+    full_name: z.string().min(1).max(100).optional(),
   })
-  .refine((d) => d.school_id !== undefined || d.is_swiper !== undefined, {
-    message: 'At least one field must be provided',
-  })
+  .refine(
+    (d) => d.school_id !== undefined || d.is_swiper !== undefined || d.full_name !== undefined,
+    { message: 'At least one field must be provided' },
+  )
 
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>
 

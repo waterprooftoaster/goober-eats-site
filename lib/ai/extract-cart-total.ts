@@ -1,8 +1,9 @@
 /**
  * @file extract-cart-total.ts
  * @description Calls Gemini with one or more cart-screenshot byte arrays and
- *   returns the extracted total in integer cents — or null on any failure
- *   (model error, schema violation, sub-floor amount, sanity-ceiling breach).
+ *   returns the extracted total in integer cents plus the matched eatery name
+ *   — or null fields on any failure (model error, schema violation,
+ *   sub-floor amount, sanity-ceiling breach).
  *   The function NEVER throws; the caller treats null as "leave the input
  *   empty" with no UI noise.
  *   Called by: app/api/orders/extract-price/route.ts
@@ -17,25 +18,35 @@ import { getGeminiModel } from '@/lib/ai/gemini-client'
 import { CART_PRICE_PROMPT_ZH } from '@/lib/ai/prompts/cart-price-zh'
 import { CART_TOTAL_MIN_CENTS, CART_TOTAL_MAX_CENTS } from '@/lib/constants'
 
-const cartTotalSchema = z.object({
+const cartDetailsSchema = z.object({
   cents: z.number().int().positive().nullable(),
+  eatery: z.string().nullable(),
 })
 
+export interface CartDetails {
+  cents: number | null
+  eatery: string | null
+}
+
+const NULL_RESULT: CartDetails = { cents: null, eatery: null }
+
 /**
- * Extracts the final cart total from one or more screenshot byte arrays.
+ * Extracts the final cart total and matched eatery name from one or more
+ * screenshot byte arrays.
  * @param imageBytes - Cart screenshot bytes (PNG/JPEG/WebP/HEIC). Order is
  *   preserved in the prompt; the model treats them as one batched order.
- * @returns Integer cents in [50, 100_000], or null on any failure
+ * @returns `{ cents, eatery }` — cents in [50, 100_000] or null; eatery from
+ *   the known-eatery list or null.
  * @called-by app/api/orders/extract-price/route.ts
  */
-export async function extractCartTotalCents(imageBytes: Uint8Array[]): Promise<number | null> {
-  if (imageBytes.length === 0) return null
+export async function extractCartDetails(imageBytes: Uint8Array[]): Promise<CartDetails> {
+  if (imageBytes.length === 0) return NULL_RESULT
 
   try {
     const { output } = await generateText({
       model: getGeminiModel(),
       system: CART_PRICE_PROMPT_ZH,
-      output: Output.object({ schema: cartTotalSchema }),
+      output: Output.object({ schema: cartDetailsSchema }),
       messages: [
         {
           role: 'user',
@@ -48,11 +59,12 @@ export async function extractCartTotalCents(imageBytes: Uint8Array[]): Promise<n
     })
 
     const cents = output?.cents ?? null
-    if (cents === null) return null
-    if (cents < CART_TOTAL_MIN_CENTS) return null
-    if (cents > CART_TOTAL_MAX_CENTS) return null
-    return cents
+    const eatery = output?.eatery ?? null
+    if (cents !== null && (cents < CART_TOTAL_MIN_CENTS || cents > CART_TOTAL_MAX_CENTS)) {
+      return { cents: null, eatery }
+    }
+    return { cents, eatery }
   } catch {
-    return null
+    return NULL_RESULT
   }
 }

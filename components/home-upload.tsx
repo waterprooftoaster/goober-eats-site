@@ -23,6 +23,7 @@ import { createClient } from '@/lib/supabase/client'
 import { PENDING_PRICE_CENTS_KEY, PENDING_SCHOOL_ID_KEY, PENDING_SCREENSHOTS_KEY } from '@/lib/constants'
 import { normalizeImage } from '@/lib/image/normalize'
 import { setPendingSubtotalCents } from '@/lib/ai/pending-subtotal-cache'
+import { setPendingEateryName } from '@/lib/ai/pending-eatery-cache'
 
 type Stage = 'idle' | 'selected' | 'uploading' | 'error'
 
@@ -120,7 +121,9 @@ export default function HomeUpload({ isSwiper = false, pendingOrderCount = 0 }: 
             })
             if (!putRes.ok) throw new Error('Upload failed. Please try again.')
 
-            setPendingSubtotalCents(fetchExtractedCents([signed.path]))
+            const detailsPromise = fetchCartDetails([signed.path])
+            setPendingSubtotalCents(detailsPromise.then((r) => r.cents))
+            setPendingEateryName(detailsPromise.then((r) => r.eatery))
             sessionStorage.setItem(PENDING_SCREENSHOTS_KEY, JSON.stringify([signed.path]))
 
             // Best-effort price extraction via Gemini; failure is non-blocking.
@@ -156,7 +159,7 @@ export default function HomeUpload({ isSwiper = false, pendingOrderCount = 0 }: 
                     Order anywhere on campus, 60% off.
                 </h1>
                 <p className="mt-3 text-base text-muted-foreground">
-                    Screenshot a GrubHub cart, at any eatery that takes swipes or dining dollars. We'll pair you with a student with a meal plan.
+                    Screenshot a GrubHub cart, at any eatery that takes swipes or dining dollars. We&apos;ll pair you with a student with a meal plan.
                 </p>
             </header>
 
@@ -284,25 +287,28 @@ function extractExtension(filename: string): AllowedExtension | null {
 
 /**
  * Fires a non-blocking POST to /api/orders/extract-price for the just-uploaded
- * cart screenshots. The Promise is stashed in pending-subtotal-cache so the
- * /checkout mount effect can await it (with an 8s timeout) and seed the
- * Cart Total input. Errors and non-numeric responses resolve to null —
- * the field stays empty rather than surfacing UI noise.
+ * cart screenshots. The Promise is split into two caches — subtotal and eatery
+ * — so the /checkout mount effect can await each with an 8s timeout.
+ * Errors resolve to null fields; the inputs stay empty rather than surfacing
+ * UI noise.
  * @param paths - Validated cart-screenshot paths
- * @returns Resolves to integer cents or null
+ * @returns Resolves to `{ cents, eatery }` — either field may be null
  * @called-by HomeUpload (handlePlaceOrder)
  */
-async function fetchExtractedCents(paths: string[]): Promise<number | null> {
+async function fetchCartDetails(paths: string[]): Promise<{ cents: number | null, eatery: string | null }> {
+    const NULL_RESULT = { cents: null, eatery: null }
     try {
         const res = await fetch('/api/orders/extract-price', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ paths }),
         })
-        if (!res.ok) return null
-        const json = (await res.json()) as { cents?: unknown }
-        return typeof json.cents === 'number' && Number.isInteger(json.cents) ? json.cents : null
+        if (!res.ok) return NULL_RESULT
+        const json = (await res.json()) as { cents?: unknown, eatery?: unknown }
+        const cents = typeof json.cents === 'number' && Number.isInteger(json.cents) ? json.cents : null
+        const eatery = typeof json.eatery === 'string' ? json.eatery : null
+        return { cents, eatery }
     } catch {
-        return null
+        return NULL_RESULT
     }
 }

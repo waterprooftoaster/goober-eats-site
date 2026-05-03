@@ -3,9 +3,8 @@
 /**
  * @file reset-form.tsx
  * @description Single-field password form that calls resetPassword.
- *   Hard-reloads to /auth/login on success so the freshly-set password is
- *   the credential used for sign-in (the recovery session is no longer
- *   needed).
+ *   Hard-reloads to / on success so the header re-fetches with the
+ *   signed-out state (the recovery session is consumed and no longer needed).
  *   Called by: app/auth/reset-password/page.tsx
  * @dependencies app/auth/reset-password/actions.ts, components/ui/{button,input}
  */
@@ -16,7 +15,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
 /**
- * Renders the new-password form; redirects to /auth/login on success.
+ * Renders the new-password form; redirects to / on success.
  * @returns Single-field password form
  * @called-by app/auth/reset-password/page.tsx
  */
@@ -25,7 +24,7 @@ export function ResetPasswordForm() {
 
   useEffect(() => {
     if (state && 'success' in state) {
-      window.location.assign('/auth/login')
+      window.location.assign('/')
     }
   }, [state])
 

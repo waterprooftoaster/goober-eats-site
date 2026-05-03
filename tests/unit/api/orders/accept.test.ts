@@ -30,6 +30,14 @@ vi.mock('@/lib/storage/sign-screenshots', () => ({
   signCartScreenshotPaths: mockSignCartScreenshotPaths,
 }))
 
+vi.mock('@/lib/email/send', () => ({
+  sendOrderPlacedEmail: vi.fn(() => Promise.resolve()),
+  sendNewOrderToSwipers: vi.fn(() => Promise.resolve()),
+  sendOrderAcceptedEmails: vi.fn(() => Promise.resolve()),
+  sendOrderCompletedEmails: vi.fn(() => Promise.resolve()),
+  sendOrderCancelledEmail: vi.fn(() => Promise.resolve()),
+}))
+
 import { PATCH } from '@/app/api/orders/[id]/accept/route'
 
 function dbResult(result: { data?: unknown; error?: unknown } = { data: null, error: null }) {

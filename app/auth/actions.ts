@@ -14,12 +14,13 @@
 import { cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { GUEST_COOKIE_PREFIX } from '@/lib/auth/resolve-principal'
 import { claimGuestOrders, clearGuestOrderCookies } from '@/lib/auth/claim-guest-orders'
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const EDU_EMAIL_REGEX = /\.edu$/i
-const FULL_NAME_REGEX = /^[A-Za-z\s\-']+$/
+
 
 type ActionState =
   | { error: string }
@@ -172,14 +173,30 @@ export async function signUpStart(
   if (confirmPassword !== password) {
     return { error: 'Passwords do not match.' }
   }
-  if (!fullName || fullName.length > 100 || !FULL_NAME_REGEX.test(fullName)) {
-    return { error: 'Full name may only contain letters, spaces, hyphens, and apostrophes.' }
+  if (!fullName || fullName.length > 100) {
+    return { error: 'Full name is required and must be 100 characters or fewer.' }
   }
   if (!schoolId) {
     return { error: 'Please select your school.' }
   }
 
   const supabase = await createClient()
+
+  // Wipe any unconfirmed auth.users row left behind by a prior aborted signup
+  // for this email so the retry starts from a clean slate. Without this,
+  // supabase.auth.signUp does not reliably overwrite the password on an
+  // existing-but-unconfirmed user, leaving the user unable to sign in even
+  // after they finish the OTP step. The DB function only deletes rows with
+  // email_confirmed_at IS NULL, so it can never affect a confirmed account.
+  const serviceClient = createServiceClient()
+  const { error: wipeError } = await serviceClient.rpc('delete_unconfirmed_user', {
+    target_email: email,
+  })
+  if (wipeError) {
+    console.error('signUpStart: delete_unconfirmed_user failed', wipeError)
+    return { error: 'Could not create account. Please try again.' }
+  }
+
   const { data, error } = await supabase.auth.signUp({ email, password })
   if (error) {
     console.error('signUpStart: supabase.auth.signUp failed', {
@@ -275,7 +292,7 @@ export async function verifySignupOtp(
   // Defensive resume path: if the client lost the collected onboarding
   // data, hand off to the existing inline name/school step.
   const fullNameValid =
-    fullName.length > 0 && fullName.length <= 100 && FULL_NAME_REGEX.test(fullName)
+    fullName.length > 0 && fullName.length <= 100
   if (!fullNameValid || !schoolId) {
     return { needsOnboarding: true, email: data.user?.email ?? email }
   }

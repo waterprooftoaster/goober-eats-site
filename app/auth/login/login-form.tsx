@@ -2,11 +2,14 @@
 
 /**
  * @file login-form.tsx
- * @description Multi-step login/sign-up form. Sign-up collects every field
- *   (email → password → name → school) BEFORE the OTP is sent, so users can
- *   freely back up and edit any prior step until they trigger the code.
- *   Sign-in stays a two-step flow (email → password). Errors render inline
- *   (role="alert"), never as toasts.
+ * @description Single-form, multi-step login/sign-up. The user walks through
+ *   five steps (email → password → name → school → otp) inside one <form>
+ *   element. All collected fields live as always-rendered hidden inputs so
+ *   any submit at any step carries the full payload — no per-step duplication.
+ *   The form's action is bound dynamically to the matching server action for
+ *   the current step (signin / signupStart / completeOnboarding / verifyOtp);
+ *   non-submitting steps (email, sign-up password, name) advance via React
+ *   state and have no action wired. Errors render inline (role="alert").
  *   Called by: app/auth/login/page.tsx
  * @dependencies app/auth/actions.ts, components/ui/{button,input,combobox}
  */
@@ -43,7 +46,6 @@ interface LoginFormProps {
   schools: School[]
   initialOnboarding?: boolean
   userEmail?: string
-  next?: string
 }
 
 type Step = 'email' | 'password' | 'name' | 'school' | 'otp'
@@ -56,7 +58,6 @@ type Step = 'email' | 'password' | 'name' | 'school' | 'otp'
  *   without a profile) and submit through completeOnboarding instead of
  *   signUpStart
  * @param userEmail - Pre-fill the email field (used during onboarding resume)
- * @param next - Optional relative path to redirect to after successful auth/onboarding
  * @returns Multi-step auth/onboarding form
  * @called-by app/auth/login/page.tsx
  */
@@ -64,7 +65,6 @@ export function LoginForm({
   schools,
   initialOnboarding,
   userEmail,
-  next,
 }: LoginFormProps) {
   const [step, setStep] = useState<Step>(initialOnboarding ? 'name' : 'email')
   const [email, setEmail] = useState(userEmail ?? '')
@@ -115,26 +115,31 @@ export function LoginForm({
   }, [signinState])
 
   useEffect(() => {
-    if (signupState && 'success' in signupState) window.location.assign('/')
+    if (signupState && 'success' in signupState) window.location.assign('/welcome')
   }, [signupState])
 
   useEffect(() => {
-    if (otpState && 'success' in otpState) window.location.assign('/')
+    if (otpState && 'success' in otpState) window.location.assign('/welcome')
   }, [otpState])
 
   useEffect(() => {
-    if (onboardingState && 'success' in onboardingState) window.location.assign('/')
+    if (onboardingState && 'success' in onboardingState) window.location.assign('/welcome')
   }, [onboardingState])
 
-  // When otpSent flips true, advance the step (so subsequent renders no
-  // longer depend on signupState being otpSent — back navigation works).
+  // When otpSent flips true, advance the step so the OTP back button can
+  // navigate to 'school' (effectiveStep stops overriding once step==='otp').
+  // Suppressing react-hooks/set-state-in-effect: this is a one-shot sync from
+  // a server-action result into local step state, not a derived render value.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (otpSent) setStep('otp')
   }, [otpSent])
 
-  // Defensive reset whenever onboarding starts.
+  // Defensive reset whenever onboarding starts. Suppressing the rule for the
+  // same reason: server-driven init, not a render derivation.
   useEffect(() => {
     if (initialOnboarding) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedSchool(null)
       setSchoolSearchQuery('')
     }
@@ -175,6 +180,11 @@ export function LoginForm({
     setStep('name')
   }
 
+  function handleNameContinue() {
+    if (!fullName.trim()) return
+    setStep('school')
+  }
+
   const signinError = signinState && 'error' in signinState ? signinState.error : null
   const signupError = signupState && 'error' in signupState ? signupState.error : null
   const otpError = otpState && 'error' in otpState ? otpState.error : null
@@ -186,12 +196,56 @@ export function LoginForm({
   const onSchoolSubmit = initialOnboarding || signinNeedsOnboarding || otpNeedsOnboarding
   const schoolPending = onSchoolSubmit ? onboardingPending : signupPending
 
+  // Bind the form's action to whichever server action matches the current
+  // step. Steps that just advance React state (email, sign-up password, name)
+  // intentionally have no action — onSubmit then preventDefaults so a stray
+  // Enter never reloads the page.
+  const stepAction =
+    effectiveStep === 'password' && emailExists
+      ? signinAction
+      : effectiveStep === 'school'
+        ? isResume
+          ? onboardingAction
+          : signupAction
+        : effectiveStep === 'otp'
+          ? otpAction
+          : undefined
+
   return (
     <main
       data-testid="auth-login-page"
       className="mx-auto flex min-h-screen max-w-sm flex-col px-6 pt-16 pb-12 sm:pt-24"
     >
-      <div className="flex flex-col gap-6">
+      <form
+        action={stepAction}
+        onSubmit={(event) => {
+          if (!stepAction) {
+            event.preventDefault()
+            return
+          }
+          // Block the school-step Enter-submit when nothing is selected; the
+          // button's disabled state doesn't cover keyboard-triggered submits.
+          if (effectiveStep === 'school' && !selectedSchool) {
+            event.preventDefault()
+          }
+        }}
+        className="flex flex-col gap-6"
+      >
+        {/* Single source of truth for every collected field. Always rendered
+            so any submit at any step carries the full payload. */}
+        <input type="hidden" name="email" value={email} />
+        <input type="hidden" name="full_name" value={fullName} />
+        <input type="hidden" name="school_id" value={selectedSchool?.value ?? ''} />
+        {/* Sign-up-only credentials. Suppressed on sign-in (emailExists) so the
+            visible name="password" input on the sign-in step is unambiguous,
+            and on the resume path which has no password to forward. */}
+        {!emailExists && !isResume && (
+          <>
+            <input type="hidden" name="password" value={password} />
+            <input type="hidden" name="confirm_password" value={confirmPassword} />
+          </>
+        )}
+
         {effectiveStep === 'email' && (
           <>
             <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
@@ -253,10 +307,7 @@ export function LoginForm({
             </h1>
 
             {emailExists ? (
-              <form action={signinAction} className="flex flex-col gap-4">
-                <input type="hidden" name="email" value={email} />
-                {next && <input type="hidden" name="next" value={next} />}
-
+              <div className="flex flex-col gap-4">
                 {signinError && (
                   <p
                     data-testid="auth-form-error"
@@ -296,7 +347,7 @@ export function LoginForm({
                 >
                   Forgot password?
                 </Link>
-              </form>
+              </div>
             ) : (
               // Sign-up: collect password locally, advance to name on Continue
               <div className="flex flex-col gap-4">
@@ -381,6 +432,12 @@ export function LoginForm({
               placeholder="Your full name"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  handleNameContinue()
+                }
+              }}
               maxLength={100}
               data-testid="auth-fullname-input"
               autoComplete="name"
@@ -391,7 +448,7 @@ export function LoginForm({
               type="button"
               variant="primary"
               size="lg"
-              onClick={() => setStep('school')}
+              onClick={handleNameContinue}
               disabled={!fullName.trim()}
               data-testid="auth-name-continue-button"
               className="h-11 w-full"
@@ -428,70 +485,49 @@ export function LoginForm({
               Where do you go to school?
             </h1>
 
-            {/*
-              Resume path (initialOnboarding / needsOnboarding): user has a session,
-              submit to completeOnboarding which reads the authenticated user from cookies.
-              Fresh sign-up path: no session yet, submit all collected data to signUpStart
-              which calls signUp with full_name + school_id stored in user_metadata.
-            */}
-            <form
-              action={isResume ? onboardingAction : signupAction}
-              className="flex flex-col gap-4"
-            >
-              <input type="hidden" name="full_name" value={fullName} />
-              {!isResume && (
-                <>
-                  <input type="hidden" name="email" value={email} />
-                  <input type="hidden" name="password" value={password} />
-                  <input type="hidden" name="confirm_password" value={confirmPassword} />
-                  {next && <input type="hidden" name="next" value={next} />}
-                </>
-              )}
-
-              <div data-testid="auth-school-input">
-                <Combobox
-                  value={selectedSchool}
-                  onValueChange={(value) =>
-                    setSelectedSchool(value as { value: string; label: string } | null)
-                  }
-                  onInputValueChange={(inputValue) => setSchoolSearchQuery(inputValue)}
-                  isItemEqualToValue={(a, b) => a.value === b.value}
-                  autoHighlight
-                >
-                  <ComboboxInput
-                    placeholder="Search schools…"
-                    className="h-11 text-base"
-                  />
-                  <ComboboxContent>
-                    <ComboboxList>
-                      {schools.map((school) => (
-                        <ComboboxItem
-                          key={school.id}
-                          value={{ value: school.id, label: school.name }}
-                          className="py-3 text-base"
-                        >
-                          {school.name}
-                        </ComboboxItem>
-                      ))}
-                      {schoolSearchQuery.trim().length > 0 && (
-                        <ComboboxEmpty>No schools found</ComboboxEmpty>
-                      )}
-                    </ComboboxList>
-                  </ComboboxContent>
-                </Combobox>
-              </div>
-
-              <Button
-                type="submit"
-                variant="primary"
-                size="lg"
-                disabled={schoolPending || !selectedSchool}
-                data-testid="auth-onboarding-complete-button"
-                className="h-11 w-full"
+            <div data-testid="auth-school-input">
+              <Combobox
+                value={selectedSchool}
+                onValueChange={(value) =>
+                  setSelectedSchool(value as { value: string; label: string } | null)
+                }
+                onInputValueChange={(inputValue) => setSchoolSearchQuery(inputValue)}
+                isItemEqualToValue={(a, b) => a.value === b.value}
+                autoHighlight
               >
-                {schoolPending ? '…' : 'Get Started'}
-              </Button>
-            </form>
+                <ComboboxInput
+                  placeholder="Search schools…"
+                  className="h-11 text-base"
+                />
+                <ComboboxContent>
+                  <ComboboxList>
+                    {schools.map((school) => (
+                      <ComboboxItem
+                        key={school.id}
+                        value={{ value: school.id, label: school.name }}
+                        className="py-3 text-base"
+                      >
+                        {school.name}
+                      </ComboboxItem>
+                    ))}
+                    {schoolSearchQuery.trim().length > 0 && (
+                      <ComboboxEmpty>No schools found</ComboboxEmpty>
+                    )}
+                  </ComboboxList>
+                </ComboboxContent>
+              </Combobox>
+            </div>
+
+            <Button
+              type="submit"
+              variant="primary"
+              size="lg"
+              disabled={schoolPending || !selectedSchool}
+              data-testid="auth-onboarding-complete-button"
+              className="h-11 w-full"
+            >
+              {schoolPending ? '…' : 'Get Started'}
+            </Button>
           </>
         )}
 
@@ -530,44 +566,38 @@ export function LoginForm({
               creating your account.
             </p>
 
-            <form action={otpAction} className="flex flex-col gap-4">
-              <input type="hidden" name="email" value={email} />
-              <input type="hidden" name="full_name" value={fullName} />
-              <input type="hidden" name="school_id" value={selectedSchool?.value ?? ''} />
+            <Input
+              name="token"
+              type="text"
+              inputMode="numeric"
+              pattern="\d{6}"
+              maxLength={6}
+              placeholder="123456"
+              required
+              autoFocus
+              autoComplete="one-time-code"
+              data-testid="auth-otp-input"
+              className="h-11 text-center text-lg tracking-[0.4em]"
+            />
 
-              <Input
-                name="token"
-                type="text"
-                inputMode="numeric"
-                pattern="\d{6}"
-                maxLength={6}
-                placeholder="123456"
-                required
-                autoFocus
-                autoComplete="one-time-code"
-                data-testid="auth-otp-input"
-                className="h-11 text-center text-lg tracking-[0.4em]"
-              />
+            <Button
+              type="submit"
+              variant="primary"
+              size="lg"
+              disabled={otpPending}
+              data-testid="auth-otp-verify-button"
+              className="h-11 w-full"
+            >
+              {otpPending ? '…' : 'Verify code'}
+            </Button>
 
-              <Button
-                type="submit"
-                variant="primary"
-                size="lg"
-                disabled={otpPending}
-                data-testid="auth-otp-verify-button"
-                className="h-11 w-full"
-              >
-                {otpPending ? '…' : 'Verify code'}
-              </Button>
-
-              <ResendCodeButton
-                onResend={() => resendSignupOtp(email)}
-                testId="auth-otp-resend-button"
-              />
-            </form>
+            <ResendCodeButton
+              onResend={() => resendSignupOtp(email)}
+              testId="auth-otp-resend-button"
+            />
           </>
         )}
-      </div>
+      </form>
     </main>
   )
 }

@@ -4,32 +4,31 @@
  * @file complaint-form.tsx
  * @description Client component for the order complaint form. Renders a
  *   category dropdown + reason textarea, posts to /api/orders/[id]/complaints,
- *   and shows a verdict-specific result state inline. Auto-refund verdicts
- *   surface as "Refund issued — $X.XX" without a follow-up step.
+ *   and shows a verdict-specific result state inline (delegated to
+ *   ComplaintResult so the same surface can render from page.tsx as well).
  *   Called by: app/orders/[id]/complaints/new/page.tsx
- * @dependencies components/ui/{button,textarea,surface}, lib/types/api,
- *   lib/types/database
+ * @dependencies components/ui/{button,textarea}, components/orders/complaint-result,
+ *   lib/types/api
  */
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 import { Button } from '@/components/ui/button'
+import { StatefulButton } from '@/components/ui/stateful-button'
 import { Textarea } from '@/components/ui/textarea'
-import { Surface } from '@/components/ui/surface'
+import {
+  ComplaintResult,
+  type ComplaintResultData,
+} from '@/components/orders/complaint-result'
 import type { ComplaintCategory, CreateComplaintInput } from '@/lib/types/api'
-import type { ComplaintVerdict } from '@/lib/types/database'
 
 interface Props {
   orderId: string
   restaurantName: string
 }
 
-interface ResolvedComplaint {
-  id: string
-  verdict: ComplaintVerdict
-  refund_amount_cents: number | null
-}
+type ResolvedComplaint = ComplaintResultData
 
 const CATEGORY_OPTIONS: ReadonlyArray<{ value: ComplaintCategory; label: string }> = [
   { value: 'wrong_items', label: 'Wrong items delivered' },
@@ -58,8 +57,7 @@ export function ComplaintForm({ orderId, restaurantName }: Props) {
     return <ComplaintResult orderId={orderId} result={result} />
   }
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
+  const performSubmit = async () => {
     if (!canSubmit || !category) return
     setSubmitting(true)
     setError(null)
@@ -84,6 +82,11 @@ export function ComplaintForm({ orderId, restaurantName }: Props) {
       setError('Could not reach the server. Check your connection and try again.')
       setSubmitting(false)
     }
+  }
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    await performSubmit()
   }
 
   return (
@@ -159,71 +162,16 @@ export function ComplaintForm({ orderId, restaurantName }: Props) {
         >
           Cancel
         </Button>
-        <Button
-          type="submit"
-          variant="primary"
-          size="default"
+        <StatefulButton
+          type="button"
           disabled={!canSubmit}
+          showFinishState={false}
           data-testid="complaint-submit"
+          onClick={performSubmit}
         >
-          {submitting ? 'Reviewing…' : 'Submit complaint'}
-        </Button>
+          Submit complaint
+        </StatefulButton>
       </div>
     </form>
   )
-}
-
-// --- Helpers ---
-
-function ComplaintResult({
-  orderId,
-  result,
-}: {
-  orderId: string
-  result: ResolvedComplaint
-}) {
-  return (
-    <Surface
-      tone="subtle"
-      padding="lg"
-      data-testid="complaint-result"
-      data-verdict={result.verdict}
-      className="flex flex-col gap-3"
-    >
-      <h2 className="text-2xl font-semibold tracking-tight">{titleFor(result)}</h2>
-      <p className="text-sm text-muted-foreground">{bodyFor(result)}</p>
-      <div className="flex flex-wrap gap-2 pt-2">
-        <Button asChild variant="primary" size="default">
-          <a href={`/orders`}>Back to your orders</a>
-        </Button>
-        <Button asChild variant="outline" size="default">
-          <a href={`/order/${orderId}`}>View this order</a>
-        </Button>
-      </div>
-    </Surface>
-  )
-}
-
-function titleFor(r: ResolvedComplaint): string {
-  switch (r.verdict) {
-    case 'approve_refund':
-      return 'Refund issued.'
-    case 'deny':
-      return 'We couldn’t verify the issue.'
-    case 'pending':
-    case 'escalate':
-    default:
-      return 'Thanks — we’re reviewing.'
-  }
-}
-
-function bodyFor(r: ResolvedComplaint): string {
-  if (r.verdict === 'approve_refund' && r.refund_amount_cents != null) {
-    const amount = `$${(r.refund_amount_cents / 100).toFixed(2)}`
-    return `${amount} is on its way back to your card. Refunds usually post within 5–10 business days.`
-  }
-  if (r.verdict === 'deny') {
-    return "We compared the cart screenshots and the swiper's completion photo and couldn’t find evidence of the issue. If you believe this is wrong, please reply to your order confirmation email."
-  }
-  return "A team member will review your complaint and follow up. Most complaints are resolved within 24 hours."
 }

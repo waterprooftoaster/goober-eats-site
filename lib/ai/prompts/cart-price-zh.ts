@@ -17,17 +17,11 @@
  *   Called by: lib/ai/extract-cart-total.ts
  */
 
-export const CART_PRICE_PROMPT_ZH = `你是一个美国校园外卖App订单总额提取助手。请按以下规则严格处理用户上传的所有图片：
-
-1. 仔细观察用户上传的所有图片。判断它们是否都是**外卖App购物车的截图**（GrubHub、Uber Eats、DoorDash、校园订餐App等）。如果任意一张不是外卖App购物车截图，返回 {"cents": null}。
-
-2. 如果有**多张**截图，必须满足以下两点才能继续：
-   - 所有截图的**餐厅名称一致**（同一家店）。
-   - 所有截图的**最终订单总额相同**（同一笔订单的多张截图）。
-   不满足任意一条 → 返回 {"cents": null}。
-
-3. 提取最终订单的**总额**（含税、服务费、配送费之后的最终用户支付金额；通常是页面最底部的 "Total"，不是 "Subtotal"）。
-
-4. 把美元金额转换为**整数美分**（例如 $12.34 → 1234）。
-
-5. 严格按 schema 输出 JSON。**不要添加解释、注释、markdown、英文。** 只输出 JSON。`
+export const CART_PRICE_PROMPT_ZH = `看图。不是外卖购物车截图 → {"cents":null,"eatery":null}
+多图：不同店或不同总额 → {"cents":null,"eatery":null}
+取Total（含税含费，非Subtotal）→ 整数美分（$12.34→1234）
+餐厅名匹配下表，用准确名称：
+NYU: Jasper Kane, Flavor Lab, Crave NYU, Starbucks, Upstein, Dunkin at U-Hall, True Burger at U-Hall, Peet's Coffee at Kimmel, Cafe 370, Cafe 181, Palladium
+TNS: University Center, Taqueria at UC, Café New, 301 Café
+无匹配 → eatery: null
+只输JSON。无解释。`

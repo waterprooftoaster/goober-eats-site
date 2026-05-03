@@ -16,13 +16,15 @@ import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { apiError, apiSuccess, getAuthenticatedUser } from '@/lib/api/helpers'
 import { extractPriceSchema } from '@/lib/types/api'
-import { extractCartTotalCents } from '@/lib/ai/extract-cart-total'
+import { extractCartDetails } from '@/lib/ai/extract-cart-total'
 
 const CART_SCREENSHOTS_BUCKET = 'cart-screenshots'
 
 /**
- * Downloads the screenshots, asks Gemini for the total, and returns it.
- * @returns JSON { cents: number | null }; 401 unauthenticated, 400 invalid body
+ * Downloads the screenshots, asks Gemini for the total and eatery name,
+ * and returns both.
+ * @returns JSON { cents: number | null, eatery: string | null };
+ *   401 unauthenticated, 400 invalid body
  * @called-by components/home-upload.tsx (handlePlaceOrder)
  */
 export async function POST(request: NextRequest) {
@@ -40,10 +42,10 @@ export async function POST(request: NextRequest) {
   }
 
   const bytes = await downloadAll(parsed.data.paths)
-  if (bytes === null) return apiSuccess({ cents: null })
+  if (bytes === null) return apiSuccess({ cents: null, eatery: null })
 
-  const cents = await extractCartTotalCents(bytes)
-  return apiSuccess({ cents })
+  const { cents, eatery } = await extractCartDetails(bytes)
+  return apiSuccess({ cents, eatery })
 }
 
 // --- Helpers ---

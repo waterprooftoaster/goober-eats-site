@@ -3,7 +3,7 @@
  * @description Unit tests for POST /api/orders/extract-price — the server
  *   endpoint that downloads cart screenshots from Storage with the service
  *   client (no orders row exists yet, so RLS can't scope reads) and asks
- *   Gemini for the total. Mirrors the mocking pattern in
+ *   Gemini for the total and eatery name. Mirrors the mocking pattern in
  *   tests/unit/api/cart-screenshots/sign.test.ts.
  *   Called by: vitest
  */
@@ -16,12 +16,12 @@ vi.mock('server-only', () => ({}))
 
 const {
   mockGetUser,
-  mockExtractCartTotalCents,
+  mockExtractCartDetails,
   mockServiceDownload,
   mockServiceFrom,
 } = vi.hoisted(() => ({
   mockGetUser: vi.fn(),
-  mockExtractCartTotalCents: vi.fn(),
+  mockExtractCartDetails: vi.fn(),
   mockServiceDownload: vi.fn(),
   mockServiceFrom: vi.fn(),
 }))
@@ -46,7 +46,7 @@ vi.mock('@/lib/supabase/service', () => ({
 }))
 
 vi.mock('@/lib/ai/extract-cart-total', () => ({
-  extractCartTotalCents: mockExtractCartTotalCents,
+  extractCartDetails: mockExtractCartDetails,
 }))
 
 import { POST } from '@/app/api/orders/extract-price/route'
@@ -75,7 +75,7 @@ beforeEach(() => {
     data: blobOf([0x89, 0x50, 0x4e, 0x47]),
     error: null,
   }))
-  mockExtractCartTotalCents.mockResolvedValue(1234)
+  mockExtractCartDetails.mockResolvedValue({ cents: 1234, eatery: 'Jasper Kane' })
 })
 
 describe('POST /api/orders/extract-price', () => {
@@ -106,19 +106,31 @@ describe('POST /api/orders/extract-price', () => {
     expect(res.status).toBe(400)
   })
 
-  it('returns 200 with cents when extraction succeeds', async () => {
+  it('returns 200 with cents and eatery when extraction succeeds', async () => {
     const res = await POST(makeReq({ paths: [VALID_PATH_A] }))
     expect(res.status).toBe(200)
     const body = await res.json()
-    expect(body).toEqual({ cents: 1234 })
+    expect(body).toEqual({ cents: 1234, eatery: 'Jasper Kane' })
   })
 
-  it('returns 200 with cents=null when the extractor returns null', async () => {
-    mockExtractCartTotalCents.mockResolvedValueOnce(null)
+  it('returns 200 with null fields when the extractor returns nulls', async () => {
+    mockExtractCartDetails.mockResolvedValueOnce({ cents: null, eatery: null })
     const res = await POST(makeReq({ paths: [VALID_PATH_A] }))
     expect(res.status).toBe(200)
     const body = await res.json()
-    expect(body).toEqual({ cents: null })
+    expect(body).toEqual({ cents: null, eatery: null })
+  })
+
+  it('returns 200 with null fields when storage download errors out', async () => {
+    mockServiceDownload.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'not found' },
+    })
+    const res = await POST(makeReq({ paths: [VALID_PATH_A] }))
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body).toEqual({ cents: null, eatery: null })
+    expect(mockExtractCartDetails).not.toHaveBeenCalled()
   })
 
   it('downloads from the cart-screenshots bucket via the service client', async () => {
@@ -135,22 +147,10 @@ describe('POST /api/orders/extract-price', () => {
       .mockResolvedValueOnce({ data: blobOf([4, 5, 6]), error: null })
 
     await POST(makeReq({ paths: [VALID_PATH_A, VALID_PATH_B] }))
-    expect(mockExtractCartTotalCents).toHaveBeenCalledTimes(1)
-    const bytes = mockExtractCartTotalCents.mock.calls[0][0] as Uint8Array[]
+    expect(mockExtractCartDetails).toHaveBeenCalledTimes(1)
+    const bytes = mockExtractCartDetails.mock.calls[0][0] as Uint8Array[]
     expect(bytes).toHaveLength(2)
     expect(Array.from(bytes[0])).toEqual([1, 2, 3])
     expect(Array.from(bytes[1])).toEqual([4, 5, 6])
-  })
-
-  it('returns 200 cents=null when storage download errors out', async () => {
-    mockServiceDownload.mockResolvedValueOnce({
-      data: null,
-      error: { message: 'not found' },
-    })
-    const res = await POST(makeReq({ paths: [VALID_PATH_A] }))
-    expect(res.status).toBe(200)
-    const body = await res.json()
-    expect(body).toEqual({ cents: null })
-    expect(mockExtractCartTotalCents).not.toHaveBeenCalled()
   })
 })

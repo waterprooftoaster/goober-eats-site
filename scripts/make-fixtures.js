@@ -6,6 +6,7 @@
  * @dependencies sharp
  */
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const sharp = require('sharp')
 
 async function makeSvg(name, w, h, label, color) {

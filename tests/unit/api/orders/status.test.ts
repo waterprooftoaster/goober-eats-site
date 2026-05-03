@@ -56,6 +56,14 @@ vi.mock('@/lib/api/guest-auth', () => ({
   validateGuestOrder: mockValidateGuestOrder,
 }))
 
+vi.mock('@/lib/email/send', () => ({
+  sendOrderPlacedEmail: vi.fn(() => Promise.resolve()),
+  sendNewOrderToSwipers: vi.fn(() => Promise.resolve()),
+  sendOrderAcceptedEmails: vi.fn(() => Promise.resolve()),
+  sendOrderCompletedEmails: vi.fn(() => Promise.resolve()),
+  sendOrderCancelledEmail: vi.fn(() => Promise.resolve()),
+}))
+
 import { PATCH } from '@/app/api/orders/[id]/status/route'
 
 function dbResult(result: { data?: unknown; error?: unknown; count?: number } = { data: null, error: null }) {

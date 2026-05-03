@@ -26,7 +26,7 @@ export default async function AccountPage() {
   const [profileResult, stripeResult, schoolsResult] = await Promise.all([
     supabase
       .from('profiles')
-      .select('is_swiper, school_id')
+      .select('is_swiper, school_id, full_name')
       .eq('id', user.id)
       .maybeSingle(),
     supabase
@@ -37,13 +37,14 @@ export default async function AccountPage() {
     supabase.from('schools').select('id, name').order('name'),
   ])
 
-  const profile = profileResult.data ?? { is_swiper: false, school_id: null }
+  const profile = profileResult.data ?? { is_swiper: false, school_id: null, full_name: null }
   const stripeAccount = stripeResult.data ?? null
   const schools = schoolsResult.data ?? []
 
   return (
     <AccountPanel
       email={user.email ?? ''}
+      fullName={profile.full_name ?? null}
       profile={profile}
       stripeAccount={stripeAccount}
       schools={schools}

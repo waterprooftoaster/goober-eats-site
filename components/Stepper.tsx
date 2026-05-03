@@ -23,6 +23,9 @@ export default function Stepper({
 }: StepperProps) {
   const totalSteps = 3;
   const prevStepRef = useRef<number>(currentStep);
+  // Reading prevStepRef during render is intentional — direction is purely
+  // visual (slide animation) and the ref is updated synchronously below.
+  // eslint-disable-next-line react-hooks/refs
   const direction = currentStep >= prevStepRef.current ? 1 : -1;
 
   useEffect(() => {

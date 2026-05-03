@@ -131,6 +131,7 @@ async function handlePaymentIntentAmountCapturable(
   // Cap guest_name to the same 100-char ceiling as the request schema to
   // defend against metadata tampering by a compromised platform key.
   const guestName = isGuest ? (meta.guest_name ?? '').slice(0, 100) || null : null
+  const guestEmail = isGuest ? (meta.guest_email ?? null) : null
   const ordererId = isGuest ? null : meta.orderer_id
 
   const validation = validatePaymentIntentMetadata(meta, isGuest, guestName, ordererId)
@@ -179,7 +180,7 @@ async function handlePaymentIntentAmountCapturable(
       subtotal_cents: split.subtotalCents,
       total_cents: split.ordererPaysCents,
       guest_name: guestName,
-      guest_email: null,
+      guest_email: guestEmail,
       guest_access_token: isGuest ? crypto.randomUUID() : null,
     })
     .select('id')
@@ -226,7 +227,7 @@ async function handlePaymentIntentAmountCapturable(
     ordererId,
     isGuest,
     guestName,
-    pi,
+    guestEmail,
     restaurantName,
     totalCents: split.ordererPaysCents,
     orderId,

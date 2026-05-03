@@ -15,7 +15,6 @@ import { orderAcceptedOrdText, orderAcceptedSwipText } from '@/lib/email/templat
 import { orderCompletedOrdText, orderCompletedSwipText } from '@/lib/email/templates/order-completed'
 import { orderNewSwipText } from '@/lib/email/templates/order-new'
 import { orderCancelledOrdText } from '@/lib/email/templates/order-cancelled'
-import type Stripe from 'stripe'
 
 export interface EmailParams {
   to: string
@@ -46,7 +45,7 @@ export function sendEmail(params: EmailParams): void {
  * @param ordererId - Auth orderer's user ID, or null for guest checkout
  * @param isGuest - True when the order came through guest checkout
  * @param guestName - Guest display name (null for auth flow)
- * @param pi - Stripe PaymentIntent; provides receipt_email for guest orders
+ * @param guestEmail - Guest's email address (null for auth flow)
  * @param restaurantName - Restaurant name from validated order metadata
  * @param totalCents - Total the orderer pays, in cents
  * @param orderId - The created order UUID
@@ -56,7 +55,7 @@ export async function sendOrderPlacedEmail({
   ordererId,
   isGuest,
   guestName,
-  pi,
+  guestEmail,
   restaurantName,
   totalCents,
   orderId,
@@ -64,7 +63,7 @@ export async function sendOrderPlacedEmail({
   ordererId: string | null | undefined
   isGuest: boolean
   guestName: string | null
-  pi: Pick<Stripe.PaymentIntent, 'receipt_email'>
+  guestEmail: string | null
   restaurantName: string
   totalCents: number
   orderId: string
@@ -81,7 +80,7 @@ export async function sendOrderPlacedEmail({
     email = data?.email ?? null
     name = data?.full_name ?? 'there'
   } else {
-    email = pi.receipt_email ?? null
+    email = guestEmail
     name = guestName ?? 'there'
   }
 

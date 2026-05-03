@@ -47,6 +47,7 @@ export async function POST(request: NextRequest) {
     subtotal_cents,
     school_id: bodySchoolId,
     guest_name,
+    guest_email,
   } = parsed.data
 
   const joinedPaths = cart_screenshot_paths.join(',')
@@ -74,6 +75,7 @@ export async function POST(request: NextRequest) {
     schoolId = realAuthProfile.school_id
   } else {
     if (!guest_name) return apiError('Guest checkout requires a name', 400)
+    if (!guest_email) return apiError('Guest checkout requires an email', 400)
     // Use the body-supplied school_id or fall back to the deployment default.
     const resolvedSchoolId = bodySchoolId ?? process.env.DEFAULT_SCHOOL_ID
     if (!resolvedSchoolId) return apiError('School not configured', 500)
@@ -124,6 +126,7 @@ export async function POST(request: NextRequest) {
   } else {
     metadata.is_guest = 'true'
     metadata.guest_name = guest_name!
+    metadata.guest_email = guest_email!
   }
 
   let session

@@ -1,8 +1,8 @@
 /**
  * @file swiper-registration-form.test.tsx
  * @description Behavioral tests for the swiper-registration form:
- *   step-1-to-step-2 transition after PATCH /api/profile succeeds; the
- *   continue-to-Stripe button stays disabled until the school is confirmed.
+ *   button stays disabled until both school and name are filled; submitting
+ *   sends one PATCH /api/profile then POSTs /api/stripe/connect and redirects.
  *   Called by: Vitest test runner
  */
 
@@ -28,18 +28,18 @@ const SCHOOLS = [
 ]
 
 describe('<SwiperRegistrationForm />', () => {
-  it('disables the continue-to-Stripe button until a school is confirmed', () => {
-    render(<SwiperRegistrationForm schoolId={null} schoolName={null} schools={SCHOOLS} />)
+  it('disables the continue-to-Stripe button when school and name are empty', () => {
+    render(<SwiperRegistrationForm schoolId={null} schoolName={null} fullName={null} schools={SCHOOLS} />)
     const cont = screen.getByTestId('swiper-reg-continue-button') as HTMLButtonElement
     expect(cont.disabled).toBe(true)
   })
 
-  it('enables the continue button after PATCH /api/profile resolves OK with a pre-set schoolId', () => {
-    // schoolId pre-set means the form starts in the "confirmed" state.
+  it('enables the continue button when school and name are both pre-filled', () => {
     render(
       <SwiperRegistrationForm
         schoolId="school-1"
         schoolName="NYU"
+        fullName="John Doe"
         schools={SCHOOLS}
       />,
     )
@@ -47,7 +47,7 @@ describe('<SwiperRegistrationForm />', () => {
     expect(cont.disabled).toBe(false)
   })
 
-  it('redirects to Stripe URL on successful POST /api/stripe/connect', async () => {
+  it('redirects to Stripe URL on successful PATCH /api/profile + POST /api/stripe/connect', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       status: 200,
@@ -60,7 +60,7 @@ describe('<SwiperRegistrationForm />', () => {
       value: { ...originalLocation, href: '' },
     })
 
-    render(<SwiperRegistrationForm schoolId="school-1" schoolName="NYU" schools={SCHOOLS} />)
+    render(<SwiperRegistrationForm schoolId="school-1" schoolName="NYU" fullName="John Doe" schools={SCHOOLS} />)
     fireEvent.click(screen.getByTestId('swiper-reg-continue-button'))
 
     await waitFor(() => {
@@ -74,18 +74,18 @@ describe('<SwiperRegistrationForm />', () => {
     })
   })
 
-  it('renders the error message testid when POST /api/stripe/connect fails', async () => {
+  it('renders the error message testid when the profile PATCH fails', async () => {
     fetchMock.mockResolvedValue({
       ok: false,
       status: 500,
-      json: async () => ({ error: 'Stripe is unavailable. Try again in a moment.' }),
+      json: async () => ({ error: 'Failed to save profile.' }),
     })
 
-    render(<SwiperRegistrationForm schoolId="school-1" schoolName="NYU" schools={SCHOOLS} />)
+    render(<SwiperRegistrationForm schoolId="school-1" schoolName="NYU" fullName="John Doe" schools={SCHOOLS} />)
     fireEvent.click(screen.getByTestId('swiper-reg-continue-button'))
 
     await waitFor(() => {
-      expect(screen.getByTestId('swiper-reg-error-message')).toHaveTextContent(/Stripe is unavailable/i)
+      expect(screen.getByTestId('swiper-reg-error-message')).toHaveTextContent(/Failed to save profile/i)
     })
   })
 })

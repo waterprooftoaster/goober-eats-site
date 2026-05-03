@@ -27,6 +27,7 @@ import {
     PENDING_SCHOOL_ID_KEY,
     PENDING_SUBTOTAL_CENTS_KEY,
     PENDING_PRICE_CENTS_KEY,
+    PENDING_EATERY_NAME_KEY,
     CART_TOTAL_MIN_CENTS,
     CART_TOTAL_MAX_CENTS,
 } from '@/lib/constants'
@@ -35,6 +36,10 @@ import {
     clearPendingSubtotalCents,
     getPendingSubtotalCentsPromise,
 } from '@/lib/ai/pending-subtotal-cache'
+import {
+    clearPendingEateryName,
+    getPendingEateryNamePromise,
+} from '@/lib/ai/pending-eatery-cache'
 
 const PREFILL_TIMEOUT_MS = 8000
 
@@ -54,6 +59,7 @@ export default function CheckoutPage() {
     const [viewerKind, setViewerKind] = useState<ViewerKind>('loading')
 
     const [name, setName] = useState('')
+    const [guestEmail, setGuestEmail] = useState('')
     const [eatery, setEatery] = useState('')
     const [subtotal, setSubtotal] = useState('')
     const [subtotalPending, setSubtotalPending] = useState(false)
@@ -65,6 +71,9 @@ export default function CheckoutPage() {
     const subtotalDirty = useRef(false)
     const subtotalRef = useRef(subtotal)
     subtotalRef.current = subtotal
+    const eateryDirty = useRef(false)
+    const eateryRef = useRef(eatery)
+    eateryRef.current = eatery
 
     // Auto-fill setter — only writes when the user has not typed and the field
     // is still empty. Prevents the late-resolve case from clobbering a manual
@@ -94,6 +103,31 @@ export default function CheckoutPage() {
     const handleUserSubtotalChange = (v: string) => {
         subtotalDirty.current = true
         setSubtotal(v)
+    }
+
+    /**
+     * Auto-fills the Campus Eatery Name input from Gemini's matched name.
+     * Guards: never overwrites a user edit (eateryDirty), never overwrites an
+     * already-populated field.
+     * @param name - Eatery name string from extract-price or sessionStorage
+     * @called-by eatery prefill useEffect, late-resolve subscription
+     */
+    const tryAutofillEatery = (name: string) => {
+        if (eateryDirty.current) return
+        if (eateryRef.current !== '') return
+        if (name.trim().length === 0) return
+        setEatery(name)
+    }
+
+    /**
+     * User-driven eatery setter. Flips eateryDirty so late-resolve won't
+     * clobber the manual edit.
+     * @param v - Raw input value from the Campus Eatery Name <Input>
+     * @called-by CheckoutForm onChange
+     */
+    const handleUserEateryChange = (v: string) => {
+        eateryDirty.current = true
+        setEatery(v)
     }
 
     // sessionStorage bootstrap — redirect home if no screenshots are queued.
@@ -177,6 +211,36 @@ export default function CheckoutPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
+    // Auto-prefill Campus Eatery Name from Gemini's matched eatery. Same
+    // timeout + late-resolve pattern as the subtotal prefill above, but no
+    // skeleton overlay (eatery can appear without blocking the form).
+    useEffect(() => {
+        const cached = sessionStorage.getItem(PENDING_EATERY_NAME_KEY)
+        if (cached !== null) {
+            tryAutofillEatery(cached)
+            return
+        }
+
+        const pending = getPendingEateryNamePromise()
+        if (!pending) return
+
+        let settled = false
+        const timer = setTimeout(() => {
+            if (settled) return
+            void pending.then((name) => {
+                if (name !== null) tryAutofillEatery(name)
+            })
+        }, PREFILL_TIMEOUT_MS)
+
+        void pending.then((name) => {
+            if (settled) return
+            settled = true
+            clearTimeout(timer)
+            if (name !== null) tryAutofillEatery(name)
+        })
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+
     // Resolve viewerKind: a Supabase user without a profile row is a guest
     // for backend purposes (the API requires guest_name in that case).
     useEffect(() => {
@@ -226,8 +290,9 @@ export default function CheckoutPage() {
     const eateryValid = eatery.trim().length >= 1 && eatery.trim().length <= 80
     const subtotalValid = subtotalCents !== null && subtotalCents >= 50
     const nameValid = viewerKind === 'authed' ? true : name.trim().length > 0
+    const emailValid = viewerKind === 'authed' ? true : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail.trim())
     const canSubmit =
-        eateryValid && subtotalValid && nameValid &&
+        eateryValid && subtotalValid && nameValid && emailValid &&
         stage === 'form' && viewerKind !== 'loading'
 
     async function handleSubmit(e: React.FormEvent) {
@@ -243,6 +308,7 @@ export default function CheckoutPage() {
         }
         if (viewerKind === 'guest') {
             body.guest_name = name.trim()
+            body.guest_email = guestEmail.trim()
             const pendingSchoolId = sessionStorage.getItem(PENDING_SCHOOL_ID_KEY)
             if (pendingSchoolId) body.school_id = pendingSchoolId
         }
@@ -261,6 +327,7 @@ export default function CheckoutPage() {
             sessionStorage.removeItem(PENDING_SCREENSHOTS_KEY)
             sessionStorage.removeItem(PENDING_SCHOOL_ID_KEY)
             clearPendingSubtotalCents()
+            clearPendingEateryName()
             setClientSecret(json.clientSecret)
             setStage('checkout')
         } catch (err) {
@@ -337,7 +404,7 @@ export default function CheckoutPage() {
                         </h1>
                         <p className="mt-2 text-sm text-muted-foreground">
                             Make sure the total you enter matches the total in the screenshot!
-                            <br /> Or else a swiper most likely won't accept your order.
+                            <br /> Or else a swiper most likely won&apos;t accept your order.
                         </p>
                     </header>
 
@@ -347,7 +414,8 @@ export default function CheckoutPage() {
                         <CheckoutForm
                             kind={viewerKind}
                             name={name} setName={setName}
-                            eatery={eatery} setEatery={setEatery}
+                            guestEmail={guestEmail} setGuestEmail={setGuestEmail}
+                            eatery={eatery} setEatery={handleUserEateryChange}
                             subtotal={subtotal} setSubtotal={handleUserSubtotalChange}
                             subtotalPending={subtotalPending}
                             isSubmitting={isSubmitting}
@@ -369,6 +437,8 @@ interface CheckoutFormProps {
     kind: 'guest' | 'authed'
     name: string
     setName: (v: string) => void
+    guestEmail: string
+    setGuestEmail: (v: string) => void
     eatery: string
     setEatery: (v: string) => void
     subtotal: string
@@ -388,7 +458,7 @@ interface CheckoutFormProps {
  * @called-by CheckoutPage
  */
 function CheckoutForm({
-    kind, name, setName, eatery, setEatery, subtotal, setSubtotal,
+    kind, name, setName, guestEmail, setGuestEmail, eatery, setEatery, subtotal, setSubtotal,
     subtotalPending,
     isSubmitting, canSubmit, error, ordererPaysCents, onSubmit,
 }: CheckoutFormProps) {
@@ -415,6 +485,21 @@ function CheckoutForm({
                         maxLength={100}
                         disabled={isSubmitting}
                         autoComplete="name"
+                    />
+                </FieldRow>
+            )}
+
+            {isGuest && (
+                <FieldRow label="Your email" htmlFor="checkout-email">
+                    <Input
+                        id="checkout-email"
+                        type="email"
+                        placeholder="jane@example.com"
+                        value={guestEmail}
+                        onChange={(e) => setGuestEmail(e.target.value)}
+                        maxLength={254}
+                        disabled={isSubmitting}
+                        autoComplete="email"
                     />
                 </FieldRow>
             )}
