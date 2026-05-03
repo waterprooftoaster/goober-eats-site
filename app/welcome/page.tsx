@@ -31,8 +31,7 @@ export default function WelcomePage() {
 
                 <ol className="flex flex-col gap-12">
                     <Step number="01" heading="Screenshot your GrubHub cart.">
-                        Build your cart on GrubHub, then take a screenshot of it — including the
-                        subtotal. Upload it here and we&apos;ll read the total for you.
+                        Go on the GrubHub app and build a cart from any dining hall on campus.
                         <div className="mt-5 -rotate-1 overflow-hidden rounded-xl ring-1 ring-border shadow-sm max-w-[260px] sm:max-w-[320px]">
                             <div className="relative aspect-[9/12]">
                                 <Image
@@ -47,13 +46,13 @@ export default function WelcomePage() {
                     </Step>
 
                     <Step number="02" heading="Confirm the total and pay.">
-                        Enter the amount you&apos;ll pay — we pre-fill it from your screenshot.
-                        We hold the charge until your order is fulfilled.
+                        Upload it here.
+                        You will not be charged until your order is ready.
                     </Step>
 
                     <Step number="03" heading="A swiper places the order for you.">
                         A student at your school buys exactly what&apos;s in your cart using their
-                        meal plan. They message you the pickup name and send a photo when it&apos;s done.
+                        meal plan. They will send receipt as proof of order when done.
                     </Step>
                 </ol>
 
@@ -62,7 +61,7 @@ export default function WelcomePage() {
                         <Link href="/">Place an order →</Link>
                     </Button>
                     <p className="text-sm text-muted-foreground">
-                        You only pay what you entered — no hidden fees.
+                        No hidden fees. Same food, just cheaper.
                     </p>
                 </div>
 
